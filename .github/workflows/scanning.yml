@@ -1,0 +1,50 @@
+name: SonarQube Scanning
+
+on:
+  push:
+    branches:
+      - dev
+      - prd
+  pull_request:
+    branches:
+      - dev
+      - prd
+
+jobs:
+  test-and-scan:
+    name: Pytest & SonarQube Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 0
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras --dev # NOSONAR
+
+      - name: Ruff lint
+        run: uv run --locked --no-build ruff check .
+
+      # The Cloud Run image (Dockerfile) copies these modules; compile them at
+      # the image's Python version so a syntax regression can never ship a
+      # worker that crashes on import.
+      - name: Compile Cloud Run worker modules
+        run: uv run --locked --no-build python -m py_compile cities.py google_era5.py nldas.py partition_io.py pet_corrected.py shards.py wetbulb.py
+
+      - name: Run Pytest with Coverage
+        run: uv run --locked pytest # NOSONAR
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

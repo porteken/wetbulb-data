@@ -1,0 +1,27 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.11
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.411
+    hooks:
+      - id: pyright
+  - repo: https://github.com/concur1/sqruff-pre-commit
+    rev: v0.38.0
+    hooks:
+      - id: sqruff-fix
+        files: \.sql$
+      - id: sqruff-lint
+        files: \.sql$
+  - repo: local
+    hooks:
+      - id: pytest
+        name: Run Pytest
+        entry: uv run --python 3.14 pytest --no-cov
+        language: system
+        pass_filenames: false
+        always_run: true

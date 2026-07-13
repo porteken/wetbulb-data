@@ -1,0 +1,68 @@
+[project]
+name = "wetbulb-data"
+version = "0.1.0"
+description = "Wet-bulb temperature data pipeline for NLDAS-2 ingestion, analytics, and Postgres loading."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+  "numpy>=2.3.2",
+  "pandas",
+  "pyarrow",
+  "psycopg[binary]",
+  "python-dotenv",
+  "prophet",
+  "requests",
+  "tqdm",
+]
+
+[project.optional-dependencies]
+gcs = ["dask", "gcsfs", "thermofeel", "xarray", "zarr"]
+nldas = ["h5netcdf", "h5py", "xarray"]
+
+[dependency-groups]
+dev = ["pytest", "pytest-cov>=7.1.0", "ruff"]
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+
+[tool.ruff]
+line-length = 88
+exclude = ["typings", "venv", ".venv", ".conda", "archive"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["D203", "D213", "E501", "COM812"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 40
+
+[tool.ruff.lint.pylint]
+max-args = 12
+max-branches = 40
+max-statements = 300
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+  "S101",
+  "D100",
+  "D101",
+  "D102",
+  "D103",
+  "D104",
+  "D401",
+  "PLR2004",
+  "PD011",
+  "RUF003",
+  "PT001",
+  "TC003",
+  "PERF401",
+  "PLC0415",
+  "SLF001",
+  "PYI034",
+  "S608",
+]
+"build_year_range.py" = ["T201"]
+"historical_pet_update.py" = ["T201", "PLR2004", "ANN401", "S608"]
+"clear_s3_prefix.py" = ["S603"]
+"cancel_cloud_run_job_executions.py" = ["S603", "T201"]

@@ -1,0 +1,15 @@
+{
+  "files.associations": {
+    "**/.github/workflows/*.yml": "yaml",
+    "**/.github/workflows/*.yaml": "yaml"
+  },
+  "python-envs.defaultEnvManager": "ms-python.python:conda",
+  "[r]": {
+    "editor.formatOnSave": true
+  },
+  "python-envs.defaultPackageManager": "ms-python.python:conda",
+  "sonarlint.connectedMode.project": {
+    "connectionId": "porteken",
+    "projectKey": "porteken_pet-data"
+  }
+}
