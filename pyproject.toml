@@ -61,6 +61,11 @@ max-statements = 300
   "SLF001",
   "PYI034",
   "S608",
+  "ANN401",
+  "S105",
+  "S107",
+  "EM101",
+  "ARG001",
 ]
 "build_year_range.py" = ["T201"]
 "historical_pet_update.py" = ["T201", "PLR2004", "ANN401", "S608"]

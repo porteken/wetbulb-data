@@ -20,6 +20,13 @@ AWS_CLOUD_RUN_REGION=${AWS_DEFAULT_REGION:-${AWS_REGION:-}}
 AWS_KEY_SECRET_NAME=${AWS_KEY_SECRET_NAME:-${CLOUD_RUN_JOB_NAME}-aws-access-key-id}
 AWS_SECRET_SECRET_NAME=${AWS_SECRET_SECRET_NAME:-${CLOUD_RUN_JOB_NAME}-aws-secret-access-key}
 
+# nldas-worker is the granule-download fallback path (--wetbulb-source
+# granules); wetbulb normally runs via the Giovanni Time Series API directly
+# on a GitHub Actions runner instead (see giovanni.py, wetbulb_backfill.yml,
+# yearly_update.yml), so this job is not deployed by default. Opt in with
+# DEPLOY_NLDAS_WORKER=1 if the fallback is needed.
+DEPLOY_NLDAS_WORKER=${DEPLOY_NLDAS_WORKER:-0}
+
 # nldas-worker shares the same image (both scripts are baked into it; entrypoint.sh
 # picks the one to run via WORKER_SCRIPT) but gets its own job so Earthdata
 # credentials stay scoped away from era5-worker and it can run with less memory.
@@ -37,8 +44,10 @@ EARTHDATA_PASSWORD_SECRET_NAME=${EARTHDATA_PASSWORD_SECRET_NAME:-${NLDAS_CLOUD_R
 : "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID must be set}"
 : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY must be set}"
 : "${AWS_CLOUD_RUN_REGION:?AWS_DEFAULT_REGION or AWS_REGION must be set}"
-: "${EARTHDATA_USERNAME:?EARTHDATA_USERNAME must be set (free NASA Earthdata account with the 'NASA GESDISC DATA ARCHIVE' application authorized)}"
-: "${EARTHDATA_PASSWORD:?EARTHDATA_PASSWORD must be set (free NASA Earthdata account with the 'NASA GESDISC DATA ARCHIVE' application authorized)}"
+if [[ "$DEPLOY_NLDAS_WORKER" == "1" ]]; then
+  : "${EARTHDATA_USERNAME:?EARTHDATA_USERNAME must be set (free NASA Earthdata account with the 'NASA GESDISC DATA ARCHIVE' application authorized)}"
+  : "${EARTHDATA_PASSWORD:?EARTHDATA_PASSWORD must be set (free NASA Earthdata account with the 'NASA GESDISC DATA ARCHIVE' application authorized)}"
+fi
 
 # Store AWS credentials in Secret Manager and mount them with --set-secrets so
 # they never appear in the job definition or the Cloud Run console.
@@ -72,16 +81,20 @@ echo "Upserting AWS credential secrets in Secret Manager"
 _upsert_secret "$AWS_KEY_SECRET_NAME" "$AWS_ACCESS_KEY_ID"
 _upsert_secret "$AWS_SECRET_SECRET_NAME" "$AWS_SECRET_ACCESS_KEY"
 
-echo "Upserting Earthdata credential secrets in Secret Manager"
-_upsert_secret "$EARTHDATA_USERNAME_SECRET_NAME" "$EARTHDATA_USERNAME"
-_upsert_secret "$EARTHDATA_PASSWORD_SECRET_NAME" "$EARTHDATA_PASSWORD"
+if [[ "$DEPLOY_NLDAS_WORKER" == "1" ]]; then
+  echo "Upserting Earthdata credential secrets in Secret Manager"
+  _upsert_secret "$EARTHDATA_USERNAME_SECRET_NAME" "$EARTHDATA_USERNAME"
+  _upsert_secret "$EARTHDATA_PASSWORD_SECRET_NAME" "$EARTHDATA_PASSWORD"
+fi
 
 PROJECT_NUMBER=$(gcloud projects describe "$GCP_PROJECT_ID" --format='value(projectNumber)')
 JOB_SERVICE_ACCOUNT=${JOB_SERVICE_ACCOUNT:-"${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"}
 _grant_secret_access "$AWS_KEY_SECRET_NAME" "$JOB_SERVICE_ACCOUNT"
 _grant_secret_access "$AWS_SECRET_SECRET_NAME" "$JOB_SERVICE_ACCOUNT"
-_grant_secret_access "$EARTHDATA_USERNAME_SECRET_NAME" "$JOB_SERVICE_ACCOUNT"
-_grant_secret_access "$EARTHDATA_PASSWORD_SECRET_NAME" "$JOB_SERVICE_ACCOUNT"
+if [[ "$DEPLOY_NLDAS_WORKER" == "1" ]]; then
+  _grant_secret_access "$EARTHDATA_USERNAME_SECRET_NAME" "$JOB_SERVICE_ACCOUNT"
+  _grant_secret_access "$EARTHDATA_PASSWORD_SECRET_NAME" "$JOB_SERVICE_ACCOUNT"
+fi
 
 echo "Building Cloud Run image ${CLOUD_RUN_IMAGE}"
 gcloud auth configure-docker --quiet
@@ -100,14 +113,18 @@ gcloud run jobs deploy "$CLOUD_RUN_JOB_NAME" \
   --set-env-vars="AWS_DEFAULT_REGION=$AWS_CLOUD_RUN_REGION,AWS_REGION=$AWS_CLOUD_RUN_REGION" \
   --set-secrets="AWS_ACCESS_KEY_ID=${AWS_KEY_SECRET_NAME}:latest,AWS_SECRET_ACCESS_KEY=${AWS_SECRET_SECRET_NAME}:latest"
 
-echo "Deploying Cloud Run job ${NLDAS_CLOUD_RUN_JOB_NAME} in ${CLOUD_RUN_REGION}"
-gcloud run jobs deploy "$NLDAS_CLOUD_RUN_JOB_NAME" \
-  --project "$GCP_PROJECT_ID" \
-  --image "$CLOUD_RUN_IMAGE" \
-  --region "$CLOUD_RUN_REGION" \
-  --cpu "$NLDAS_CLOUD_RUN_JOB_CPU" \
-  --memory "$NLDAS_CLOUD_RUN_JOB_MEMORY" \
-  --max-retries "$CLOUD_RUN_MAX_RETRIES" \
-  --task-timeout "$NLDAS_CLOUD_RUN_TASK_TIMEOUT" \
-  --set-env-vars="WORKER_SCRIPT=nldas.py,AWS_DEFAULT_REGION=$AWS_CLOUD_RUN_REGION,AWS_REGION=$AWS_CLOUD_RUN_REGION" \
-  --set-secrets="AWS_ACCESS_KEY_ID=${AWS_KEY_SECRET_NAME}:latest,AWS_SECRET_ACCESS_KEY=${AWS_SECRET_SECRET_NAME}:latest,EARTHDATA_USERNAME=${EARTHDATA_USERNAME_SECRET_NAME}:latest,EARTHDATA_PASSWORD=${EARTHDATA_PASSWORD_SECRET_NAME}:latest"
+if [[ "$DEPLOY_NLDAS_WORKER" == "1" ]]; then
+  echo "Deploying Cloud Run job ${NLDAS_CLOUD_RUN_JOB_NAME} in ${CLOUD_RUN_REGION}"
+  gcloud run jobs deploy "$NLDAS_CLOUD_RUN_JOB_NAME" \
+    --project "$GCP_PROJECT_ID" \
+    --image "$CLOUD_RUN_IMAGE" \
+    --region "$CLOUD_RUN_REGION" \
+    --cpu "$NLDAS_CLOUD_RUN_JOB_CPU" \
+    --memory "$NLDAS_CLOUD_RUN_JOB_MEMORY" \
+    --max-retries "$CLOUD_RUN_MAX_RETRIES" \
+    --task-timeout "$NLDAS_CLOUD_RUN_TASK_TIMEOUT" \
+    --set-env-vars="WORKER_SCRIPT=nldas.py,AWS_DEFAULT_REGION=$AWS_CLOUD_RUN_REGION,AWS_REGION=$AWS_CLOUD_RUN_REGION" \
+    --set-secrets="AWS_ACCESS_KEY_ID=${AWS_KEY_SECRET_NAME}:latest,AWS_SECRET_ACCESS_KEY=${AWS_SECRET_SECRET_NAME}:latest,EARTHDATA_USERNAME=${EARTHDATA_USERNAME_SECRET_NAME}:latest,EARTHDATA_PASSWORD=${EARTHDATA_PASSWORD_SECRET_NAME}:latest"
+else
+  echo "Skipping nldas-worker deploy (set DEPLOY_NLDAS_WORKER=1 to deploy the granule-download fallback)."
+fi

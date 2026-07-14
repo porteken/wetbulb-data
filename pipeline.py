@@ -134,6 +134,10 @@ class PipelineConfig:
     load_workers: int
     concurrency_profile: str
     batch_workers: int
+    wetbulb_source: str
+    giovanni_city_shard_count: int
+    giovanni_concurrency: int
+    giovanni_job_limit: int
 
     @property
     def do_pet(self) -> bool:
@@ -284,13 +288,45 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--nldas-parallel-years",
         type=int,
         default=_env_int("NLDAS_PARALLEL_YEARS", 4),
-        help="Concurrent Cloud Run year executions for the NLDAS wetbulb pull.",
+        help="Concurrent Cloud Run year executions for the NLDAS wetbulb pull "
+        "(--wetbulb-source granules only).",
     )
     parser.add_argument(
         "--download-workers",
         type=int,
         default=_env_int("NLDAS_DOWNLOAD_WORKERS", NLDAS_DEFAULT_DOWNLOAD_WORKERS),
-        help="Concurrent per-batch NLDAS-2 granule downloads.",
+        help="Concurrent per-batch NLDAS-2 granule downloads "
+        "(--wetbulb-source granules only).",
+    )
+    parser.add_argument(
+        "--wetbulb-source",
+        choices=["giovanni", "granules"],
+        default=_env_str("WETBULB_SOURCE", "giovanni"),
+        help=(
+            "giovanni: fetch per-city point time series from the Giovanni "
+            "Time Series API (~1,500 requests total, always runs locally). "
+            "granules: download full hourly NLDAS-2 CONUS granules and "
+            "extract points (the original, much slower/costlier path, kept "
+            "as a fallback)."
+        ),
+    )
+    parser.add_argument(
+        "--giovanni-city-shard-count",
+        type=int,
+        default=_env_int("GIOVANNI_CITY_SHARD_COUNT", 10),
+        help="Number of local giovanni.py subprocesses to shard cities across.",
+    )
+    parser.add_argument(
+        "--giovanni-concurrency",
+        type=int,
+        default=_env_int("GIOVANNI_CONCURRENCY", 8),
+        help="Concurrent city fetches within one giovanni.py subprocess.",
+    )
+    parser.add_argument(
+        "--giovanni-job-limit",
+        type=int,
+        default=_env_int("GIOVANNI_JOB_LIMIT", 4),
+        help="Concurrent giovanni.py subprocesses run locally.",
     )
     parser.add_argument(
         "--load-workers",
@@ -433,6 +469,10 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         load_workers=max(1, args.load_workers),
         concurrency_profile=concurrency_profile,
         batch_workers=max(1, batch_workers),
+        wetbulb_source=args.wetbulb_source,
+        giovanni_city_shard_count=max(1, args.giovanni_city_shard_count),
+        giovanni_concurrency=max(1, args.giovanni_concurrency),
+        giovanni_job_limit=max(1, args.giovanni_job_limit),
     )
 
 
@@ -546,15 +586,17 @@ def _run_local_jobs(
     *,
     desc: str,
     product_label: str,
+    max_workers: int | None = None,
 ) -> None:
+    workers = max_workers if max_workers is not None else cfg.job_limit
     LOGGER.info(
         "Running %d local %s job(s) with up to %d concurrent process(es).",
         len(jobs),
         product_label,
-        cfg.job_limit,
+        workers,
     )
     failures: list[str] = []
-    with ThreadPoolExecutor(max_workers=cfg.job_limit) as executor:
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         future_labels = {
             executor.submit(
                 _run_command,
@@ -775,10 +817,61 @@ def _local_nldas_jobs(cfg: PipelineConfig) -> list[list[str]]:
     return jobs
 
 
+def _local_giovanni_jobs(cfg: PipelineConfig) -> list[list[str]]:
+    """Build one giovanni.py invocation per city shard.
+
+    Unlike the granule path, Giovanni fetches a city's whole year range in
+    one request (~1,500 requests total for the full 2000-2024 backfill, see
+    giovanni.py's module docstring), so it always runs as local subprocesses
+    -- even when `--use-cloud-run` is set for the ERA5/PET path -- writing
+    straight to S3 when `cfg.use_cloud_run` selects a remote out-dir.
+    """
+    out_dir = cfg.remote_out_dir if cfg.use_cloud_run else "."
+    start_year = min(cfg.years)
+    end_year = max(cfg.years)
+    jobs: list[list[str]] = []
+    for city_shard in range(cfg.giovanni_city_shard_count):
+        script_args = [
+            "--start-year",
+            str(start_year),
+            "--end-year",
+            str(end_year),
+            "--city-shard-index",
+            str(city_shard),
+            "--city-shard-count",
+            str(cfg.giovanni_city_shard_count),
+            "--concurrency",
+            str(cfg.giovanni_concurrency),
+            "--out-dir",
+            out_dir,
+        ]
+        jobs.append(_python_command("giovanni.py", *script_args))
+    return jobs
+
+
+def _run_giovanni_pull(cfg: PipelineConfig) -> None:
+    if cfg.use_cloud_run and not cfg.skip_remote_clear:
+        _clear_remote_prefixes(cfg, ["wetbulb"])
+    _run_local_jobs(
+        _local_giovanni_jobs(cfg),
+        cfg,
+        desc="Giovanni wetbulb jobs",
+        product_label="Giovanni wetbulb",
+        max_workers=cfg.giovanni_job_limit,
+    )
+
+
 def run_nldas_pull(cfg: PipelineConfig) -> None:
-    """Compute NLDAS-2 -> wetbulb parquet, remotely or locally."""
-    LOGGER.info("====== Step 2b: Compute NLDAS-2 wetbulb ======")
+    """Compute NLDAS-2 -> wetbulb parquet via Giovanni or granule downloads."""
+    LOGGER.info(
+        "====== Step 2b: Compute NLDAS-2 wetbulb (source=%s) ======",
+        cfg.wetbulb_source,
+    )
     _clear_local_year_outputs(cfg, ["wetbulb"])
+
+    if cfg.wetbulb_source == "giovanni":
+        _run_giovanni_pull(cfg)
+        return
 
     if cfg.use_cloud_run:
         _cancel_cloud_run_executions(cfg, cfg.nldas_cloud_run_job)

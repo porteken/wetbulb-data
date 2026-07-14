@@ -370,7 +370,16 @@ class TestNldasPull:
             lambda command, **_kwargs: commands.append(command),
         )
 
-        cfg = _config(["--years", "2023", "2024", "--skip-remote-clear"])
+        cfg = _config(
+            [
+                "--years",
+                "2023",
+                "2024",
+                "--skip-remote-clear",
+                "--wetbulb-source",
+                "granules",
+            ]
+        )
         pipeline.run_nldas_pull(cfg)
 
         gcloud_commands = [c for c in commands if c[0] == "gcloud"]
@@ -399,6 +408,8 @@ class TestNldasPull:
                 "1",
                 "--nldas-time-shard-count",
                 "2",
+                "--wetbulb-source",
+                "granules",
             ]
         )
         cfg.nldas_time_shard_indexes = [0, 1]
@@ -437,6 +448,8 @@ class TestNldasPull:
                 "--skip-remote-clear",
                 "--nldas-parallel-years",
                 "2",
+                "--wetbulb-source",
+                "granules",
             ]
         )
         pipeline.run_nldas_pull(cfg)
@@ -471,6 +484,8 @@ class TestNldasPull:
                 "--skip-remote-clear",
                 "--nldas-parallel-years",
                 "3",
+                "--wetbulb-source",
+                "granules",
             ]
         )
         with pytest.raises(pipeline.PipelineError, match="Cloud Run NLDAS year"):
@@ -488,9 +503,77 @@ class TestNldasPull:
 
         monkeypatch.setattr(pipeline, "_run_command", failing_run)
 
-        cfg = _config(["--local", "--years", "2024"])
+        cfg = _config(["--local", "--years", "2024", "--wetbulb-source", "granules"])
         cfg.nldas_time_shard_indexes = [0]
         with pytest.raises(pipeline.PipelineError, match="local NLDAS job"):
+            pipeline.run_nldas_pull(cfg)
+
+    def test_giovanni_is_default_source_and_shards_locally(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        commands: list[list[str]] = []
+        monkeypatch.setattr(
+            pipeline,
+            "_run_command",
+            lambda command, **_kwargs: commands.append(command),
+        )
+
+        cfg = _config(
+            [
+                "--local",
+                "--years",
+                "2024",
+                "--giovanni-city-shard-count",
+                "3",
+            ]
+        )
+        pipeline.run_nldas_pull(cfg)
+
+        assert len(commands) == 3
+        assert all("giovanni.py" in command[1] for command in commands)
+        assert all("--out-dir" in command and "." in command for command in commands)
+
+    def test_giovanni_writes_to_s3_when_cloud_run_selected(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        commands: list[list[str]] = []
+        monkeypatch.setattr(
+            pipeline,
+            "_run_command",
+            lambda command, **_kwargs: commands.append(command),
+        )
+
+        cfg = _config(
+            [
+                "--years",
+                "2024",
+                "--giovanni-city-shard-count",
+                "2",
+                "--skip-remote-clear",
+            ]
+        )
+        pipeline.run_nldas_pull(cfg)
+
+        assert len(commands) == 2
+        for command in commands:
+            out_dir_index = command.index("--out-dir") + 1
+            assert command[out_dir_index].startswith("s3://")
+
+    def test_giovanni_failure_is_reported(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+
+        def failing_run(_command: list[str], **_kwargs: object) -> None:
+            msg = "job failed with exit code 1."
+            raise pipeline.PipelineError(msg)
+
+        monkeypatch.setattr(pipeline, "_run_command", failing_run)
+
+        cfg = _config(["--local", "--years", "2024", "--giovanni-city-shard-count", "2"])
+        with pytest.raises(pipeline.PipelineError, match="Giovanni wetbulb job"):
             pipeline.run_nldas_pull(cfg)
 
 

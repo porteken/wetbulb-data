@@ -1,0 +1,206 @@
+name: Wetbulb Backfill (Giovanni)
+
+# One-shot (or resumable) historical wet-bulb backfill via the Giovanni Time
+# Series API (see giovanni.py). Replaces the old NLDAS-2 granule-download
+# path on Cloud Run, which took 24+ hours and $10-15 for the 2000-2024
+# backfill: Giovanni returns a whole city's multi-year hourly series in one
+# request (~1,500 requests total for 500 cities x 3 variables instead of
+# ~219,000 hourly granule downloads), and runs here for free on GitHub
+# Actions instead of billed Cloud Run compute.
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_year:
+        description: "First year to backfill"
+        default: "2000"
+      end_year:
+        description: "Last year to backfill (blank = last complete year)"
+        default: ""
+      city_shard_count:
+        description: "Parallel city-sharded fetch jobs"
+        default: "5"
+      concurrency:
+        description: "Concurrent city fetches within one shard job"
+        default: "8"
+      clear_prefix:
+        description: "Clear wetbulb_data_csv/ on S3 before fetching (full rebuild)"
+        type: boolean
+        default: true
+      skip_db_load:
+        description: "Fetch only; skip the Postgres load/truncate step"
+        type: boolean
+        default: false
+
+concurrency:
+  group: wetbulb-backfill
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      end_year: ${{ steps.resolve.outputs.end_year }}
+      shard_matrix: ${{ steps.resolve.outputs.shard_matrix }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version-file: "pyproject.toml"
+      - name: Resolve end year and shard matrix
+        id: resolve
+        env:
+          END_YEAR_INPUT: ${{ inputs.end_year }}
+          SHARD_COUNT: ${{ inputs.city_shard_count }}
+        run: |
+          END_YEAR="$END_YEAR_INPUT"
+          if [ -z "$END_YEAR" ]; then
+            END_YEAR=$(python3 -c "import nldas; print(nldas.NLDAS_END_YEAR)")
+          fi
+          echo "end_year=$END_YEAR" >> "$GITHUB_OUTPUT"
+          python3 -c "import json,os; print('shard_matrix=' + json.dumps(list(range(int(os.environ['SHARD_COUNT'])))))" >> "$GITHUB_OUTPUT"
+
+  clear-wetbulb-output:
+    if: ${{ inputs.clear_prefix }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version-file: "pyproject.toml"
+      - name: Clear Wetbulb Prefix
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+        run: python3 clear_s3_prefix.py --bucket pet-parquet-files --prefix wetbulb_data_csv/ --max-workers 8
+
+  fetch:
+    needs: [prepare, clear-wetbulb-output]
+    if: |
+      always() &&
+      needs.prepare.result == 'success' &&
+      (needs.clear-wetbulb-output.result == 'success' || needs.clear-wetbulb-output.result == 'skipped')
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJson(needs.prepare.outputs.shard_matrix) }}
+    runs-on: ubuntu-latest
+    name: Fetch wetbulb city shard ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version-file: "pyproject.toml"
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990
+        with:
+          enable-cache: true
+      - name: Sync runtime dependencies
+        run: uv sync --locked --no-dev # NOSONAR
+      - name: Generate cities.csv
+        run: uv run --locked --no-build python cities.py
+      # cities_nldas_cells.csv (each city's land-snapped NLDAS-2 cell, see
+      # make_nldas_cell_map.py) is checked into the repo, so no regeneration
+      # needed here -- it just comes along with actions/checkout.
+      - name: Fetch NLDAS-2 wet-bulb via Giovanni (writes straight to S3)
+        env:
+          EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
+          EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          START_YEAR: ${{ inputs.start_year }}
+          END_YEAR: ${{ needs.prepare.outputs.end_year }}
+          SHARD_COUNT: ${{ inputs.city_shard_count }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+        run: |
+          uv run --locked --no-build python giovanni.py \
+            --start-year "$START_YEAR" \
+            --end-year "$END_YEAR" \
+            --city-shard-index ${{ matrix.shard }} \
+            --city-shard-count "$SHARD_COUNT" \
+            --concurrency "$CONCURRENCY" \
+            --out-dir s3://pet-parquet-files
+
+  load-to-db:
+    if: ${{ !inputs.skip_db_load }}
+    needs: [prepare, fetch]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version-file: "pyproject.toml"
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990
+        with:
+          enable-cache: true
+      - name: Sync runtime dependencies
+        run: uv sync --locked --no-dev # NOSONAR
+      - name: Generate locations.csv
+        run: |
+          uv run --locked --no-build python cities.py
+          uv run --locked --no-build python locations.py
+      - name: Sync wetbulb data from S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          mkdir -p wetbulb_data_csv
+          aws s3 sync s3://pet-parquet-files/wetbulb_data_csv/ ./wetbulb_data_csv/ --delete
+      # Full rebuild: truncate+reload only the wetbulb table (locations is
+      # upserted, idempotent; pet is left untouched since this workflow
+      # never fetches PET/ERA5 data).
+      - name: Load wetbulb into Postgres (full rebuild)
+        env:
+          POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
+        run: uv run --locked --no-build python load.py --skip-table pet --truncate-table wetbulb --ensure-schema
+
+  notify-on-failure:
+    if: failure()
+    needs: [prepare, clear-wetbulb-output, fetch, load-to-db]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update failure issue
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        with:
+          script: |
+            const title = `Wetbulb backfill failed: ${new Date().toISOString().slice(0, 10)}`;
+            const body = [
+              `The Giovanni wetbulb backfill workflow failed.`,
+              ``,
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              ``,
+              `giovanni.py resumes via existing S3 output, so re-running the workflow only refetches missing years.`,
+            ].join("\n");
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "wetbulb-backfill-failure",
+            });
+            if (issues.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues[0].number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["wetbulb-backfill-failure"],
+              });
+            }
