@@ -78,11 +78,9 @@ class TestPetCorrected:
         assert arr[0] < arr[1] < arr[2]
 
     def test_mismatched_lengths_raise(self) -> None:
+        tair = np.array([20.0, 25.0])
+        t_mrt = np.array([25.0])
+        v_air = np.array([1.0, 1.0, 1.0])
+        rh = np.array([50.0])
         with pytest.raises(ValueError, match="Length"):
-            pet_corrected(
-                np.array([20.0, 25.0]),
-                np.array([25.0]),
-                np.array([1.0, 1.0, 1.0]),
-                np.array([50.0]),
-                icl=0.5,
-            )
+            pet_corrected(tair, t_mrt, v_air, rh, icl=0.5)

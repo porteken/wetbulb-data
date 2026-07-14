@@ -69,8 +69,10 @@ class TestWetbulbStull:
         assert len(result) == 3
 
     def test_mismatched_lengths_raise(self) -> None:
+        tair = np.array([20.0, 25.0])
+        rh = np.array([50.0, 60.0, 70.0])
         with pytest.raises(ValueError, match="Length"):
-            wetbulb_stull(np.array([20.0, 25.0]), np.array([50.0, 60.0, 70.0]))
+            wetbulb_stull(tair, rh)
 
     def test_scalar_broadcast_with_vector(self) -> None:
         tair = np.array([20.0, 25.0, 30.0])
@@ -192,12 +194,10 @@ class TestWetbulbDaviesJones:
         assert len(result) == 3
 
     def test_mismatched_lengths_raise(self) -> None:
+        temps_k = np.array([293.15, 298.15])
+        q = np.array([0.007, 0.008, 0.009])
         with pytest.raises(ValueError, match="Length"):
-            wetbulb_davies_jones(
-                np.array([293.15, 298.15]),
-                np.array([0.007, 0.008, 0.009]),
-                _SEA_LEVEL_PA,
-            )
+            wetbulb_davies_jones(temps_k, q, _SEA_LEVEL_PA)
 
     def test_nan_propagates(self) -> None:
         result = _as_float(wetbulb_davies_jones(float("nan"), 0.007, _SEA_LEVEL_PA))

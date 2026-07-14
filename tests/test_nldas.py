@@ -177,8 +177,9 @@ class TestResolveVariableName:
 
     def test_raises_when_no_candidate_present(self) -> None:
         fake_ds = SimpleNamespace(data_vars={"unrelated": None})
+        dataset = cast("nldas.Dataset", fake_ds)
         with pytest.raises(KeyError):
-            _resolve_variable_name(cast("nldas.Dataset", fake_ds), "Tair")
+            _resolve_variable_name(dataset, "Tair")
 
 
 class TestComputeDailyWetbulb:
@@ -233,8 +234,9 @@ class TestIterAndSelectTimeShardBatches:
         assert sum(len(h) for _idx, h in batches) == 48
 
     def test_raises_on_zero_batch_hours(self) -> None:
+        hours = [pd.Timestamp("2024-01-01")]
         with pytest.raises(ValueError, match="batch_hours"):
-            _iter_time_batches([pd.Timestamp("2024-01-01")], 0)
+            _iter_time_batches(hours, 0)
 
     def test_shard_selection_partitions_batches(self) -> None:
         hours = list(pd.date_range("2024-01-01", periods=96, freq="h"))

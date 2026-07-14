@@ -265,8 +265,9 @@ class TestPrepareLocations:
         )
         monkeypatch.setattr(pipeline.locations_module, "main", MagicMock())
 
+        config = _config(["--years", "2024"])
         with pytest.raises(pipeline.PipelineError, match="zero locations"):
-            pipeline.prepare_locations(_config(["--years", "2024"]))
+            pipeline.prepare_locations(config)
 
 
 class TestOutputsAvailable:
@@ -275,8 +276,9 @@ class TestOutputsAvailable:
     ) -> None:
         monkeypatch.chdir(tmp_path)
 
+        config = _config(["--years", "2024"])
         with pytest.raises(pipeline.PipelineError, match="No pet batch"):
-            pipeline.assert_outputs_available(_config(["--years", "2024"]))
+            pipeline.assert_outputs_available(config)
 
     def test_present_output_passes(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -540,12 +542,11 @@ class _HistoryConnection:
 
 class TestHistoryDepth:
     def test_insufficient_pet_history_fails(self) -> None:
-        conn = _HistoryConnection({"pet": 3, "wetbulb": 12})
+        conn = cast("Any", _HistoryConnection({"pet": 3, "wetbulb": 12}))
+        config = _config(["--years", "2024"])
 
         with pytest.raises(pipeline.PipelineError, match="at least 10 PET years"):
-            pipeline._check_history_depth(
-                cast("Any", conn), _config(["--years", "2024"])
-            )
+            pipeline._check_history_depth(conn, config)
 
     def test_short_wetbulb_history_warns(
         self, caplog: pytest.LogCaptureFixture
