@@ -783,7 +783,9 @@ def _run_nldas_cloud_run_years(cfg: PipelineConfig) -> None:
                 failures.append(str(error))
                 _terminate_active_processes()
     if failures:
-        msg = f"{len(failures)} Cloud Run NLDAS year execution(s) failed: {failures[:3]}"
+        msg = (
+            f"{len(failures)} Cloud Run NLDAS year execution(s) failed: {failures[:3]}"
+        )
         raise PipelineError(msg)
 
 

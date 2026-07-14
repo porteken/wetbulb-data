@@ -86,6 +86,6 @@ def batch_exists(
         # Validate the footer (a cheap ranged read) so a truncated or corrupt
         # file from an interrupted run is recomputed instead of skipped.
         pq.read_metadata(path, filesystem=fs)
-    except (OSError, pa.ArrowException):
+    except OSError, pa.ArrowException:
         return False
     return True

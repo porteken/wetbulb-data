@@ -165,7 +165,9 @@ class TestTokenManager:
         assert manager.refresh() == "second"
         assert manager.get() == "second"
 
-    def test_from_env_requires_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_from_env_requires_credentials(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.delenv("EARTHDATA_USERNAME", raising=False)
         monkeypatch.delenv("EARTHDATA_PASSWORD", raising=False)
         with pytest.raises(RuntimeError, match="EARTHDATA_USERNAME"):
@@ -240,7 +242,9 @@ class TestGetTimeseriesCsv:
 
 
 class TestFetchVariableSeries:
-    def test_returns_parsed_series_on_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_returns_parsed_series_on_success(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(
             giovanni, "_get_timeseries_csv", lambda *_a, **_k: SAMPLE_CSV
         )
@@ -274,7 +278,9 @@ class TestFetchVariableSeries:
         assert 2020 in requested_start_years
         assert 2021 in requested_start_years
 
-    def test_partial_success_after_halving(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_partial_success_after_halving(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         def fake_get(
             _session: Any,
             _tm: Any,

@@ -330,7 +330,7 @@ def _fetch_hour(
     try:
         ds = _open_granule(content)
         return _extract_point_values(ds, iy, ix)
-    except (OSError, ValueError, KeyError):
+    except OSError, ValueError, KeyError:
         LOGGER.exception("Failed to parse NLDAS granule for %s.", ts)
         return None
 

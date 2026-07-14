@@ -33,7 +33,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import urllib3.util.connection
 from tqdm.auto import tqdm
@@ -63,9 +63,7 @@ type Session = Any
 type CityRow = Any
 
 GIOVANNI_TIMESERIES_URL = "https://api.giovanni.earthdata.nasa.gov/timeseries"
-GIOVANNI_TOKEN_URL = (
-    "https://urs.earthdata.nasa.gov/api/users/find_or_create_token"  # noqa: S105
-)
+GIOVANNI_TOKEN_URL = "https://urs.earthdata.nasa.gov/api/users/find_or_create_token"  # noqa: S105
 
 # Verified live against the Giovanni Time Series API (2026-07): these are the
 # only `data=` values that returned 200 for NLDAS_FORA0125_H v2.0; several
@@ -89,6 +87,18 @@ CELL_MAP_PATH = "cities_nldas_cells.csv"
 FILL_FRACTION_ALARM_THRESHOLD = 0.5
 
 _CELL_MAP_WARNED = False
+
+
+class TokenManagerProtocol(Protocol):
+    """Structural interface for minting/refreshing an EDL bearer token."""
+
+    def get(self) -> str:
+        """Return the cached token, minting one on first use."""
+        ...
+
+    def refresh(self) -> str:
+        """Force-fetch a new token, e.g. after a 401."""
+        ...
 
 
 class TokenManager:
@@ -156,7 +166,7 @@ def _sleep_with_backoff(attempt: int, *, retry_after: str | None = None) -> None
 
 def _get_timeseries_csv(
     session: Session,
-    token_manager: TokenManager,
+    token_manager: TokenManagerProtocol,
     var_id: str,
     lat: float,
     lon: float,
@@ -210,7 +220,9 @@ def _get_timeseries_csv(
                     response.status_code,
                 )
                 return None
-            _sleep_with_backoff(attempt, retry_after=response.headers.get("Retry-After"))
+            _sleep_with_backoff(
+                attempt, retry_after=response.headers.get("Retry-After")
+            )
             continue
         if response.status_code >= requests.codes.bad_request:
             LOGGER.warning(
@@ -265,7 +277,7 @@ def _empty_series_df() -> DataFrame:
 
 def _fetch_variable_series(
     session: Session,
-    token_manager: TokenManager,
+    token_manager: TokenManagerProtocol,
     var_id: str,
     lat: float,
     lon: float,
@@ -304,7 +316,9 @@ def _fetch_variable_series(
         return _empty_series_df()
 
     mid = (start_year + end_year) // 2
-    left = _fetch_variable_series(session, token_manager, var_id, lat, lon, start_year, mid)
+    left = _fetch_variable_series(
+        session, token_manager, var_id, lat, lon, start_year, mid
+    )
     right = _fetch_variable_series(
         session, token_manager, var_id, lat, lon, mid + 1, end_year
     )
@@ -313,7 +327,7 @@ def _fetch_variable_series(
 
 def fetch_city_hourly(
     session: Session,
-    token_manager: TokenManager,
+    token_manager: TokenManagerProtocol,
     location_id: int,
     lat: float,
     lon: float,
@@ -332,9 +346,9 @@ def fetch_city_hourly(
     for canonical in GIOVANNI_VARIABLE_IDS:
         if canonical not in combined:
             combined[canonical] = np.nan
-        combined.loc[
-            combined[canonical] <= nldas.NLDAS_FILL_THRESHOLD, canonical
-        ] = np.nan
+        combined.loc[combined[canonical] <= nldas.NLDAS_FILL_THRESHOLD, canonical] = (
+            np.nan
+        )
 
     combined = combined.reset_index().rename(columns={"index": "time"})
     combined.insert(0, "location_id", location_id)
@@ -418,7 +432,9 @@ def process_giovanni(
 
     shard_df = nldas._load_nldas_city_shard(city_shard_index, city_shard_count)  # noqa: SLF001
     if shard_df.empty:
-        LOGGER.info("No cities found for shard %s/%s.", city_shard_index, city_shard_count)
+        LOGGER.info(
+            "No cities found for shard %s/%s.", city_shard_index, city_shard_count
+        )
         return
 
     filesystem, base_path = resolve_filesystem(wetbulb_root)

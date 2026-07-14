@@ -572,7 +572,9 @@ class TestNldasPull:
 
         monkeypatch.setattr(pipeline, "_run_command", failing_run)
 
-        cfg = _config(["--local", "--years", "2024", "--giovanni-city-shard-count", "2"])
+        cfg = _config(
+            ["--local", "--years", "2024", "--giovanni-city-shard-count", "2"]
+        )
         with pytest.raises(pipeline.PipelineError, match="Giovanni wetbulb job"):
             pipeline.run_nldas_pull(cfg)
 

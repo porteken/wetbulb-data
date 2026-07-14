@@ -160,5 +160,5 @@ def _parse_shard_key(root_path: str, file_path: str) -> ShardKey | None:
             month=int(partitions.get("month", "0")),
             tile_id=int(partitions["tile_id"]),
         )
-    except (KeyError, ValueError):
+    except KeyError, ValueError:
         return None
