@@ -58,7 +58,11 @@ PRODUCT_TABLES = ("pet", "wetbulb")
 # nldas-worker downloads hourly HTTP granules rather than reading a GCS zarr
 # store, but reuses the same batch/time-shard partitioning defaults as the
 # ERA5 worker since both are tuned for similar per-task run times.
-NLDAS_DEFAULT_DOWNLOAD_WORKERS = 16
+# GES DISC throttles concurrent connections from one client: 16 concurrent
+# downloads reproducibly drew a 503 and triggered the granule retry/backoff
+# path (NLDAS_RETRY_DELAY_SECONDS), stalling whole batches by 10s+; 12 ran
+# clean in repeated measurement.
+NLDAS_DEFAULT_DOWNLOAD_WORKERS = 12
 
 # Keep numpy/BLAS single-threaded inside worker subprocesses; parallelism is
 # managed at the process level.
@@ -123,6 +127,7 @@ class PipelineConfig:
     nldas_batch_hours: int
     nldas_time_shard_count: int
     nldas_time_shard_indexes: list[int]
+    nldas_parallel_years: int
     download_workers: int
     city_shard_count: int
     job_limit: int
@@ -276,6 +281,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--nldas-batch-hours", type=int, default=None)
     parser.add_argument("--nldas-time-shard-count", type=int, default=None)
     parser.add_argument(
+        "--nldas-parallel-years",
+        type=int,
+        default=_env_int("NLDAS_PARALLEL_YEARS", 4),
+        help="Concurrent Cloud Run year executions for the NLDAS wetbulb pull.",
+    )
+    parser.add_argument(
         "--download-workers",
         type=int,
         default=_env_int("NLDAS_DOWNLOAD_WORKERS", NLDAS_DEFAULT_DOWNLOAD_WORKERS),
@@ -415,6 +426,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         nldas_batch_hours=nldas_batch_hours,
         nldas_time_shard_count=nldas_time_shard_count,
         nldas_time_shard_indexes=nldas_time_shard_indexes,
+        nldas_parallel_years=max(1, args.nldas_parallel_years),
         download_workers=max(1, args.download_workers),
         city_shard_count=max(1, city_shard_count),
         job_limit=max(1, job_limit),
@@ -704,6 +716,35 @@ def _run_nldas_cloud_run_year(cfg: PipelineConfig, year: int) -> None:
     _run_command(command, label=f"Cloud Run NLDAS->wetbulb year={year}")
 
 
+def _run_nldas_cloud_run_years(cfg: PipelineConfig) -> None:
+    """Run NLDAS Cloud Run year executions with bounded parallelism.
+
+    Years run sequentially by default is what made the 2000-2025 backfill
+    take >23h; each `gcloud run jobs execute --wait` call just blocks a
+    thread, so running several years concurrently is safe (`_run_command`
+    tracks child processes under `_PROCESS_LOCK`).
+    """
+    failures: list[str] = []
+    with ThreadPoolExecutor(max_workers=cfg.nldas_parallel_years) as executor:
+        future_years = {
+            executor.submit(_run_nldas_cloud_run_year, cfg, year): year
+            for year in cfg.years
+        }
+        for future in tqdm(
+            as_completed(future_years),
+            total=len(future_years),
+            desc="Cloud Run NLDAS years",
+        ):
+            try:
+                future.result()
+            except PipelineError as error:
+                failures.append(str(error))
+                _terminate_active_processes()
+    if failures:
+        msg = f"{len(failures)} Cloud Run NLDAS year execution(s) failed: {failures[:3]}"
+        raise PipelineError(msg)
+
+
 def _local_nldas_jobs(cfg: PipelineConfig) -> list[list[str]]:
     jobs: list[list[str]] = []
     for year in cfg.years:
@@ -743,8 +784,7 @@ def run_nldas_pull(cfg: PipelineConfig) -> None:
         _cancel_cloud_run_executions(cfg, cfg.nldas_cloud_run_job)
         if not cfg.skip_remote_clear:
             _clear_remote_prefixes(cfg, ["wetbulb"])
-        for year in tqdm(cfg.years, desc="Cloud Run NLDAS years"):
-            _run_nldas_cloud_run_year(cfg, year)
+        _run_nldas_cloud_run_years(cfg)
         return
 
     _run_local_jobs(

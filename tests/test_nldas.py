@@ -23,6 +23,14 @@ from nldas import (
 )
 
 
+class TestIPv4Forced:
+    def test_has_ipv6_disabled(self) -> None:
+        """GES DISC's AAAA record blackholes; nldas.py forces IPv4 at import."""
+        import urllib3.util.connection
+
+        assert urllib3.util.connection.HAS_IPV6 is False
+
+
 class TestGranuleUrl:
     def test_url_shape(self) -> None:
         url = granule_url(pd.Timestamp("2024-07-04 13:00"))

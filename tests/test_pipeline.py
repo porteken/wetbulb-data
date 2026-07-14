@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -34,6 +36,7 @@ def _clean_pipeline_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "SMOKE_TIME_SHARD_INDEX",
         "S3_PREFIX",
         "LOAD_WORKERS",
+        "NLDAS_PARALLEL_YEARS",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -91,6 +94,20 @@ class TestBuildConfig:
 
         assert cfg.years[0] == pipeline.ERA5_START_YEAR
         assert len(cfg.years) >= 1
+
+    def test_nldas_parallel_years_default(self) -> None:
+        cfg = _config(["--years", "2024"])
+
+        assert cfg.nldas_parallel_years == 4
+
+    def test_nldas_parallel_years_env_and_cli(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("NLDAS_PARALLEL_YEARS", "6")
+        assert _config(["--years", "2024"]).nldas_parallel_years == 6
+
+        cfg = _config(["--years", "2024", "--nldas-parallel-years", "2"])
+        assert cfg.nldas_parallel_years == 2
 
     def test_remote_paths(self) -> None:
         cfg = _config(["--years", "2024", "--s3-prefix", "run/x/"])
@@ -387,6 +404,76 @@ class TestNldasPull:
 
         assert len(commands) == 2
         assert all("nldas.py" in command[1] for command in commands)
+
+    def test_cloud_run_years_run_with_bounded_concurrency(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Years must overlap (not run sequentially) but never exceed the configured cap."""
+        monkeypatch.chdir(tmp_path)
+        lock = threading.Lock()
+        concurrent = 0
+        max_concurrent = 0
+
+        def fake_run_command(_command: list[str], **_kwargs: object) -> None:
+            nonlocal concurrent, max_concurrent
+            with lock:
+                concurrent += 1
+                max_concurrent = max(max_concurrent, concurrent)
+            time.sleep(0.05)
+            with lock:
+                concurrent -= 1
+
+        monkeypatch.setattr(pipeline, "_run_command", fake_run_command)
+
+        cfg = _config(
+            [
+                "--years",
+                "2020",
+                "2021",
+                "2022",
+                "2023",
+                "--skip-remote-clear",
+                "--nldas-parallel-years",
+                "2",
+            ]
+        )
+        pipeline.run_nldas_pull(cfg)
+
+        assert max_concurrent == 2
+
+    def test_cloud_run_year_failure_raises_and_stops_early(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+
+        def flaky_run_command(command: list[str], **_kwargs: object) -> None:
+            if "2021" in command[-1]:
+                msg = "job failed with exit code 1."
+                raise pipeline.PipelineError(msg)
+            time.sleep(0.05)
+
+        monkeypatch.setattr(pipeline, "_run_command", flaky_run_command)
+        terminate_calls: list[bool] = []
+        monkeypatch.setattr(
+            pipeline,
+            "_terminate_active_processes",
+            lambda: terminate_calls.append(True),
+        )
+
+        cfg = _config(
+            [
+                "--years",
+                "2020",
+                "2021",
+                "2022",
+                "--skip-remote-clear",
+                "--nldas-parallel-years",
+                "3",
+            ]
+        )
+        with pytest.raises(pipeline.PipelineError, match="Cloud Run NLDAS year"):
+            pipeline.run_nldas_pull(cfg)
+        assert terminate_calls
 
     def test_local_failure_is_reported(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

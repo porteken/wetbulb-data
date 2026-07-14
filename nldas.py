@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from typing import Any, cast
 
+import urllib3.util.connection
 from tqdm.auto import tqdm
 
 from partition_io import batch_exists, write_batch_partition
@@ -34,6 +35,14 @@ from wetbulb import wetbulb_davies_jones
 pd = cast("Any", importlib.import_module("pandas"))
 np = cast("Any", importlib.import_module("numpy"))
 requests = cast("Any", importlib.import_module("requests"))
+
+# hydro1.gesdisc.eosdis.nasa.gov publishes an AAAA record but IPv6 to it
+# blackholes (connections hang until socket timeout). GES DISC also replies
+# `Connection: close` on every request, so every granule opens a fresh
+# connection; since urllib3 has no Happy Eyeballs, each one retries IPv6
+# first and stalls for the full timeout before falling back to IPv4. That
+# turned ~1s downloads into ~60s ones. Forcing IPv4 avoids the stall.
+urllib3.util.connection.HAS_IPV6 = False
 
 logging.basicConfig(
     level=logging.INFO,
@@ -78,7 +87,7 @@ NLDAS_RETRY_DELAY_SECONDS = 10
 NLDAS_REQUEST_TIMEOUT_SECONDS = 60
 NLDAS_STABLE_DATA_LATENCY_DAYS = 5  # NLDAS-2 near-real-time latency is ~4 days
 
-WETBULB_ROUNDING_FACTOR = 2.0  # round to nearest 0.5 C, matching the ERA5 max product
+WETBULB_ROUNDING_FACTOR = 10.0  # round to nearest 0.1 C
 WETBULB_AVG_ROUNDING_FACTOR = 10.0  # round to nearest 0.1 C
 MIN_REASONABLE_WETBULB_C = -50.0
 MAX_REASONABLE_WETBULB_C = 40.0
@@ -581,7 +590,7 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--time-shard-count", type=int, default=1)
-    parser.add_argument("--download-workers", type=int, default=16)
+    parser.add_argument("--download-workers", type=int, default=12)
     parser.add_argument("--batch-hours", type=int, default=DEFAULT_BATCH_HOURS)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
