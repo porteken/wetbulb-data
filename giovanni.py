@@ -32,6 +32,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -62,6 +63,8 @@ LOGGER = logging.getLogger(__name__)
 type DataFrame = Any
 type Session = Any
 type CityRow = Any
+type Response = Any
+type Filesystem = Any
 
 GIOVANNI_TIMESERIES_URL = "https://api.giovanni.earthdata.nasa.gov/timeseries"
 GIOVANNI_TOKEN_URL = "https://urs.earthdata.nasa.gov/api/users/find_or_create_token"  # noqa: S105
@@ -196,6 +199,72 @@ class _RangeTooLargeError(RuntimeError):
     """
 
 
+class _ResponseOutcome(Enum):
+    """What `_get_timeseries_csv`'s retry loop should do with a response."""
+
+    RETRY = auto()
+    GIVE_UP = auto()
+
+
+def _classify_response(
+    response: Response,
+    attempt: int,
+    token_manager: TokenManagerProtocol,
+    var_id: str,
+    lat: float,
+    lon: float,
+    time_range: str,
+) -> _ResponseOutcome | None:
+    """Decide what to do with a non-exception Giovanni response.
+
+    Returns None if `response` is a success the caller should return as-is,
+    RETRY if the caller should retry immediately, or GIVE_UP if the caller
+    should return None. Raises `_RangeTooLargeError` on HTTP 413 (see that
+    class's docstring).
+    """
+    if response.status_code == requests.codes.unauthorized:
+        token_manager.refresh()
+        return _ResponseOutcome.RETRY
+    if response.status_code == requests.codes.request_entity_too_large:
+        LOGGER.info(
+            "%s [%s,%s] %s: range too large (HTTP 413); will split it.",
+            var_id,
+            lat,
+            lon,
+            time_range,
+        )
+        raise _RangeTooLargeError(response.text[:200])
+    if (
+        response.status_code == requests.codes.too_many_requests
+        or response.status_code >= requests.codes.internal_server_error
+    ):
+        if attempt == GIOVANNI_MAX_RETRIES:
+            LOGGER.warning(
+                "Giving up on %s [%s,%s] %s after %d attempt(s) (HTTP %d).",
+                var_id,
+                lat,
+                lon,
+                time_range,
+                attempt,
+                response.status_code,
+            )
+            return _ResponseOutcome.GIVE_UP
+        _sleep_with_backoff(attempt, retry_after=response.headers.get("Retry-After"))
+        return _ResponseOutcome.RETRY
+    if response.status_code >= requests.codes.bad_request:
+        LOGGER.warning(
+            "Giovanni request failed for %s [%s,%s] %s: HTTP %d %s",
+            var_id,
+            lat,
+            lon,
+            time_range,
+            response.status_code,
+            response.text[:200],
+        )
+        return _ResponseOutcome.GIVE_UP
+    return None
+
+
 def _get_timeseries_csv(
     session: Session,
     token_manager: TokenManagerProtocol,
@@ -237,47 +306,12 @@ def _get_timeseries_csv(
             _sleep_with_backoff(attempt)
             continue
 
-        if response.status_code == requests.codes.unauthorized:
-            token_manager.refresh()
+        outcome = _classify_response(
+            response, attempt, token_manager, var_id, lat, lon, params["time"]
+        )
+        if outcome is _ResponseOutcome.RETRY:
             continue
-        if response.status_code == requests.codes.request_entity_too_large:
-            LOGGER.info(
-                "%s [%s,%s] %s: range too large (HTTP 413); will split it.",
-                var_id,
-                lat,
-                lon,
-                params["time"],
-            )
-            raise _RangeTooLargeError(response.text[:200])
-        if (
-            response.status_code == requests.codes.too_many_requests
-            or response.status_code >= requests.codes.internal_server_error
-        ):
-            if attempt == GIOVANNI_MAX_RETRIES:
-                LOGGER.warning(
-                    "Giving up on %s [%s,%s] %s after %d attempt(s) (HTTP %d).",
-                    var_id,
-                    lat,
-                    lon,
-                    params["time"],
-                    attempt,
-                    response.status_code,
-                )
-                return None
-            _sleep_with_backoff(
-                attempt, retry_after=response.headers.get("Retry-After")
-            )
-            continue
-        if response.status_code >= requests.codes.bad_request:
-            LOGGER.warning(
-                "Giovanni request failed for %s [%s,%s] %s: HTTP %d %s",
-                var_id,
-                lat,
-                lon,
-                params["time"],
-                response.status_code,
-                response.text[:200],
-            )
+        if outcome is _ResponseOutcome.GIVE_UP:
             return None
         return cast("str", response.text)
     return None
@@ -516,6 +550,153 @@ def _load_cell_map() -> DataFrame:
     return pd.read_csv(path, usecols=["location_id", "cell_lat", "cell_lon"])
 
 
+def _pending_years(
+    years: range,
+    wetbulb_root: str,
+    city_shard_index: int,
+    filesystem: Filesystem,
+    base_path: str,
+    *,
+    force: bool,
+) -> list[int]:
+    """Return the years in `years` whose shard batch isn't already written."""
+    return [
+        year
+        for year in years
+        if force
+        or not batch_exists(
+            wetbulb_root,
+            year,
+            city_shard_index,
+            0,
+            file_prefix="wetbulb",
+            filesystem=filesystem,
+            base_path=base_path,
+        )
+    ]
+
+
+def _fetch_city_series(
+    session: Session,
+    token_manager: TokenManagerProtocol,
+    row: CityRow,
+    fetch_ranges: list[tuple[int, int]],
+) -> tuple[DataFrame, bool]:
+    """Fetch one city's hourly data across all pending contiguous year ranges."""
+    frames: list[DataFrame] = []
+    city_had_gap = False
+    for range_start, range_end in fetch_ranges:
+        frame, gap = fetch_city_hourly(
+            session,
+            token_manager,
+            row.location_id,
+            row.fetch_lat,
+            row.fetch_lon,
+            range_start,
+            range_end,
+        )
+        frames.append(frame)
+        city_had_gap = city_had_gap or gap
+    return pd.concat(frames, ignore_index=True), city_had_gap
+
+
+def _fetch_cities_batch(
+    rows: list[CityRow],
+    session: Session,
+    token_manager: TokenManagerProtocol,
+    fetch_ranges: list[tuple[int, int]],
+    worker_count: int,
+    city_shard_index: int,
+) -> dict[int, tuple[DataFrame, bool]]:
+    """Fetch a batch of cities concurrently, `worker_count` at a time."""
+    results: dict[int, tuple[DataFrame, bool]] = {}
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {
+            executor.submit(
+                _fetch_city_series, session, token_manager, row, fetch_ranges
+            ): row.location_id
+            for row in rows
+        }
+        for future in tqdm(
+            as_completed(futures),
+            total=len(futures),
+            desc=f"Giovanni->wetbulb city_shard {city_shard_index}",
+        ):
+            results[futures[future]] = future.result()
+    return results
+
+
+def _fetch_shard_with_retries(
+    rows_by_location: dict[int, CityRow],
+    session: Session,
+    token_manager: TokenManagerProtocol,
+    fetch_ranges: list[tuple[int, int]],
+    worker_count: int,
+    city_shard_index: int,
+    city_shard_count: int,
+) -> dict[int, tuple[DataFrame, bool]]:
+    """Fetch every city in the shard, retrying just the ones with a fetch gap."""
+    pending_rows = list(rows_by_location.values())
+    city_results: dict[int, tuple[DataFrame, bool]] = {}
+    for attempt in range(1, GIOVANNI_SHARD_RETRY_ATTEMPTS + 1):
+        city_results.update(
+            _fetch_cities_batch(
+                pending_rows,
+                session,
+                token_manager,
+                fetch_ranges,
+                worker_count,
+                city_shard_index,
+            )
+        )
+        pending_rows = [
+            rows_by_location[location_id]
+            for location_id, (_, gap) in city_results.items()
+            if gap
+        ]
+        if not pending_rows or attempt == GIOVANNI_SHARD_RETRY_ATTEMPTS:
+            break
+        LOGGER.warning(
+            "city_shard=%d/%d: %d/%d city(ies) still had a fetch gap after "
+            "attempt %d/%d; retrying just those after a %ds pause.",
+            city_shard_index,
+            city_shard_count,
+            len(pending_rows),
+            len(rows_by_location),
+            attempt,
+            GIOVANNI_SHARD_RETRY_ATTEMPTS,
+            GIOVANNI_SHARD_RETRY_DELAY_SECONDS,
+        )
+        time.sleep(GIOVANNI_SHARD_RETRY_DELAY_SECONDS)
+    return city_results
+
+
+def _write_pending_year_batches(
+    daily_df: DataFrame,
+    pending_years: list[int],
+    wetbulb_root: str,
+    city_shard_index: int,
+    filesystem: Filesystem,
+    base_path: str,
+) -> None:
+    """Write each pending year's rows as its own shard partition."""
+    daily_df["year"] = pd.to_datetime(daily_df["date"]).dt.year
+    pending_year_set = set(pending_years)
+    for year, year_df in daily_df.groupby("year"):
+        if year not in pending_year_set:
+            continue
+        write_batch_partition(
+            wetbulb_root,
+            int(year),
+            city_shard_index,
+            year_df.drop(columns="year"),
+            0,
+            file_prefix="wetbulb",
+            filesystem=filesystem,
+            base_path=base_path,
+        )
+
+
 def process_giovanni(
     start_year: int,
     end_year: int,
@@ -537,21 +718,14 @@ def process_giovanni(
         return
 
     filesystem, base_path = resolve_filesystem(wetbulb_root)
-    years = list(range(start_year, end_year + 1))
-    pending_years = [
-        year
-        for year in years
-        if force
-        or not batch_exists(
-            wetbulb_root,
-            year,
-            city_shard_index,
-            0,
-            file_prefix="wetbulb",
-            filesystem=filesystem,
-            base_path=base_path,
-        )
-    ]
+    pending_years = _pending_years(
+        range(start_year, end_year + 1),
+        wetbulb_root,
+        city_shard_index,
+        filesystem,
+        base_path,
+        force=force,
+    )
     if not pending_years:
         LOGGER.info(
             "city_shard=%d/%d: years %d-%d already present.",
@@ -580,64 +754,17 @@ def process_giovanni(
 
     token_manager = TokenManager.from_env()
     session = requests.Session()
-
-    def _fetch_city(row: CityRow) -> tuple[DataFrame, bool]:
-        frames: list[DataFrame] = []
-        city_had_gap = False
-        for range_start, range_end in fetch_ranges:
-            frame, gap = fetch_city_hourly(
-                session,
-                token_manager,
-                row.location_id,
-                row.fetch_lat,
-                row.fetch_lon,
-                range_start,
-                range_end,
-            )
-            frames.append(frame)
-            city_had_gap = city_had_gap or gap
-        return pd.concat(frames, ignore_index=True), city_had_gap
-
     worker_count = max(1, min(concurrency, len(shard_df)))
-
-    def _fetch_batch(rows: list[CityRow]) -> dict[int, tuple[DataFrame, bool]]:
-        results: dict[int, tuple[DataFrame, bool]] = {}
-        with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            futures = {
-                executor.submit(_fetch_city, row): row.location_id for row in rows
-            }
-            for future in tqdm(
-                as_completed(futures),
-                total=len(futures),
-                desc=f"Giovanni->wetbulb city_shard {city_shard_index}",
-            ):
-                results[futures[future]] = future.result()
-        return results
-
     rows_by_location = {row.location_id: row for row in shard_df.itertuples()}
-    pending_rows = list(rows_by_location.values())
-    city_results: dict[int, tuple[DataFrame, bool]] = {}
-    for attempt in range(1, GIOVANNI_SHARD_RETRY_ATTEMPTS + 1):
-        city_results.update(_fetch_batch(pending_rows))
-        pending_rows = [
-            rows_by_location[location_id]
-            for location_id, (_, gap) in city_results.items()
-            if gap
-        ]
-        if not pending_rows or attempt == GIOVANNI_SHARD_RETRY_ATTEMPTS:
-            break
-        LOGGER.warning(
-            "city_shard=%d/%d: %d/%d city(ies) still had a fetch gap after "
-            "attempt %d/%d; retrying just those after a %ds pause.",
-            city_shard_index,
-            city_shard_count,
-            len(pending_rows),
-            len(shard_df),
-            attempt,
-            GIOVANNI_SHARD_RETRY_ATTEMPTS,
-            GIOVANNI_SHARD_RETRY_DELAY_SECONDS,
-        )
-        time.sleep(GIOVANNI_SHARD_RETRY_DELAY_SECONDS)
+    city_results = _fetch_shard_with_retries(
+        rows_by_location,
+        session,
+        token_manager,
+        fetch_ranges,
+        worker_count,
+        city_shard_index,
+        city_shard_count,
+    )
 
     hourly_frames = [df for df, _ in city_results.values()]
     shard_had_gap = any(gap for _, gap in city_results.values())
@@ -663,21 +790,9 @@ def process_giovanni(
         )
         return
 
-    daily_df["year"] = pd.to_datetime(daily_df["date"]).dt.year
-    pending_year_set = set(pending_years)
-    for year, year_df in daily_df.groupby("year"):
-        if year not in pending_year_set:
-            continue
-        write_batch_partition(
-            wetbulb_root,
-            int(year),
-            city_shard_index,
-            year_df.drop(columns="year"),
-            0,
-            file_prefix="wetbulb",
-            filesystem=filesystem,
-            base_path=base_path,
-        )
+    _write_pending_year_batches(
+        daily_df, pending_years, wetbulb_root, city_shard_index, filesystem, base_path
+    )
 
 
 def _run_smoke(args: argparse.Namespace) -> None:

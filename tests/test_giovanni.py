@@ -225,10 +225,11 @@ class TestGetTimeseriesCsv:
         session = _FakeSession(
             [_FakeResponse(413, text="size of produced data is too high")]
         )
+        token_manager = _StubTokenManager()
         with pytest.raises(giovanni._RangeTooLargeError):
             _get_timeseries_csv(
                 session,
-                _StubTokenManager(),
+                token_manager,
                 "VAR",
                 1.0,
                 2.0,
