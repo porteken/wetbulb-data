@@ -21,6 +21,16 @@ This is the automated pipeline for processing wet-bulb temperature data and load
   - Each city is asked for the same land-snapped NLDAS-2 grid cell that the granule path resolves via its static land mask, using the checked-in `cities_nldas_cells.csv` (regenerate it with `make_nldas_cell_map.py` if `cities.csv`'s city list changes; it needs the `nldas` optional dependency group and a live granule download).
 - **`granules`**: the original `nldas.py` path — downloads full hourly NLDAS-2 CONUS granules over HTTPS and extracts each city's nearest grid cell. Kept as a fallback in case the Giovanni API regresses; runs on Cloud Run (`nldas-worker`) when `--use-cloud-run` is set. `nldas-worker` isn't deployed by `cloudrun_provision.sh` by default — set `DEPLOY_NLDAS_WORKER=1` to deploy it.
 
+## Running locally (no cloud)
+
+The Giovanni wet-bulb path needs no cloud compute at all — `giovanni.py` runs as local subprocesses even in the default (Cloud Run/S3) configuration, and `--local` just changes where it reads/writes and skips the ERA5 Cloud Run dispatch. A full local backfill or yearly update needs only a `.env` with `EARTHDATA_USERNAME`/`EARTHDATA_PASSWORD` and Postgres credentials (`POSTGRES_DB_URI` or `PG*`) — no AWS or GCP credentials required.
+
+- **Full historical backfill**: `./pull_wetbulb.sh --local --truncate`. With the defaults (years 2000 → last year, 10 city shards × 4 concurrent `giovanni.py` processes × 8 threads each = up to 32 concurrent Giovanni API requests), this takes roughly 15–30 minutes end to end, including the Postgres load and view rebuild.
+- **Yearly/incremental update**: `./pull_wetbulb.sh --local --years 2025` (no `--truncate` — loads upsert on `(location_id, date)`, so this is safe to re-run).
+- **Tuning parallelism**: total concurrent Giovanni requests ≈ `--giovanni-job-limit` × `--giovanni-concurrency`. Raise these cautiously — 429 responses are retried with backoff, but pushing concurrency too high just means more time spent backing off. `--giovanni-city-shard-count` controls how many `giovanni.py` processes the city list is split across (each `--giovanni-job-limit` bounds how many run at once).
+- **Resuming an interrupted run**: re-run the same command with `--resume-local` added. This skips wiping the local `wetbulb_data_csv/year=YYYY` output before the run, so `giovanni.py`'s per-shard/per-year `batch_exists` check picks up only the work that's still missing. Only reuse this across reruns that keep `--giovanni-city-shard-count` the same — partition filenames encode the shard index, so changing the shard count invalidates the resume check.
+- The `wetbulb_backfill` and `yearly_update` GitHub workflows remain available as a free, hands-off alternative to running locally.
+
 ## Credentials
 
 Besides the Postgres/AWS/GCP credentials, both wet-bulb paths need a free [NASA Earthdata](https://urs.earthdata.nasa.gov/) account with the "NASA GESDISC DATA ARCHIVE" application authorized. Set `EARTHDATA_USERNAME` and `EARTHDATA_PASSWORD` in `.env` for local runs, or as GitHub Actions / Secret Manager secrets (`cloudrun_provision.sh` wires them into the `nldas-worker` job when `DEPLOY_NLDAS_WORKER=1`).

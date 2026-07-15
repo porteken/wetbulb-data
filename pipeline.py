@@ -138,6 +138,7 @@ class PipelineConfig:
     giovanni_city_shard_count: int
     giovanni_concurrency: int
     giovanni_job_limit: int
+    resume_local: bool
 
     @property
     def do_pet(self) -> bool:
@@ -325,13 +326,33 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--giovanni-job-limit",
         type=int,
-        default=_env_int("GIOVANNI_JOB_LIMIT", 4),
-        help="Concurrent giovanni.py subprocesses run locally.",
+        default=_env_int("GIOVANNI_JOB_LIMIT", 2),
+        help=(
+            "Concurrent giovanni.py subprocesses run locally. Combined with "
+            "--giovanni-concurrency this bounds sustained load on the "
+            "Giovanni API; a full backfill (2026-07) at job-limit=4 x "
+            "concurrency=8 (32 sustained concurrent requests) drew HTTP "
+            "500s from the API after several minutes, so the default here "
+            "is conservative."
+        ),
     )
     parser.add_argument(
         "--load-workers",
         type=int,
         default=_env_int("LOAD_WORKERS", DEFAULT_LOAD_WORKERS),
+    )
+    parser.add_argument(
+        "--resume-local",
+        action="store_true",
+        default=_env_flag("RESUME_LOCAL"),
+        help=(
+            "Skip clearing local wetbulb_data_csv/year=YYYY output before a "
+            "--wetbulb-source giovanni run, so an interrupted local run "
+            "resumes via giovanni.py's per-shard/per-year batch_exists check "
+            "instead of restarting from scratch. Only valid across reruns "
+            "that keep --giovanni-city-shard-count unchanged (partition "
+            "filenames encode the shard index)."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -473,6 +494,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         giovanni_city_shard_count=max(1, args.giovanni_city_shard_count),
         giovanni_concurrency=max(1, args.giovanni_concurrency),
         giovanni_job_limit=max(1, args.giovanni_job_limit),
+        resume_local=args.resume_local,
     )
 
 
@@ -869,7 +891,14 @@ def run_nldas_pull(cfg: PipelineConfig) -> None:
         "====== Step 2b: Compute NLDAS-2 wetbulb (source=%s) ======",
         cfg.wetbulb_source,
     )
-    _clear_local_year_outputs(cfg, ["wetbulb"])
+    resuming_giovanni = cfg.wetbulb_source == "giovanni" and cfg.resume_local
+    if resuming_giovanni:
+        LOGGER.info(
+            "--resume-local set: keeping existing local wetbulb output and "
+            "relying on giovanni.py's per-shard/per-year resume check.",
+        )
+    else:
+        _clear_local_year_outputs(cfg, ["wetbulb"])
 
     if cfg.wetbulb_source == "giovanni":
         _run_giovanni_pull(cfg)

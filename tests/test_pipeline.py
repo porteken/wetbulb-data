@@ -37,6 +37,7 @@ def _clean_pipeline_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "S3_PREFIX",
         "LOAD_WORKERS",
         "NLDAS_PARALLEL_YEARS",
+        "RESUME_LOCAL",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -577,6 +578,40 @@ class TestNldasPull:
         )
         with pytest.raises(pipeline.PipelineError, match="Giovanni wetbulb job"):
             pipeline.run_nldas_pull(cfg)
+
+    def test_resume_local_keeps_existing_giovanni_output(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(pipeline, "_run_command", lambda *_a, **_k: None)
+
+        year_dir = Path("wetbulb_data_csv/year=2024")
+        year_dir.mkdir(parents=True)
+        marker = year_dir / "wetbulb_batch_0000_00.parquet"
+        marker.write_text("keep me")
+
+        cfg = _config(
+            ["--local", "--years", "2024", "--resume-local"],
+        )
+        pipeline.run_nldas_pull(cfg)
+
+        assert marker.exists()
+
+    def test_without_resume_local_giovanni_output_is_cleared(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(pipeline, "_run_command", lambda *_a, **_k: None)
+
+        year_dir = Path("wetbulb_data_csv/year=2024")
+        year_dir.mkdir(parents=True)
+        marker = year_dir / "wetbulb_batch_0000_00.parquet"
+        marker.write_text("stale")
+
+        cfg = _config(["--local", "--years", "2024"])
+        pipeline.run_nldas_pull(cfg)
+
+        assert not marker.exists()
 
 
 class TestSyncOutputs:

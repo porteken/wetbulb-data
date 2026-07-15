@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 
 import urllib3.util.connection
+from dotenv import load_dotenv
 from tqdm.auto import tqdm
 
 import nldas
@@ -76,9 +77,27 @@ GIOVANNI_VARIABLE_IDS: dict[str, str] = {
 }
 
 GIOVANNI_REQUEST_TIMEOUT_SECONDS = 120
-GIOVANNI_MAX_RETRIES = 5
+# A full local backfill run (2026-07) drew sustained HTTP 500s from Giovanni
+# after several minutes of high concurrency, while isolated requests (even
+# 32 concurrent full 26-year ranges in a burst) always succeeded -- pointing
+# at a server-side quota tied to sustained request volume rather than raw
+# concurrency. These retries lean toward "wait out a rate-limit window"
+# rather than "fail fast": exponential backoff capped at
+# GIOVANNI_MAX_RETRY_DELAY_SECONDS, more attempts than the earlier linear
+# schedule.
+GIOVANNI_MAX_RETRIES = 8
 GIOVANNI_RETRY_DELAY_SECONDS = 5
+GIOVANNI_MAX_RETRY_DELAY_SECONDS = 60
 DEFAULT_CONCURRENCY = 8
+
+# A shard's parquet write is skipped entirely if any city has a fetch gap
+# (see process_giovanni), so a single stubborn city would otherwise force
+# discarding an entire shard's worth of good data. Re-fetching just the
+# stragglers a few times, with a pause to let a transient overload window
+# pass, converts most single-city failures into eventual successes instead
+# of wasted work.
+GIOVANNI_SHARD_RETRY_ATTEMPTS = 3
+GIOVANNI_SHARD_RETRY_DELAY_SECONDS = 30
 
 CELL_MAP_PATH = "cities_nldas_cells.csv"
 # If more than this fraction of a city's hourly values come back fill/NaN,
@@ -158,10 +177,23 @@ def _sleep_with_backoff(attempt: int, *, retry_after: str | None = None) -> None
         try:
             delay = float(retry_after)
         except ValueError:
-            delay = GIOVANNI_RETRY_DELAY_SECONDS * attempt
+            delay = GIOVANNI_RETRY_DELAY_SECONDS * (2 ** (attempt - 1))
     else:
-        delay = GIOVANNI_RETRY_DELAY_SECONDS * attempt
+        delay = GIOVANNI_RETRY_DELAY_SECONDS * (2 ** (attempt - 1))
+    delay = min(delay, GIOVANNI_MAX_RETRY_DELAY_SECONDS)
     time.sleep(delay + random.uniform(0.0, 2.0))  # noqa: S311
+
+
+class _RangeTooLargeError(RuntimeError):
+    """Giovanni rejected the request as too large (HTTP 413).
+
+    Unlike a 5xx/429 (server overloaded, retry the same request later), 413
+    means this exact request will never succeed no matter how many times
+    it's retried -- the caller needs to split the date range into smaller
+    pieces instead. A live backfill (2026-07) showed Qair responses hitting
+    this limit at the full 26-year range while Tair/PSurf did not, so the
+    threshold is response-size-dependent, not a fixed year count.
+    """
 
 
 def _get_timeseries_csv(
@@ -173,7 +205,10 @@ def _get_timeseries_csv(
     start_iso: str,
     end_iso: str,
 ) -> str | None:
-    """Fetch one variable's time series as raw CSV text, or None on failure."""
+    """Fetch one variable's time series as raw CSV text, or None on failure.
+
+    Raises `_RangeTooLargeError` on HTTP 413 (see that class's docstring).
+    """
     params = {
         "data": var_id,
         "location": f"[{lat},{lon}]",
@@ -205,6 +240,15 @@ def _get_timeseries_csv(
         if response.status_code == requests.codes.unauthorized:
             token_manager.refresh()
             continue
+        if response.status_code == requests.codes.request_entity_too_large:
+            LOGGER.info(
+                "%s [%s,%s] %s: range too large (HTTP 413); will split it.",
+                var_id,
+                lat,
+                lon,
+                params["time"],
+            )
+            raise _RangeTooLargeError(response.text[:200])
         if (
             response.status_code == requests.codes.too_many_requests
             or response.status_code >= requests.codes.internal_server_error
@@ -283,13 +327,48 @@ def _fetch_variable_series(
     lon: float,
     start_year: int,
     end_year: int,
-) -> DataFrame:
-    """Fetch one variable over [start_year, end_year], halving the range on failure."""
+) -> tuple[DataFrame, bool]:
+    """Fetch one variable over [start_year, end_year].
+
+    Returns (df, had_gap). Three failure modes are handled differently:
+
+    - HTTP 413 (`_RangeTooLargeError`): a deterministic "this exact request
+      will never fit" signal (seen live for Qair at the full 26-year range
+      while Tair/PSurf fit fine), so this always halves and retries the
+      smaller pieces.
+    - Any other HTTP/network failure (`_get_timeseries_csv` returns None
+      after exhausting its own retries with backoff): the server is
+      already struggling, so this gives up on the whole requested range at
+      once instead of halving into more requests -- halving here just
+      resubmits the same total demand as more requests, which turned one
+      slow window into a ~50-minute outage during a real backfill
+      (2026-07).
+    - A malformed/unparseable response body: ambiguous cause, so this
+      halves as a diagnostic fallback (existing behavior).
+    """
     start_iso = f"{start_year}-01-01T00:00:00"
     end_iso = f"{end_year + 1}-01-01T00:00:00"
-    text = _get_timeseries_csv(
-        session, token_manager, var_id, lat, lon, start_iso, end_iso
-    )
+    try:
+        text = _get_timeseries_csv(
+            session, token_manager, var_id, lat, lon, start_iso, end_iso
+        )
+    except _RangeTooLargeError:
+        text = None
+        range_too_large = True
+    else:
+        range_too_large = False
+
+    if text is None and not range_too_large:
+        LOGGER.error(
+            "Giving up on %s [%s,%s] %d-%d after exhausting retries.",
+            var_id,
+            lat,
+            lon,
+            start_year,
+            end_year,
+        )
+        return _empty_series_df(), True
+
     if text is not None:
         try:
             df = _parse_timeseries_csv(text)[1]
@@ -303,26 +382,29 @@ def _fetch_variable_series(
                 end_iso,
             )
         else:
-            return df
+            return df, False
 
     if start_year == end_year:
         LOGGER.error(
-            "Giving up on %s [%s,%s] year=%d after exhausting retries.",
+            "Giving up on %s [%s,%s] year=%d: %s.",
             var_id,
             lat,
             lon,
             start_year,
+            "range too large even at one year"
+            if range_too_large
+            else "response could not be parsed",
         )
-        return _empty_series_df()
+        return _empty_series_df(), True
 
     mid = (start_year + end_year) // 2
-    left = _fetch_variable_series(
+    left, left_gap = _fetch_variable_series(
         session, token_manager, var_id, lat, lon, start_year, mid
     )
-    right = _fetch_variable_series(
+    right, right_gap = _fetch_variable_series(
         session, token_manager, var_id, lat, lon, mid + 1, end_year
     )
-    return pd.concat([left, right], ignore_index=True)
+    return pd.concat([left, right], ignore_index=True), left_gap or right_gap
 
 
 def fetch_city_hourly(
@@ -333,13 +415,19 @@ def fetch_city_hourly(
     lon: float,
     start_year: int,
     end_year: int,
-) -> DataFrame:
-    """Fetch Tair/Qair/PSurf for one point and join them into an hourly frame."""
+) -> tuple[DataFrame, bool]:
+    """Fetch Tair/Qair/PSurf for one point and join them into an hourly frame.
+
+    Returns (df, had_gap); had_gap is True if any variable in [start_year,
+    end_year] could not be fetched (see `_fetch_variable_series`).
+    """
     series: dict[str, DataFrame] = {}
+    had_gap = False
     for canonical, var_id in GIOVANNI_VARIABLE_IDS.items():
-        df = _fetch_variable_series(
+        df, gap = _fetch_variable_series(
             session, token_manager, var_id, lat, lon, start_year, end_year
         )
+        had_gap = had_gap or gap
         series[canonical] = df.set_index("time")["value"].rename(canonical)
 
     combined = pd.concat(series.values(), axis=1, join="outer")
@@ -357,17 +445,28 @@ def fetch_city_hourly(
     if total:
         fill_fraction = combined["Tair"].isna().mean()
         if fill_fraction > FILL_FRACTION_ALARM_THRESHOLD:
-            LOGGER.error(
-                "location_id=%s at (%.4f, %.4f): %.0f%% missing/fill Tair "
-                "values; the sampled NLDAS cell is likely water, not land. "
-                "Consider adding a snapped cell for it to %s.",
-                location_id,
-                lat,
-                lon,
-                fill_fraction * 100,
-                CELL_MAP_PATH,
-            )
-    return combined
+            if had_gap:
+                LOGGER.error(
+                    "location_id=%s at (%.4f, %.4f): %.0f%% missing/fill "
+                    "Tair values, but a Giovanni request failed for this "
+                    "point -- likely an API gap, not a water cell.",
+                    location_id,
+                    lat,
+                    lon,
+                    fill_fraction * 100,
+                )
+            else:
+                LOGGER.error(
+                    "location_id=%s at (%.4f, %.4f): %.0f%% missing/fill Tair "
+                    "values; the sampled NLDAS cell is likely water, not land. "
+                    "Consider adding a snapped cell for it to %s.",
+                    location_id,
+                    lat,
+                    lon,
+                    fill_fraction * 100,
+                    CELL_MAP_PATH,
+                )
+    return combined, had_gap
 
 
 def _contiguous_year_ranges(years: list[int]) -> list[tuple[int, int]]:
@@ -482,9 +581,11 @@ def process_giovanni(
     token_manager = TokenManager.from_env()
     session = requests.Session()
 
-    def _fetch_city(row: CityRow) -> DataFrame:
-        frames = [
-            fetch_city_hourly(
+    def _fetch_city(row: CityRow) -> tuple[DataFrame, bool]:
+        frames: list[DataFrame] = []
+        city_had_gap = False
+        for range_start, range_end in fetch_ranges:
+            frame, gap = fetch_city_hourly(
                 session,
                 token_manager,
                 row.location_id,
@@ -493,30 +594,73 @@ def process_giovanni(
                 range_start,
                 range_end,
             )
-            for range_start, range_end in fetch_ranges
-        ]
-        return pd.concat(frames, ignore_index=True)
+            frames.append(frame)
+            city_had_gap = city_had_gap or gap
+        return pd.concat(frames, ignore_index=True), city_had_gap
 
     worker_count = max(1, min(concurrency, len(shard_df)))
-    with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        futures = {
-            executor.submit(_fetch_city, row): row.location_id
-            for row in shard_df.itertuples()
-        }
-        hourly_frames = [
-            future.result()
+
+    def _fetch_batch(rows: list[CityRow]) -> dict[int, tuple[DataFrame, bool]]:
+        results: dict[int, tuple[DataFrame, bool]] = {}
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = {
+                executor.submit(_fetch_city, row): row.location_id for row in rows
+            }
             for future in tqdm(
                 as_completed(futures),
                 total=len(futures),
                 desc=f"Giovanni->wetbulb city_shard {city_shard_index}",
-            )
+            ):
+                results[futures[future]] = future.result()
+        return results
+
+    rows_by_location = {row.location_id: row for row in shard_df.itertuples()}
+    pending_rows = list(rows_by_location.values())
+    city_results: dict[int, tuple[DataFrame, bool]] = {}
+    for attempt in range(1, GIOVANNI_SHARD_RETRY_ATTEMPTS + 1):
+        city_results.update(_fetch_batch(pending_rows))
+        pending_rows = [
+            rows_by_location[location_id]
+            for location_id, (_, gap) in city_results.items()
+            if gap
         ]
+        if not pending_rows or attempt == GIOVANNI_SHARD_RETRY_ATTEMPTS:
+            break
+        LOGGER.warning(
+            "city_shard=%d/%d: %d/%d city(ies) still had a fetch gap after "
+            "attempt %d/%d; retrying just those after a %ds pause.",
+            city_shard_index,
+            city_shard_count,
+            len(pending_rows),
+            len(shard_df),
+            attempt,
+            GIOVANNI_SHARD_RETRY_ATTEMPTS,
+            GIOVANNI_SHARD_RETRY_DELAY_SECONDS,
+        )
+        time.sleep(GIOVANNI_SHARD_RETRY_DELAY_SECONDS)
+
+    hourly_frames = [df for df, _ in city_results.values()]
+    shard_had_gap = any(gap for _, gap in city_results.values())
 
     if not hourly_frames:
         return
     hourly_df = pd.concat(hourly_frames, ignore_index=True)
     daily_df = nldas._compute_daily_wetbulb(hourly_df)  # noqa: SLF001
     if daily_df.empty:
+        return
+
+    if shard_had_gap:
+        LOGGER.warning(
+            "city_shard=%d/%d: one or more cities had a Giovanni fetch gap "
+            "somewhere in %d-%d (see 'Giving up' errors above); skipping "
+            "the parquet write for these pending year(s) so a future run "
+            "(e.g. with --resume-local, once the API recovers) retries "
+            "them instead of treating incomplete data as done.",
+            city_shard_index,
+            city_shard_count,
+            start_year,
+            end_year,
+        )
         return
 
     daily_df["year"] = pd.to_datetime(daily_df["date"]).dt.year
@@ -579,6 +723,7 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """Execute the Giovanni NLDAS-2 wet-bulb processing pipeline."""
+    load_dotenv(override=False)
     exit_code = 0
     try:
         args = _parse_args()

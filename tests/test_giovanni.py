@@ -221,6 +221,22 @@ class TestGetTimeseriesCsv:
         assert result is None
         assert len(session.calls) == 1
 
+    def test_413_raises_range_too_large_without_retry(self) -> None:
+        session = _FakeSession(
+            [_FakeResponse(413, text="size of produced data is too high")]
+        )
+        with pytest.raises(giovanni._RangeTooLargeError):
+            _get_timeseries_csv(
+                session,
+                _StubTokenManager(),
+                "VAR",
+                1.0,
+                2.0,
+                "2024-01-01",
+                "2024-01-02",
+            )
+        assert len(session.calls) == 1
+
     def test_network_error_retries_then_gives_up(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -248,12 +264,44 @@ class TestFetchVariableSeries:
         monkeypatch.setattr(
             giovanni, "_get_timeseries_csv", lambda *_a, **_k: SAMPLE_CSV
         )
-        df = _fetch_variable_series(
+        df, had_gap = _fetch_variable_series(
             SimpleNamespace(), _StubTokenManager(), "VAR", 1.0, 2.0, 2024, 2024
         )
         assert len(df) == 3
+        assert had_gap is False
 
-    def test_halves_range_on_persistent_failure(
+    def test_http_failure_gives_up_without_halving(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An exhausted HTTP failure must not recurse into smaller ranges.
+
+        Halving on a server-side failure just resubmits the same total
+        demand as more requests, which is what turned one slow window into
+        a sustained outage during a real backfill (2026-07).
+        """
+        calls: list[tuple[str, str]] = []
+
+        def fake_get(
+            _session: Any,
+            _tm: Any,
+            _var: str,
+            _lat: float,
+            _lon: float,
+            start: str,
+            end: str,
+        ) -> None:
+            calls.append((start, end))
+
+        monkeypatch.setattr(giovanni, "_get_timeseries_csv", fake_get)
+        df, had_gap = _fetch_variable_series(
+            SimpleNamespace(), _StubTokenManager(), "VAR", 1.0, 2.0, 2020, 2021
+        )
+        assert df.empty
+        assert had_gap is True
+        # Only the single, full-range request was made -- no recursive splits.
+        assert calls == [("2020-01-01T00:00:00", "2022-01-01T00:00:00")]
+
+    def test_halves_range_on_persistent_parse_failure(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         requested_start_years: list[int] = []
@@ -266,19 +314,80 @@ class TestFetchVariableSeries:
             _lon: float,
             start: str,
             _end: str,
-        ) -> None:
+        ) -> str:
             requested_start_years.append(int(start[:4]))
+            return "not,a,valid,response"
 
         monkeypatch.setattr(giovanni, "_get_timeseries_csv", fake_get)
-        df = _fetch_variable_series(
+        df, had_gap = _fetch_variable_series(
             SimpleNamespace(), _StubTokenManager(), "VAR", 1.0, 2.0, 2020, 2021
         )
         assert df.empty
-        # Both individual years were attempted once the 2-year range failed.
+        assert had_gap is True
+        # Both individual years were attempted once the 2-year range's
+        # response failed to parse.
         assert 2020 in requested_start_years
         assert 2021 in requested_start_years
 
-    def test_partial_success_after_halving(
+    def test_range_too_large_always_halves_until_it_fits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """HTTP 413 is a deterministic "split it" signal, unlike a 5xx.
+
+        A live backfill (2026-07) hit this for Qair at the full 26-year
+        range even though the server wasn't overloaded, so this must keep
+        halving (unlike the exhausted-HTTP-failure case above) until a
+        chunk small enough to succeed is found.
+        """
+        requested_ranges: list[tuple[int, int]] = []
+
+        def fake_get(
+            _session: Any,
+            _tm: Any,
+            _var: str,
+            _lat: float,
+            _lon: float,
+            start: str,
+            end: str,
+        ) -> str:
+            start_year = int(start[:4])
+            end_year = int(end[:4]) - 1
+            requested_ranges.append((start_year, end_year))
+            if end_year - start_year >= 1:
+                msg = "too big"
+                raise giovanni._RangeTooLargeError(msg)
+            return SAMPLE_CSV
+
+        monkeypatch.setattr(giovanni, "_get_timeseries_csv", fake_get)
+        df, had_gap = _fetch_variable_series(
+            SimpleNamespace(), _StubTokenManager(), "VAR", 1.0, 2.0, 2020, 2023
+        )
+        assert had_gap is False
+        assert len(df) == 3 * 4  # SAMPLE_CSV's 3 rows per single-year leaf
+        assert (2020, 2023) in requested_ranges  # the oversized top-level try
+        leaves = [r for r in requested_ranges if r[1] - r[0] == 0]
+        assert sorted(leaves) == [
+            (2020, 2020),
+            (2021, 2021),
+            (2022, 2022),
+            (2023, 2023),
+        ]
+
+    def test_range_too_large_gives_up_if_still_too_large_at_one_year(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fake_get(*_args: Any, **_kwargs: Any) -> None:
+            msg = "too big"
+            raise giovanni._RangeTooLargeError(msg)
+
+        monkeypatch.setattr(giovanni, "_get_timeseries_csv", fake_get)
+        df, had_gap = _fetch_variable_series(
+            SimpleNamespace(), _StubTokenManager(), "VAR", 1.0, 2.0, 2020, 2020
+        )
+        assert df.empty
+        assert had_gap is True
+
+    def test_partial_success_after_halving_on_parse_failure(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         def fake_get(
@@ -288,21 +397,20 @@ class TestFetchVariableSeries:
             _lat: float,
             _lon: float,
             start: str,
-            _end: str,
-        ) -> str | None:
-            # Only the single-year 2020 request succeeds; everything else fails.
-            if start.startswith("2020") and _end_is_2021(_end):
+            end: str,
+        ) -> str:
+            # Only the single-year 2020 request returns a parseable body;
+            # everything else (the full range, and the 2021 leaf) doesn't.
+            if start.startswith("2020") and end.startswith("2021"):
                 return SAMPLE_CSV
-            return None
-
-        def _end_is_2021(end: str) -> bool:
-            return end.startswith("2021")
+            return "not,a,valid,response"
 
         monkeypatch.setattr(giovanni, "_get_timeseries_csv", fake_get)
-        df = _fetch_variable_series(
+        df, had_gap = _fetch_variable_series(
             SimpleNamespace(), _StubTokenManager(), "VAR", 1.0, 2.0, 2020, 2021
         )
         assert len(df) == 3  # only the 2020 leaf contributed rows
+        assert had_gap is True  # the 2021 leaf still failed
 
 
 class TestFetchCityHourly:
@@ -317,17 +425,18 @@ class TestFetchCityHourly:
             _lon: float,
             _start_year: int,
             _end_year: int,
-        ) -> pd.DataFrame:
+        ) -> tuple[pd.DataFrame, bool]:
             times = pd.date_range("2024-01-01", periods=3, freq="h")
             values = [1.0, giovanni.nldas.NLDAS_FILL_THRESHOLD - 1.0, 3.0]
-            return pd.DataFrame({"time": times, "value": values})
+            return pd.DataFrame({"time": times, "value": values}), False
 
         monkeypatch.setattr(
             giovanni, "_fetch_variable_series", fake_fetch_variable_series
         )
-        df = fetch_city_hourly(
+        df, had_gap = fetch_city_hourly(
             SimpleNamespace(), _StubTokenManager(), 42, 1.0, 2.0, 2024, 2024
         )
+        assert had_gap is False
         assert list(df["location_id"].unique()) == [42]
         assert set(df.columns) >= {"location_id", "time", "Tair", "Qair", "PSurf"}
         assert np.isnan(df.loc[1, "Tair"])
@@ -344,19 +453,49 @@ class TestFetchCityHourly:
             _lon: float,
             _start_year: int,
             _end_year: int,
-        ) -> pd.DataFrame:
+        ) -> tuple[pd.DataFrame, bool]:
             times = pd.date_range("2024-01-01", periods=4, freq="h")
             values = [giovanni.nldas.NLDAS_FILL_THRESHOLD - 1.0] * 4
-            return pd.DataFrame({"time": times, "value": values})
+            return pd.DataFrame({"time": times, "value": values}), False
 
         monkeypatch.setattr(
             giovanni, "_fetch_variable_series", fake_fetch_variable_series
         )
         with caplog.at_level("ERROR"):
-            fetch_city_hourly(
+            _df, had_gap = fetch_city_hourly(
                 SimpleNamespace(), _StubTokenManager(), 7, 35.0, -70.0, 2024, 2024
             )
+        assert had_gap is False
         assert any("likely water" in message for message in caplog.messages)
+
+    def test_logs_api_gap_instead_of_water_when_fetch_had_gap(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        def fake_fetch_variable_series(
+            _session: Any,
+            _tm: Any,
+            _var_id: str,
+            _lat: float,
+            _lon: float,
+            _start_year: int,
+            _end_year: int,
+        ) -> tuple[pd.DataFrame, bool]:
+            # Mostly-fill data (as if a Giovanni request partially failed),
+            # plus had_gap=True signaling a real fetch failure occurred.
+            times = pd.date_range("2024-01-01", periods=4, freq="h")
+            values = [giovanni.nldas.NLDAS_FILL_THRESHOLD - 1.0] * 4
+            return pd.DataFrame({"time": times, "value": values}), True
+
+        monkeypatch.setattr(
+            giovanni, "_fetch_variable_series", fake_fetch_variable_series
+        )
+        with caplog.at_level("ERROR"):
+            _df, had_gap = fetch_city_hourly(
+                SimpleNamespace(), _StubTokenManager(), 7, 35.0, -70.0, 2024, 2024
+            )
+        assert had_gap is True
+        assert any("API gap" in message for message in caplog.messages)
+        assert not any("likely water" in message for message in caplog.messages)
 
 
 class TestLoadCellMap:
