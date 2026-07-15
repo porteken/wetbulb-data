@@ -6,9 +6,13 @@ backup/
 # only needs regenerating if cities.csv's city list changes.
 !cities_nldas_cells.csv
 # Static, checked-in output of make_lcd_station_map.py: nearest verified-
-# hourly NOAA LCD v2 station per city, read by lcd.py (NWS-station
-# feasibility prototype). Same rationale as cities_nldas_cells.csv above.
+# hourly NOAA LCD v2 station per city, read by lcd.py (fallback wetbulb
+# source). Same rationale as cities_nldas_cells.csv above.
 !cities_lcd_stations.csv
+# Static, checked-in output of make_isd_station_map.py: ordered ISD
+# Global Hourly station-id candidates per city, read by isd.py (the
+# default wetbulb source). Same rationale as cities_nldas_cells.csv above.
+!cities_isd_stations.csv
 *.parquet
 .ruff_cache/
 raw_*/

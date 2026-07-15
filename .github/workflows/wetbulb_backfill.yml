@@ -1,12 +1,15 @@
-name: Wetbulb Backfill (NOAA LCD)
+name: Wetbulb Backfill (NOAA ISD)
 
-# One-shot (or resumable) historical wet-bulb backfill via NOAA's Local
-# Climatological Data v2 bulk archive (see lcd.py), the default wetbulb
-# source. Plain HTTPS station-year CSV downloads, no auth, no rate limiting
+# One-shot (or resumable) historical wet-bulb backfill via NOAA's ISD
+# Global Hourly bulk archive (see isd.py), the default wetbulb source.
+# Plain HTTPS station-year CSV downloads, no auth, no rate limiting
 # observed against NCEI's bulk archive -- unlike the Giovanni/NLDAS-2
 # fallback paths (giovanni.py/nldas.py, still selectable via
-# `pipeline.py --wetbulb-source giovanni`), LCD needs no Earthdata
-# credentials at all. Runs here for free on GitHub Actions.
+# `pipeline.py --wetbulb-source giovanni`), ISD needs no Earthdata
+# credentials at all. Unlike LCD (`lcd.py`, kept as a fallback source),
+# every ISD element carries a quality-control flag this pipeline honors --
+# LCD is unfiltered and confirmed corrupt readings have flowed straight
+# into computed daily-max wetbulb. Runs here for free on GitHub Actions.
 
 on:
   workflow_dispatch:
@@ -104,11 +107,11 @@ jobs:
         run: uv sync --locked --no-dev # NOSONAR
       - name: Generate cities.csv
         run: uv run --locked --no-build python cities.py
-      # cities_lcd_stations.csv (each city's nearest verified-hourly NOAA
-      # LCD station, see make_lcd_station_map.py) is checked into the repo,
+      # cities_isd_stations.csv (each city's ordered ISD station-id
+      # candidates, see make_isd_station_map.py) is checked into the repo,
       # so no regeneration needed here -- it just comes along with
       # actions/checkout.
-      - name: Fetch NOAA LCD wet-bulb (writes straight to S3)
+      - name: Fetch NOAA ISD wet-bulb (writes straight to S3)
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -118,7 +121,7 @@ jobs:
           SHARD_COUNT: ${{ inputs.city_shard_count }}
           CONCURRENCY: ${{ inputs.concurrency }}
         run: |
-          uv run --locked --no-build python lcd.py \
+          uv run --locked --no-build python isd.py \
             --start-year "$START_YEAR" \
             --end-year "$END_YEAR" \
             --city-shard-index ${{ matrix.shard }} \
@@ -175,11 +178,11 @@ jobs:
           script: |
             const title = `Wetbulb backfill failed: ${new Date().toISOString().slice(0, 10)}`;
             const body = [
-              `The LCD wetbulb backfill workflow failed.`,
+              `The ISD wetbulb backfill workflow failed.`,
               ``,
               `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               ``,
-              `lcd.py resumes via existing S3 output, so re-running the workflow only refetches missing years.`,
+              `isd.py resumes via existing S3 output, so re-running the workflow only refetches missing years.`,
             ].join("\n");
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
