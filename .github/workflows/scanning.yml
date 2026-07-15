@@ -4,11 +4,9 @@ on:
   push:
     branches:
       - dev
-      - prd
   pull_request:
     branches:
       - dev
-      - prd
 
 jobs:
   test-and-scan:

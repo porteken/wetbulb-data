@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import io
 from types import SimpleNamespace
 from typing import Any, cast
@@ -537,3 +538,558 @@ def test_module_reuses_nldas_helpers() -> None:
     """giovanni.py should reuse nldas.py's daily wet-bulb math, not reimplement it."""
     assert giovanni.nldas._compute_daily_wetbulb is not None
     assert cast("Any", giovanni.nldas)._load_nldas_city_shard is not None
+
+
+class TestGetTimeseriesCsvExhaustion:
+    def test_401_exhausts_retries_and_returns_none(self) -> None:
+        """A 401 always retries (no max-attempt check).
+
+        The loop falling through without ever returning must still yield
+        None (not hang).
+        """
+        responses = [_FakeResponse(401) for _ in range(giovanni.GIOVANNI_MAX_RETRIES)]
+        session = _FakeSession(responses)
+        token_manager = _StubTokenManager()
+        result = _get_timeseries_csv(
+            session, token_manager, "VAR", 1.0, 2.0, "2024-01-01", "2024-01-02"
+        )
+        assert result is None
+        assert len(session.calls) == giovanni.GIOVANNI_MAX_RETRIES
+        assert token_manager.refresh_calls == giovanni.GIOVANNI_MAX_RETRIES
+
+    def test_5xx_gives_up_after_max_retries(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(giovanni.time, "sleep", lambda _seconds: None)
+        responses = [_FakeResponse(500) for _ in range(giovanni.GIOVANNI_MAX_RETRIES)]
+        session = _FakeSession(responses)
+        result = _get_timeseries_csv(
+            session, _StubTokenManager(), "VAR", 1.0, 2.0, "2024-01-01", "2024-01-02"
+        )
+        assert result is None
+        assert len(session.calls) == giovanni.GIOVANNI_MAX_RETRIES
+
+
+class TestSleepWithBackoff:
+    def test_invalid_retry_after_falls_back_to_exponential(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sleeps: list[float] = []
+        monkeypatch.setattr(giovanni.time, "sleep", sleeps.append)
+        monkeypatch.setattr(giovanni.random, "uniform", lambda _a, _b: 0.0)
+        giovanni._sleep_with_backoff(2, retry_after="not-a-number")
+        assert sleeps == [giovanni.GIOVANNI_RETRY_DELAY_SECONDS * 2]
+
+
+class TestTokenManagerMissingToken:
+    def test_fetch_raises_when_access_token_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            giovanni.requests,
+            "post",
+            lambda *_a, **_k: _FakeResponse(200, json_body={}),
+        )
+        manager = TokenManager("user", "pass")
+        with pytest.raises(RuntimeError, match="did not contain access_token"):
+            manager.get()
+
+
+class TestPendingYears:
+    def test_force_returns_all_years_without_checking(self, tmp_path: Any) -> None:
+        filesystem, base_path = giovanni.resolve_filesystem(str(tmp_path))
+        result = giovanni._pending_years(
+            range(2020, 2023), str(tmp_path), 0, filesystem, base_path, force=True
+        )
+        assert result == [2020, 2021, 2022]
+
+    def test_filters_years_with_existing_batches(self, tmp_path: Any) -> None:
+        wetbulb_root = str(tmp_path)
+        filesystem, base_path = giovanni.resolve_filesystem(wetbulb_root)
+        df = pd.DataFrame(
+            {
+                "location_id": [1],
+                "date": [pd.Timestamp("2020-06-01")],
+                "wetbulb": [20.0],
+                "wetbulb_avg": [19.0],
+            }
+        )
+        giovanni.write_batch_partition(
+            wetbulb_root,
+            2020,
+            0,
+            df.copy(),
+            0,
+            file_prefix="wetbulb",
+            filesystem=filesystem,
+            base_path=base_path,
+        )
+        result = giovanni._pending_years(
+            range(2020, 2022), wetbulb_root, 0, filesystem, base_path, force=False
+        )
+        assert result == [2021]
+
+
+class TestFetchCitySeries:
+    def test_concatenates_ranges_and_aggregates_gap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[tuple[int, int]] = []
+
+        def fake_fetch_city_hourly(
+            _session: Any,
+            _tm: Any,
+            location_id: int,
+            _lat: float,
+            _lon: float,
+            start_year: int,
+            end_year: int,
+        ) -> tuple[pd.DataFrame, bool]:
+            calls.append((start_year, end_year))
+            gap = start_year == 2021
+            return (
+                pd.DataFrame(
+                    {
+                        "location_id": [location_id],
+                        "time": [pd.Timestamp(f"{start_year}-01-01")],
+                    }
+                ),
+                gap,
+            )
+
+        monkeypatch.setattr(giovanni, "fetch_city_hourly", fake_fetch_city_hourly)
+        row = SimpleNamespace(location_id=1, fetch_lat=10.0, fetch_lon=-70.0)
+        df, had_gap = giovanni._fetch_city_series(
+            SimpleNamespace(), _StubTokenManager(), row, [(2020, 2020), (2021, 2021)]
+        )
+        assert len(df) == 2
+        assert had_gap is True
+        assert calls == [(2020, 2020), (2021, 2021)]
+
+
+class TestFetchCitiesBatch:
+    def test_fetches_all_rows_concurrently(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fake_fetch_city_series(
+            _session: Any, _tm: Any, row: Any, _ranges: Any
+        ) -> tuple[pd.DataFrame, bool]:
+            return pd.DataFrame(
+                {"location_id": [row.location_id]}
+            ), row.location_id == 2
+
+        monkeypatch.setattr(giovanni, "_fetch_city_series", fake_fetch_city_series)
+        rows = [SimpleNamespace(location_id=i) for i in (1, 2, 3)]
+        results = giovanni._fetch_cities_batch(
+            rows,
+            SimpleNamespace(),
+            _StubTokenManager(),
+            [(2020, 2020)],
+            worker_count=2,
+            city_shard_index=0,
+        )
+        assert set(results) == {1, 2, 3}
+        assert results[2][1] is True
+        assert results[1][1] is False
+
+
+class TestFetchShardWithRetries:
+    def test_retries_only_gapped_cities_until_clean(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(giovanni.time, "sleep", lambda _s: None)
+        rows_by_location = {
+            1: SimpleNamespace(location_id=1),
+            2: SimpleNamespace(location_id=2),
+        }
+        attempt_batches: list[list[int]] = []
+
+        def fake_batch(
+            rows: Any, _session: Any, _tm: Any, _ranges: Any, _workers: Any, _idx: Any
+        ) -> dict[int, tuple[pd.DataFrame, bool]]:
+            attempt_batches.append(sorted(r.location_id for r in rows))
+            attempt = len(attempt_batches)
+            return {
+                row.location_id: (pd.DataFrame(), row.location_id == 2 and attempt == 1)
+                for row in rows
+            }
+
+        monkeypatch.setattr(giovanni, "_fetch_cities_batch", fake_batch)
+        results = giovanni._fetch_shard_with_retries(
+            rows_by_location,
+            SimpleNamespace(),
+            _StubTokenManager(),
+            [(2020, 2020)],
+            2,
+            0,
+            1,
+        )
+        assert attempt_batches == [[1, 2], [2]]
+        assert results[1][1] is False
+        assert results[2][1] is False
+
+    def test_stops_after_max_attempts_even_with_persistent_gap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(giovanni.time, "sleep", lambda _s: None)
+        rows_by_location = {1: SimpleNamespace(location_id=1)}
+        attempts: list[int] = []
+
+        def fake_batch(rows: Any, *_a: Any) -> dict[int, tuple[pd.DataFrame, bool]]:
+            attempts.append(1)
+            return {row.location_id: (pd.DataFrame(), True) for row in rows}
+
+        monkeypatch.setattr(giovanni, "_fetch_cities_batch", fake_batch)
+        results = giovanni._fetch_shard_with_retries(
+            rows_by_location,
+            SimpleNamespace(),
+            _StubTokenManager(),
+            [(2020, 2020)],
+            1,
+            0,
+            1,
+        )
+        assert len(attempts) == giovanni.GIOVANNI_SHARD_RETRY_ATTEMPTS
+        assert results[1][1] is True
+
+
+class TestWritePendingYearBatches:
+    def test_writes_only_pending_years(self, tmp_path: Any) -> None:
+        wetbulb_root = str(tmp_path)
+        filesystem, base_path = giovanni.resolve_filesystem(wetbulb_root)
+        daily_df = pd.DataFrame(
+            {
+                "location_id": [1, 1],
+                "date": [pd.Timestamp("2020-06-01"), pd.Timestamp("2021-06-01")],
+                "wetbulb": [20.0, 21.0],
+                "wetbulb_avg": [19.0, 20.0],
+            }
+        )
+        giovanni._write_pending_year_batches(
+            daily_df, [2021], wetbulb_root, 0, filesystem, base_path
+        )
+        assert giovanni.batch_exists(
+            wetbulb_root,
+            2021,
+            0,
+            0,
+            file_prefix="wetbulb",
+            filesystem=filesystem,
+            base_path=base_path,
+        )
+        assert not giovanni.batch_exists(
+            wetbulb_root,
+            2020,
+            0,
+            0,
+            file_prefix="wetbulb",
+            filesystem=filesystem,
+            base_path=base_path,
+        )
+
+
+class TestProcessGiovanni:
+    @staticmethod
+    def _shard_df() -> pd.DataFrame:
+        return pd.DataFrame({"location_id": [1], "lat": [40.0], "lng": [-74.0]})
+
+    @staticmethod
+    def _empty_cell_map() -> pd.DataFrame:
+        return pd.DataFrame(columns=pd.Index(["location_id", "cell_lat", "cell_lon"]))
+
+    def test_no_cities_returns_early(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Any,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.setattr(
+            giovanni.nldas,
+            "_load_nldas_city_shard",
+            lambda *_a: pd.DataFrame(columns=pd.Index(["location_id", "lat", "lng"])),
+        )
+        called: list[int] = []
+        monkeypatch.setattr(
+            giovanni, "_fetch_shard_with_retries", lambda *_a, **_k: called.append(1)
+        )
+        with caplog.at_level("INFO"):
+            giovanni.process_giovanni(2020, 2020, str(tmp_path), 0, 1, 4)
+        assert not called
+        assert any("No cities found" in m for m in caplog.messages)
+
+    def test_no_pending_years_returns_early(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Any,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.setattr(
+            giovanni.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+        )
+        monkeypatch.setattr(giovanni, "_pending_years", lambda *_a, **_k: [])
+        called: list[int] = []
+        monkeypatch.setattr(
+            giovanni, "_fetch_shard_with_retries", lambda *_a, **_k: called.append(1)
+        )
+        with caplog.at_level("INFO"):
+            giovanni.process_giovanni(2020, 2020, str(tmp_path), 0, 1, 4)
+        assert not called
+        assert any("already present" in m for m in caplog.messages)
+
+    def test_gap_skips_write(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Any,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.setattr(
+            giovanni.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+        )
+        monkeypatch.setattr(giovanni, "_load_cell_map", self._empty_cell_map)
+        monkeypatch.setattr(giovanni.TokenManager, "from_env", _StubTokenManager)
+        monkeypatch.setattr(giovanni.requests, "Session", SimpleNamespace)
+        df = pd.DataFrame(
+            {
+                "location_id": [1],
+                "time": [pd.Timestamp("2020-01-01")],
+                "Tair": [290.0],
+                "Qair": [0.01],
+                "PSurf": [100000.0],
+            }
+        )
+        monkeypatch.setattr(
+            giovanni, "_fetch_shard_with_retries", lambda *_a, **_k: {1: (df, True)}
+        )
+        monkeypatch.setattr(
+            giovanni.nldas,
+            "_compute_daily_wetbulb",
+            lambda _df: pd.DataFrame(
+                {
+                    "location_id": [1],
+                    "date": [pd.Timestamp("2020-01-01")],
+                    "wetbulb": [20.0],
+                    "wetbulb_avg": [19.0],
+                }
+            ),
+        )
+        write_called: list[int] = []
+        monkeypatch.setattr(
+            giovanni,
+            "_write_pending_year_batches",
+            lambda *_a, **_k: write_called.append(1),
+        )
+        with caplog.at_level("WARNING"):
+            giovanni.process_giovanni(2020, 2020, str(tmp_path), 0, 1, 4)
+        assert not write_called
+        assert any("fetch gap" in m for m in caplog.messages)
+
+    def test_empty_daily_df_returns_early(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        monkeypatch.setattr(
+            giovanni.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+        )
+        monkeypatch.setattr(giovanni, "_load_cell_map", self._empty_cell_map)
+        monkeypatch.setattr(giovanni.TokenManager, "from_env", _StubTokenManager)
+        monkeypatch.setattr(giovanni.requests, "Session", SimpleNamespace)
+        df = pd.DataFrame(
+            {
+                "location_id": [1],
+                "time": [pd.Timestamp("2020-01-01")],
+                "Tair": [290.0],
+                "Qair": [0.01],
+                "PSurf": [100000.0],
+            }
+        )
+        monkeypatch.setattr(
+            giovanni, "_fetch_shard_with_retries", lambda *_a, **_k: {1: (df, False)}
+        )
+        monkeypatch.setattr(
+            giovanni.nldas,
+            "_compute_daily_wetbulb",
+            lambda _df: pd.DataFrame(
+                columns=pd.Index(["location_id", "date", "wetbulb", "wetbulb_avg"])
+            ),
+        )
+        write_called: list[int] = []
+        monkeypatch.setattr(
+            giovanni,
+            "_write_pending_year_batches",
+            lambda *_a, **_k: write_called.append(1),
+        )
+        giovanni.process_giovanni(2020, 2020, str(tmp_path), 0, 1, 4)
+        assert not write_called
+
+    def test_successful_run_writes_batches(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        monkeypatch.setattr(
+            giovanni.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+        )
+        monkeypatch.setattr(giovanni, "_load_cell_map", self._empty_cell_map)
+        monkeypatch.setattr(giovanni.TokenManager, "from_env", _StubTokenManager)
+        monkeypatch.setattr(giovanni.requests, "Session", SimpleNamespace)
+        df = pd.DataFrame(
+            {
+                "location_id": [1],
+                "time": [pd.Timestamp("2020-01-01")],
+                "Tair": [290.0],
+                "Qair": [0.01],
+                "PSurf": [100000.0],
+            }
+        )
+        monkeypatch.setattr(
+            giovanni, "_fetch_shard_with_retries", lambda *_a, **_k: {1: (df, False)}
+        )
+        monkeypatch.setattr(
+            giovanni.nldas,
+            "_compute_daily_wetbulb",
+            lambda _df: pd.DataFrame(
+                {
+                    "location_id": [1],
+                    "date": [pd.Timestamp("2020-01-01")],
+                    "wetbulb": [20.0],
+                    "wetbulb_avg": [19.0],
+                }
+            ),
+        )
+        write_calls: list[Any] = []
+        monkeypatch.setattr(
+            giovanni,
+            "_write_pending_year_batches",
+            lambda *args, **_k: write_calls.append(args),
+        )
+        giovanni.process_giovanni(2020, 2020, str(tmp_path), 0, 1, 4)
+        assert len(write_calls) == 1
+
+
+class TestRunSmoke:
+    def test_prints_diagnostics_when_successful(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr(
+            giovanni, "_get_timeseries_csv", lambda *_a, **_k: SAMPLE_CSV
+        )
+        monkeypatch.setattr(giovanni.TokenManager, "from_env", _StubTokenManager)
+        args = argparse.Namespace(
+            lat=40.0, lon=-74.0, start="2024-01-01T00:00:00", end="2024-01-02T00:00:00"
+        )
+        giovanni._run_smoke(args)
+        out = capsys.readouterr().out
+        assert "Tair" in out
+        assert "resolved cell" in out
+
+    def test_prints_failed_when_request_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr(giovanni, "_get_timeseries_csv", lambda *_a, **_k: None)
+        monkeypatch.setattr(giovanni.TokenManager, "from_env", _StubTokenManager)
+        args = argparse.Namespace(
+            lat=40.0, lon=-74.0, start="2024-01-01T00:00:00", end="2024-01-02T00:00:00"
+        )
+        giovanni._run_smoke(args)
+        out = capsys.readouterr().out
+        assert "request failed" in out
+
+
+class TestParseArgs:
+    def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(giovanni.sys, "argv", ["giovanni.py"])
+        args = giovanni._parse_args()
+        assert args.start_year == giovanni.nldas.NLDAS_START_YEAR
+        assert args.end_year == giovanni.nldas.NLDAS_END_YEAR
+        assert args.out_dir == "."
+        assert args.city_shard_index == 0
+        assert args.city_shard_count == 1
+        assert args.concurrency == giovanni.DEFAULT_CONCURRENCY
+        assert args.force is False
+        assert args.smoke is False
+
+    def test_smoke_flag_and_overrides(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            giovanni.sys,
+            "argv",
+            ["giovanni.py", "--smoke", "--lat", "1.5", "--lon", "-2.5", "--force"],
+        )
+        args = giovanni._parse_args()
+        assert args.smoke is True
+        assert args.lat == pytest.approx(1.5)
+        assert args.lon == pytest.approx(-2.5)
+        assert args.force is True
+
+
+class TestMain:
+    def test_smoke_flag_calls_run_smoke(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            giovanni, "_parse_args", lambda: SimpleNamespace(smoke=True)
+        )
+        called: list[Any] = []
+        monkeypatch.setattr(giovanni, "_run_smoke", called.append)
+        monkeypatch.setattr(giovanni, "load_dotenv", lambda **_k: None)
+        with pytest.raises(SystemExit) as exc_info:
+            giovanni.main()
+        assert exc_info.value.code == 0
+        assert len(called) == 1
+
+    def test_normal_flow_calls_process_giovanni(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        args = SimpleNamespace(
+            smoke=False,
+            start_year=2000,
+            end_year=2001,
+            out_dir=".",
+            city_shard_index=0,
+            city_shard_count=1,
+            concurrency=4,
+            force=False,
+        )
+        monkeypatch.setattr(giovanni, "_parse_args", lambda: args)
+        monkeypatch.setattr(giovanni, "load_dotenv", lambda **_k: None)
+        calls: list[dict[str, Any]] = []
+        monkeypatch.setattr(
+            giovanni, "process_giovanni", lambda **kwargs: calls.append(kwargs)
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            giovanni.main()
+        assert exc_info.value.code == 0
+        assert calls[0]["start_year"] == 2000
+
+    def test_keyboard_interrupt_exits_130(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(giovanni, "load_dotenv", lambda **_k: None)
+
+        def raise_interrupt() -> None:
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(giovanni, "_parse_args", raise_interrupt)
+        with caplog.at_level("WARNING"), pytest.raises(SystemExit) as exc_info:
+            giovanni.main()
+        assert exc_info.value.code == 130
+        assert any("interrupted" in m for m in caplog.messages)
+
+    def test_handled_exception_exits_1(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(giovanni, "load_dotenv", lambda **_k: None)
+
+        def raise_value_error() -> None:
+            msg = "boom"
+            raise ValueError(msg)
+
+        monkeypatch.setattr(giovanni, "_parse_args", raise_value_error)
+        with caplog.at_level("ERROR"), pytest.raises(SystemExit) as exc_info:
+            giovanni.main()
+        assert exc_info.value.code == 1
+
+    def test_system_exit_propagates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(giovanni, "load_dotenv", lambda **_k: None)
+
+        def raise_system_exit() -> None:
+            raise SystemExit(42)
+
+        monkeypatch.setattr(giovanni, "_parse_args", raise_system_exit)
+        with pytest.raises(SystemExit) as exc_info:
+            giovanni.main()
+        assert exc_info.value.code == 42
