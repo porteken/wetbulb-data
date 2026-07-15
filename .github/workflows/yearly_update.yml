@@ -71,9 +71,9 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
       # Only era5-worker (PET) still runs on Cloud Run; wetbulb now fetches
-      # via the Giovanni Time Series API directly on a GitHub Actions runner
-      # (see compute-wetbulb-nldas below), so there's no nldas-worker
-      # execution left to cancel here.
+      # NOAA LCD station CSVs directly on a GitHub Actions runner (see
+      # compute-wetbulb-lcd below), so there's no nldas-worker execution
+      # left to cancel here.
       - name: Cancel running Cloud Run executions
         run: |
           python3 cancel_cloud_run_job_executions.py \
@@ -117,8 +117,8 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
       # nldas-worker (the granule-download fallback path) is not deployed by
-      # default -- wetbulb now runs via Giovanni directly on this runner, see
-      # compute-wetbulb-nldas below. Deploy it manually with
+      # default -- wetbulb now runs via NOAA LCD directly on this runner,
+      # see compute-wetbulb-lcd below. Deploy it manually with
       # DEPLOY_NLDAS_WORKER=1 ./cloudrun_provision.sh if the fallback is
       # needed (--wetbulb-source granules).
       - name: Build and deploy Cloud Run workers
@@ -155,11 +155,11 @@ jobs:
             --tasks "${{ env.ERA5_TIME_SHARD_COUNT }}" \
             --args="--year=${{ needs.build-target-window.outputs.target_year }},--city-shard-count=1,--time-shard-count=${{ env.ERA5_TIME_SHARD_COUNT }},--max-workers=1,--batch-hours=${{ env.ERA5_BATCH_HOURS }},--concurrency-profile=aggressive,--products=pet,--out-dir=s3://pet-parquet-files"
 
-  compute-wetbulb-nldas:
+  compute-wetbulb-lcd:
     if: github.ref_name == 'prd' && needs.build-target-window.outputs.target_year != ''
     needs: [build-target-window, clear-pet-output]
     runs-on: ubuntu-latest
-    name: NLDAS->wetbulb ${{ needs.build-target-window.outputs.target_year }} via Giovanni
+    name: LCD->wetbulb ${{ needs.build-target-window.outputs.target_year }} via NCEI
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - name: Set up Python
@@ -174,22 +174,19 @@ jobs:
         run: uv sync --locked --no-dev # NOSONAR
       - name: Generate cities.csv
         run: uv run --locked --no-build python cities.py
-      # One year of hourly data for all 500 cities is small enough that this
-      # never needs Cloud Run or multiple shards: giovanni.py fetches each
-      # city's whole year in one request per variable (see giovanni.py's
-      # module docstring for the measured request volume/timing).
-      # cities_nldas_cells.csv (checked into the repo) supplies each city's
-      # land-snapped NLDAS-2 cell.
-      - name: Pull NLDAS-2 & compute wet-bulb via Giovanni (writes straight to S3)
+      # One year of data for all 500 cities is small enough that this never
+      # needs Cloud Run or multiple shards: lcd.py fetches one station-year
+      # CSV per city (up to 500 small GETs, no auth). cities_lcd_stations.csv
+      # (checked into the repo) supplies each city's nearest verified-hourly
+      # NOAA LCD station.
+      - name: Pull NOAA LCD & compute wet-bulb (writes straight to S3)
         env:
-          EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
-          EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
           TARGET_YEAR: ${{ needs.build-target-window.outputs.target_year }}
         run: |
-          uv run --locked --no-build python giovanni.py \
+          uv run --locked --no-build python lcd.py \
             --start-year "$TARGET_YEAR" \
             --end-year "$TARGET_YEAR" \
             --concurrency 16 \
@@ -197,7 +194,7 @@ jobs:
 
   load-to-db:
     if: github.ref_name == 'prd'
-    needs: [build-target-window, compute-pet-google-era5, compute-wetbulb-nldas]
+    needs: [build-target-window, compute-pet-google-era5, compute-wetbulb-lcd]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -263,7 +260,7 @@ jobs:
         clear-pet-output,
         provision-cloud-run,
         compute-pet-google-era5,
-        compute-wetbulb-nldas,
+        compute-wetbulb-lcd,
         load-to-db,
         finalize-db-load,
       ]

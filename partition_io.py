@@ -14,6 +14,7 @@ from shards import resolve_filesystem
 
 pa = cast("Any", importlib.import_module("pyarrow"))
 pq = cast("Any", importlib.import_module("pyarrow.parquet"))
+pd = cast("Any", importlib.import_module("pandas"))
 
 type DataFrame = Any
 
@@ -89,3 +90,58 @@ def batch_exists(
     except OSError, pa.ArrowException:
         return False
     return True
+
+
+def pending_years(
+    years: range,
+    root: str,
+    city_shard_index: int,
+    filesystem: object | None,
+    base_path: str | None,
+    *,
+    file_prefix: str,
+    force: bool,
+) -> list[int]:
+    """Return the years in `years` whose shard batch isn't already written."""
+    return [
+        year
+        for year in years
+        if force
+        or not batch_exists(
+            root,
+            year,
+            city_shard_index,
+            0,
+            file_prefix=file_prefix,
+            filesystem=filesystem,
+            base_path=base_path,
+        )
+    ]
+
+
+def write_pending_year_batches(
+    daily_df: DataFrame,
+    pending_year_list: list[int],
+    root: str,
+    city_shard_index: int,
+    filesystem: object | None,
+    base_path: str | None,
+    *,
+    file_prefix: str,
+) -> None:
+    """Write each pending year's rows as its own shard partition."""
+    daily_df["year"] = pd.to_datetime(daily_df["date"]).dt.year
+    pending_year_set = set(pending_year_list)
+    for year, year_df in daily_df.groupby("year"):
+        if year not in pending_year_set:
+            continue
+        write_batch_partition(
+            root,
+            int(year),
+            city_shard_index,
+            year_df.drop(columns="year"),
+            0,
+            file_prefix=file_prefix,
+            filesystem=filesystem,
+            base_path=base_path,
+        )

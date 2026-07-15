@@ -138,6 +138,9 @@ class PipelineConfig:
     giovanni_city_shard_count: int
     giovanni_concurrency: int
     giovanni_job_limit: int
+    lcd_city_shard_count: int
+    lcd_concurrency: int
+    lcd_job_limit: int
     resume_local: bool
 
     @property
@@ -301,14 +304,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--wetbulb-source",
-        choices=["giovanni", "granules"],
-        default=_env_str("WETBULB_SOURCE", "giovanni"),
+        choices=["lcd", "giovanni", "granules"],
+        default=_env_str("WETBULB_SOURCE", "lcd"),
         help=(
-            "giovanni: fetch per-city point time series from the Giovanni "
-            "Time Series API (~1,500 requests total, always runs locally). "
+            "lcd: fetch per-city station observations from NOAA's Local "
+            "Climatological Data v2 bulk archive (no auth, no rate limit "
+            "observed, always runs locally). Default. "
+            "giovanni: fetch per-city NLDAS-2 point time series from the "
+            "Giovanni Time Series API (~1,500 requests total, always runs "
+            "locally; requires Earthdata credentials). Fallback. "
             "granules: download full hourly NLDAS-2 CONUS granules and "
-            "extract points (the original, much slower/costlier path, kept "
-            "as a fallback)."
+            "extract points (the original, much slower/costlier path; "
+            "requires Earthdata credentials). Fallback."
         ),
     )
     parser.add_argument(
@@ -337,6 +344,30 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--lcd-city-shard-count",
+        type=int,
+        default=_env_int("LCD_CITY_SHARD_COUNT", 10),
+        help="Number of local lcd.py subprocesses to shard cities across.",
+    )
+    parser.add_argument(
+        "--lcd-concurrency",
+        type=int,
+        default=_env_int("LCD_CONCURRENCY", 8),
+        help="Concurrent station fetches within one lcd.py subprocess.",
+    )
+    parser.add_argument(
+        "--lcd-job-limit",
+        type=int,
+        default=_env_int("LCD_JOB_LIMIT", 2),
+        help=(
+            "Concurrent lcd.py subprocesses run locally. NCEI's bulk LCD "
+            "archive has shown no rate limiting under sustained load "
+            "(unlike the Giovanni API), so this default is kept modest out "
+            "of politeness rather than a known necessity -- raise it "
+            "cautiously if you need a faster backfill."
+        ),
+    )
+    parser.add_argument(
         "--load-workers",
         type=int,
         default=_env_int("LOAD_WORKERS", DEFAULT_LOAD_WORKERS),
@@ -347,11 +378,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=_env_flag("RESUME_LOCAL"),
         help=(
             "Skip clearing local wetbulb_data_csv/year=YYYY output before a "
-            "--wetbulb-source giovanni run, so an interrupted local run "
-            "resumes via giovanni.py's per-shard/per-year batch_exists check "
-            "instead of restarting from scratch. Only valid across reruns "
-            "that keep --giovanni-city-shard-count unchanged (partition "
-            "filenames encode the shard index)."
+            "--wetbulb-source lcd or giovanni run, so an interrupted local "
+            "run resumes via that source's per-shard/per-year batch_exists "
+            "check instead of restarting from scratch. Only valid across "
+            "reruns that keep --lcd-city-shard-count (or "
+            "--giovanni-city-shard-count for the giovanni source) "
+            "unchanged (partition filenames encode the shard index)."
         ),
     )
     return parser.parse_args(argv)
@@ -494,6 +526,9 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         giovanni_city_shard_count=max(1, args.giovanni_city_shard_count),
         giovanni_concurrency=max(1, args.giovanni_concurrency),
         giovanni_job_limit=max(1, args.giovanni_job_limit),
+        lcd_city_shard_count=max(1, args.lcd_city_shard_count),
+        lcd_concurrency=max(1, args.lcd_concurrency),
+        lcd_job_limit=max(1, args.lcd_job_limit),
         resume_local=args.resume_local,
     )
 
@@ -885,20 +920,69 @@ def _run_giovanni_pull(cfg: PipelineConfig) -> None:
     )
 
 
+def _local_lcd_jobs(cfg: PipelineConfig) -> list[list[str]]:
+    """Build one lcd.py invocation per city shard.
+
+    Like the Giovanni path, LCD fetches run as local subprocesses -- even
+    when `--use-cloud-run` is set for the ERA5/PET path -- writing straight
+    to S3 when `cfg.use_cloud_run` selects a remote out-dir. Unlike
+    Giovanni, LCD needs no auth and NCEI's bulk archive has shown no rate
+    limiting under sustained load.
+    """
+    out_dir = cfg.remote_out_dir if cfg.use_cloud_run else "."
+    start_year = min(cfg.years)
+    end_year = max(cfg.years)
+    jobs: list[list[str]] = []
+    for city_shard in range(cfg.lcd_city_shard_count):
+        script_args = [
+            "--start-year",
+            str(start_year),
+            "--end-year",
+            str(end_year),
+            "--city-shard-index",
+            str(city_shard),
+            "--city-shard-count",
+            str(cfg.lcd_city_shard_count),
+            "--concurrency",
+            str(cfg.lcd_concurrency),
+            "--out-dir",
+            out_dir,
+        ]
+        jobs.append(_python_command("lcd.py", *script_args))
+    return jobs
+
+
+def _run_lcd_pull(cfg: PipelineConfig) -> None:
+    if cfg.use_cloud_run and not cfg.skip_remote_clear:
+        _clear_remote_prefixes(cfg, ["wetbulb"])
+    _run_local_jobs(
+        _local_lcd_jobs(cfg),
+        cfg,
+        desc="LCD wetbulb jobs",
+        product_label="LCD wetbulb",
+        max_workers=cfg.lcd_job_limit,
+    )
+
+
 def run_nldas_pull(cfg: PipelineConfig) -> None:
-    """Compute NLDAS-2 -> wetbulb parquet via Giovanni or granule downloads."""
+    """Compute wetbulb parquet via NOAA LCD, Giovanni, or NLDAS-2 granule downloads."""
     LOGGER.info(
-        "====== Step 2b: Compute NLDAS-2 wetbulb (source=%s) ======",
+        "====== Step 2b: Compute wetbulb (source=%s) ======",
         cfg.wetbulb_source,
     )
-    resuming_giovanni = cfg.wetbulb_source == "giovanni" and cfg.resume_local
-    if resuming_giovanni:
+    resuming_locally = cfg.wetbulb_source in ("lcd", "giovanni") and cfg.resume_local
+    if resuming_locally:
         LOGGER.info(
             "--resume-local set: keeping existing local wetbulb output and "
-            "relying on giovanni.py's per-shard/per-year resume check.",
+            "relying on %s.py's per-shard/per-year resume check.",
+            cfg.wetbulb_source,
         )
     else:
         _clear_local_year_outputs(cfg, ["wetbulb"])
+
+    if cfg.wetbulb_source == "lcd":
+        _run_lcd_pull(cfg)
+        return
 
     if cfg.wetbulb_source == "giovanni":
         _run_giovanni_pull(cfg)

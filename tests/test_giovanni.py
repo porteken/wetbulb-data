@@ -595,41 +595,6 @@ class TestTokenManagerMissingToken:
             manager.get()
 
 
-class TestPendingYears:
-    def test_force_returns_all_years_without_checking(self, tmp_path: Any) -> None:
-        filesystem, base_path = giovanni.resolve_filesystem(str(tmp_path))
-        result = giovanni._pending_years(
-            range(2020, 2023), str(tmp_path), 0, filesystem, base_path, force=True
-        )
-        assert result == [2020, 2021, 2022]
-
-    def test_filters_years_with_existing_batches(self, tmp_path: Any) -> None:
-        wetbulb_root = str(tmp_path)
-        filesystem, base_path = giovanni.resolve_filesystem(wetbulb_root)
-        df = pd.DataFrame(
-            {
-                "location_id": [1],
-                "date": [pd.Timestamp("2020-06-01")],
-                "wetbulb": [20.0],
-                "wetbulb_avg": [19.0],
-            }
-        )
-        giovanni.write_batch_partition(
-            wetbulb_root,
-            2020,
-            0,
-            df.copy(),
-            0,
-            file_prefix="wetbulb",
-            filesystem=filesystem,
-            base_path=base_path,
-        )
-        result = giovanni._pending_years(
-            range(2020, 2022), wetbulb_root, 0, filesystem, base_path, force=False
-        )
-        assert result == [2021]
-
-
 class TestFetchCitySeries:
     def test_concatenates_ranges_and_aggregates_gap(
         self, monkeypatch: pytest.MonkeyPatch
@@ -753,41 +718,6 @@ class TestFetchShardWithRetries:
         assert results[1][1] is True
 
 
-class TestWritePendingYearBatches:
-    def test_writes_only_pending_years(self, tmp_path: Any) -> None:
-        wetbulb_root = str(tmp_path)
-        filesystem, base_path = giovanni.resolve_filesystem(wetbulb_root)
-        daily_df = pd.DataFrame(
-            {
-                "location_id": [1, 1],
-                "date": [pd.Timestamp("2020-06-01"), pd.Timestamp("2021-06-01")],
-                "wetbulb": [20.0, 21.0],
-                "wetbulb_avg": [19.0, 20.0],
-            }
-        )
-        giovanni._write_pending_year_batches(
-            daily_df, [2021], wetbulb_root, 0, filesystem, base_path
-        )
-        assert giovanni.batch_exists(
-            wetbulb_root,
-            2021,
-            0,
-            0,
-            file_prefix="wetbulb",
-            filesystem=filesystem,
-            base_path=base_path,
-        )
-        assert not giovanni.batch_exists(
-            wetbulb_root,
-            2020,
-            0,
-            0,
-            file_prefix="wetbulb",
-            filesystem=filesystem,
-            base_path=base_path,
-        )
-
-
 class TestProcessGiovanni:
     @staticmethod
     def _shard_df() -> pd.DataFrame:
@@ -826,7 +756,7 @@ class TestProcessGiovanni:
         monkeypatch.setattr(
             giovanni.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
         )
-        monkeypatch.setattr(giovanni, "_pending_years", lambda *_a, **_k: [])
+        monkeypatch.setattr(giovanni, "pending_years", lambda *_a, **_k: [])
         called: list[int] = []
         monkeypatch.setattr(
             giovanni, "_fetch_shard_with_retries", lambda *_a, **_k: called.append(1)
@@ -875,7 +805,7 @@ class TestProcessGiovanni:
         write_called: list[int] = []
         monkeypatch.setattr(
             giovanni,
-            "_write_pending_year_batches",
+            "write_pending_year_batches",
             lambda *_a, **_k: write_called.append(1),
         )
         with caplog.at_level("WARNING"):
@@ -914,7 +844,7 @@ class TestProcessGiovanni:
         write_called: list[int] = []
         monkeypatch.setattr(
             giovanni,
-            "_write_pending_year_batches",
+            "write_pending_year_batches",
             lambda *_a, **_k: write_called.append(1),
         )
         giovanni.process_giovanni(2020, 2020, str(tmp_path), 0, 1, 4)
@@ -956,7 +886,7 @@ class TestProcessGiovanni:
         write_calls: list[Any] = []
         monkeypatch.setattr(
             giovanni,
-            "_write_pending_year_batches",
+            "write_pending_year_batches",
             lambda *args, **_k: write_calls.append(args),
         )
         giovanni.process_giovanni(2020, 2020, str(tmp_path), 0, 1, 4)

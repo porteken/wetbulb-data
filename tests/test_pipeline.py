@@ -509,7 +509,7 @@ class TestNldasPull:
         with pytest.raises(pipeline.PipelineError, match="local NLDAS job"):
             pipeline.run_nldas_pull(cfg)
 
-    def test_giovanni_is_default_source_and_shards_locally(
+    def test_lcd_is_default_source_and_shards_locally(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         monkeypatch.chdir(tmp_path)
@@ -525,6 +525,77 @@ class TestNldasPull:
                 "--local",
                 "--years",
                 "2024",
+                "--lcd-city-shard-count",
+                "3",
+            ]
+        )
+        assert cfg.wetbulb_source == "lcd"
+        pipeline.run_nldas_pull(cfg)
+
+        assert len(commands) == 3
+        assert all("lcd.py" in command[1] for command in commands)
+        assert all("--out-dir" in command and "." in command for command in commands)
+
+    def test_lcd_writes_to_s3_when_cloud_run_selected(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        commands: list[list[str]] = []
+        monkeypatch.setattr(
+            pipeline,
+            "_run_command",
+            lambda command, **_kwargs: commands.append(command),
+        )
+
+        cfg = _config(
+            [
+                "--years",
+                "2024",
+                "--lcd-city-shard-count",
+                "2",
+                "--skip-remote-clear",
+            ]
+        )
+        pipeline.run_nldas_pull(cfg)
+
+        assert len(commands) == 2
+        for command in commands:
+            out_dir_index = command.index("--out-dir") + 1
+            assert command[out_dir_index].startswith("s3://")
+
+    def test_lcd_failure_is_reported(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+
+        def failing_run(_command: list[str], **_kwargs: object) -> None:
+            msg = "job failed with exit code 1."
+            raise pipeline.PipelineError(msg)
+
+        monkeypatch.setattr(pipeline, "_run_command", failing_run)
+
+        cfg = _config(["--local", "--years", "2024", "--lcd-city-shard-count", "2"])
+        with pytest.raises(pipeline.PipelineError, match="LCD wetbulb job"):
+            pipeline.run_nldas_pull(cfg)
+
+    def test_giovanni_shards_locally(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        commands: list[list[str]] = []
+        monkeypatch.setattr(
+            pipeline,
+            "_run_command",
+            lambda command, **_kwargs: commands.append(command),
+        )
+
+        cfg = _config(
+            [
+                "--local",
+                "--years",
+                "2024",
+                "--wetbulb-source",
+                "giovanni",
                 "--giovanni-city-shard-count",
                 "3",
             ]
@@ -550,6 +621,8 @@ class TestNldasPull:
             [
                 "--years",
                 "2024",
+                "--wetbulb-source",
+                "giovanni",
                 "--giovanni-city-shard-count",
                 "2",
                 "--skip-remote-clear",
@@ -574,12 +647,20 @@ class TestNldasPull:
         monkeypatch.setattr(pipeline, "_run_command", failing_run)
 
         cfg = _config(
-            ["--local", "--years", "2024", "--giovanni-city-shard-count", "2"]
+            [
+                "--local",
+                "--years",
+                "2024",
+                "--wetbulb-source",
+                "giovanni",
+                "--giovanni-city-shard-count",
+                "2",
+            ]
         )
         with pytest.raises(pipeline.PipelineError, match="Giovanni wetbulb job"):
             pipeline.run_nldas_pull(cfg)
 
-    def test_resume_local_keeps_existing_giovanni_output(
+    def test_resume_local_keeps_existing_output(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         monkeypatch.chdir(tmp_path)
@@ -597,7 +678,32 @@ class TestNldasPull:
 
         assert marker.exists()
 
-    def test_without_resume_local_giovanni_output_is_cleared(
+    def test_resume_local_keeps_existing_giovanni_output(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(pipeline, "_run_command", lambda *_a, **_k: None)
+
+        year_dir = Path("wetbulb_data_csv/year=2024")
+        year_dir.mkdir(parents=True)
+        marker = year_dir / "wetbulb_batch_0000_00.parquet"
+        marker.write_text("keep me")
+
+        cfg = _config(
+            [
+                "--local",
+                "--years",
+                "2024",
+                "--wetbulb-source",
+                "giovanni",
+                "--resume-local",
+            ],
+        )
+        pipeline.run_nldas_pull(cfg)
+
+        assert marker.exists()
+
+    def test_without_resume_local_output_is_cleared(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         monkeypatch.chdir(tmp_path)

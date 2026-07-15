@@ -41,7 +41,7 @@ from dotenv import load_dotenv
 from tqdm.auto import tqdm
 
 import nldas
-from partition_io import batch_exists, write_batch_partition
+from partition_io import pending_years, write_pending_year_batches
 from shards import resolve_filesystem
 
 pd = cast("Any", importlib.import_module("pandas"))
@@ -550,32 +550,6 @@ def _load_cell_map() -> DataFrame:
     return pd.read_csv(path, usecols=["location_id", "cell_lat", "cell_lon"])
 
 
-def _pending_years(
-    years: range,
-    wetbulb_root: str,
-    city_shard_index: int,
-    filesystem: Filesystem,
-    base_path: str,
-    *,
-    force: bool,
-) -> list[int]:
-    """Return the years in `years` whose shard batch isn't already written."""
-    return [
-        year
-        for year in years
-        if force
-        or not batch_exists(
-            wetbulb_root,
-            year,
-            city_shard_index,
-            0,
-            file_prefix="wetbulb",
-            filesystem=filesystem,
-            base_path=base_path,
-        )
-    ]
-
-
 def _fetch_city_series(
     session: Session,
     token_manager: TokenManagerProtocol,
@@ -671,32 +645,6 @@ def _fetch_shard_with_retries(
     return city_results
 
 
-def _write_pending_year_batches(
-    daily_df: DataFrame,
-    pending_years: list[int],
-    wetbulb_root: str,
-    city_shard_index: int,
-    filesystem: Filesystem,
-    base_path: str,
-) -> None:
-    """Write each pending year's rows as its own shard partition."""
-    daily_df["year"] = pd.to_datetime(daily_df["date"]).dt.year
-    pending_year_set = set(pending_years)
-    for year, year_df in daily_df.groupby("year"):
-        if year not in pending_year_set:
-            continue
-        write_batch_partition(
-            wetbulb_root,
-            int(year),
-            city_shard_index,
-            year_df.drop(columns="year"),
-            0,
-            file_prefix="wetbulb",
-            filesystem=filesystem,
-            base_path=base_path,
-        )
-
-
 def process_giovanni(
     start_year: int,
     end_year: int,
@@ -718,15 +666,16 @@ def process_giovanni(
         return
 
     filesystem, base_path = resolve_filesystem(wetbulb_root)
-    pending_years = _pending_years(
+    pending_year_list = pending_years(
         range(start_year, end_year + 1),
         wetbulb_root,
         city_shard_index,
         filesystem,
         base_path,
+        file_prefix="wetbulb",
         force=force,
     )
-    if not pending_years:
+    if not pending_year_list:
         LOGGER.info(
             "city_shard=%d/%d: years %d-%d already present.",
             city_shard_index,
@@ -736,14 +685,14 @@ def process_giovanni(
         )
         return
 
-    fetch_ranges = _contiguous_year_ranges(pending_years)
+    fetch_ranges = _contiguous_year_ranges(pending_year_list)
     LOGGER.info(
         "Giovanni->wetbulb city_shard=%d/%d: %d city(ies), %d pending year(s) "
         "as %d contiguous range(s).",
         city_shard_index,
         city_shard_count,
         len(shard_df),
-        len(pending_years),
+        len(pending_year_list),
         len(fetch_ranges),
     )
 
@@ -790,8 +739,14 @@ def process_giovanni(
         )
         return
 
-    _write_pending_year_batches(
-        daily_df, pending_years, wetbulb_root, city_shard_index, filesystem, base_path
+    write_pending_year_batches(
+        daily_df,
+        pending_year_list,
+        wetbulb_root,
+        city_shard_index,
+        filesystem,
+        base_path,
+        file_prefix="wetbulb",
     )
 
 
