@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import quote, urlencode
 
 if TYPE_CHECKING:
+    import argparse
     from collections.abc import Mapping
 
 PULL_START_DATE = date(2000, 1, 1)
@@ -15,6 +16,7 @@ SHARED_AREA: tuple[float, float, float, float] = (49.25, -124.5, 24.25, -66.5)
 DECEMBER = 12
 MRT_INTERMEDIATE_LAG_DAYS = 5
 MRT_CONSOLIDATED_LAG_MONTHS = 3
+DEFAULT_BATCH_HOURS = 24 * 30
 PRIMARY_DATABASE_URI_ENV_VARS: tuple[str, ...] = (
     "POSTGRES_DB_URI",
     "DATABASE_URL",
@@ -217,3 +219,35 @@ def build_full_date_range(*, start_year: int | None = None) -> str:
 def shared_area() -> list[float]:
     """Return geographic bounding box for defaults."""
     return list(SHARED_AREA)
+
+
+def add_year_month_shard_args(parser: argparse.ArgumentParser) -> None:
+    """Add the `--year`/`--months`/shard/`--batch-hours` flags shared by `nldas.py` and `google_era5.py`."""
+    parser.add_argument("--year", required=True, type=int)
+    parser.add_argument(
+        "--months",
+        type=int,
+        nargs="+",
+        help="Only process specific months (1-12)",
+    )
+    parser.add_argument("--out-dir", type=str, default=".")
+    parser.add_argument("--city-shard-index", type=int, default=0)
+    parser.add_argument("--city-shard-count", type=int, default=1)
+    parser.add_argument(
+        "--time-shard-index",
+        type=int,
+        default=None,
+        help=(
+            "Time shard to process. Defaults to the CLOUD_RUN_TASK_INDEX "
+            "environment variable (0 outside Cloud Run), so a single Cloud "
+            "Run execution with --tasks=N fans out across time shards."
+        ),
+    )
+    parser.add_argument("--time-shard-count", type=int, default=1)
+    parser.add_argument("--batch-hours", type=int, default=DEFAULT_BATCH_HOURS)
+
+
+def resolve_time_shard_index(args: argparse.Namespace) -> None:
+    """Default `args.time_shard_index` from `CLOUD_RUN_TASK_INDEX` when unset."""
+    if args.time_shard_index is None:
+        args.time_shard_index = int(os.environ.get("CLOUD_RUN_TASK_INDEX", "0"))

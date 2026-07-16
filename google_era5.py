@@ -23,6 +23,7 @@ from tqdm.auto import tqdm
 
 from partition_io import PartitionTarget, batch_exists, write_batch_partition
 from shards import resolve_filesystem
+from shared_config import add_year_month_shard_args, resolve_time_shard_index
 
 pa = cast("Any", importlib.import_module("pyarrow"))
 pd = cast("Any", importlib.import_module("pandas"))
@@ -47,7 +48,6 @@ SAFE_STABLE_DATA_MONTH = 4
 PET_ROUNDING_FACTOR = 2.0
 CHUNK_SIZE = 50000
 ERA5_TIME_ORIGIN = "1900-01-01"
-DEFAULT_BATCH_HOURS = 24 * 30
 ERA5_THREAD_LOCAL = threading.local()
 SECONDS_PER_HOUR = 3600.0
 PET_INPUT_COLUMNS = ["v", "t", "rh", "mrt"]
@@ -946,29 +946,8 @@ def process_era5(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--year", required=True, type=int)
-    parser.add_argument(
-        "--months",
-        type=int,
-        nargs="+",
-        help="Only process specific months (1-12)",
-    )
-    parser.add_argument("--out-dir", type=str, default=".")
-    parser.add_argument("--city-shard-index", type=int, default=0)
-    parser.add_argument("--city-shard-count", type=int, default=1)
-    parser.add_argument(
-        "--time-shard-index",
-        type=int,
-        default=None,
-        help=(
-            "Time shard to process. Defaults to the CLOUD_RUN_TASK_INDEX "
-            "environment variable (0 outside Cloud Run), so a single Cloud "
-            "Run execution with --tasks=N fans out across time shards."
-        ),
-    )
-    parser.add_argument("--time-shard-count", type=int, default=1)
+    add_year_month_shard_args(parser)
     parser.add_argument("--max-workers", type=int, default=-1)
-    parser.add_argument("--batch-hours", type=int, default=DEFAULT_BATCH_HOURS)
     parser.add_argument(
         "--concurrency-profile",
         choices=["conservative", "balanced", "aggressive"],
@@ -981,8 +960,7 @@ def _parse_args() -> argparse.Namespace:
         help="Which parquet trees to write: pet, wetbulb, or both (default).",
     )
     args = parser.parse_args()
-    if args.time_shard_index is None:
-        args.time_shard_index = int(os.environ.get("CLOUD_RUN_TASK_INDEX", "0"))
+    resolve_time_shard_index(args)
     return args
 
 

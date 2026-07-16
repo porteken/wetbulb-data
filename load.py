@@ -179,6 +179,23 @@ def refresh_query_planner_statistics(conn: Connection[Any]) -> None:
     LOGGER.info("Finished refreshing query planner statistics.")
 
 
+def _add_wetbulb_load_args(parser: argparse.ArgumentParser) -> None:
+    """Add the wetbulb CSV/shard/copy-batch flags shared by `load.py` and `load_wetbulb.py`."""
+    parser.add_argument("--wetbulb-csv", default="wetbulb.csv")
+    parser.add_argument("--wetbulb-root", default="wetbulb_data_csv")
+    parser.add_argument(
+        "--prefer-wetbulb-csv",
+        action="store_true",
+        help=(
+            "Load the explicit --wetbulb-csv input even when wetbulb parquet "
+            "shards are also present under --wetbulb-root."
+        ),
+    )
+    parser.add_argument("--load-shard-index", type=int, default=0)
+    parser.add_argument("--load-shard-count", type=int, default=1)
+    parser.add_argument("--copy-batch-size", type=int, default=COPY_BATCH_SIZE)
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -201,19 +218,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "also present under --pet-root."
         ),
     )
-    parser.add_argument("--wetbulb-csv", default="wetbulb.csv")
-    parser.add_argument("--wetbulb-root", default="wetbulb_data_csv")
-    parser.add_argument(
-        "--prefer-wetbulb-csv",
-        action="store_true",
-        help=(
-            "Load the explicit --wetbulb-csv input even when wetbulb parquet "
-            "shards are also present under --wetbulb-root."
-        ),
-    )
-    parser.add_argument("--load-shard-index", type=int, default=0)
-    parser.add_argument("--load-shard-count", type=int, default=1)
-    parser.add_argument("--copy-batch-size", type=int, default=COPY_BATCH_SIZE)
+    _add_wetbulb_load_args(parser)
     parser.add_argument(
         "--load-workers",
         type=int,

@@ -74,14 +74,16 @@ import requests
 from dotenv import load_dotenv
 from tqdm.auto import tqdm
 
-import nldas
 from lcd import (
     _HYPSOMETRIC_SCALE_M_PER_K,
     _ICAO_EXPONENT,
     _ICAO_LAPSE_K_PER_M,
     _ICAO_SEA_LEVEL_T_K,
     _KELVIN_OFFSET,
-    _dewpoint_to_specific_humidity,
+    _add_common_shard_args,
+    _load_pending_shard,
+    _station_to_hourly,
+    _write_daily_shard,
 )
 from partition_io import pending_years, write_pending_year_batches
 from shards import resolve_filesystem
@@ -359,35 +361,6 @@ def _fetch_station_series(
     return pd.concat(year_frames, ignore_index=True), gapped_years
 
 
-def _station_to_hourly(location_id: int, station_df: DataFrame) -> DataFrame:
-    """Convert one station's fetched frame to `location_id,time,Tair,Qair,PSurf`.
-
-    Column names/units (Tair in K, Qair in kg/kg, PSurf in Pa) match
-    `nldas.NLDAS_VARIABLES` so the result can feed
-    `nldas._compute_daily_wetbulb` directly.
-    """
-    empty = pd.DataFrame(columns=["location_id", "time", "Tair", "Qair", "PSurf"])
-    if station_df.empty:
-        return empty
-    station_df = station_df.dropna(subset=["pressure_hpa"])
-    if station_df.empty:
-        return empty
-
-    qair = _dewpoint_to_specific_humidity(
-        station_df["dewpoint_c"],
-        station_df["pressure_hpa"],
-    )
-    return pd.DataFrame(
-        {
-            "location_id": location_id,
-            "time": station_df["time"],
-            "Tair": station_df["tair_c"].to_numpy(dtype="float64") + _KELVIN_OFFSET,
-            "Qair": qair.to_numpy(dtype="float64"),
-            "PSurf": station_df["pressure_hpa"].to_numpy(dtype="float64") * 100.0,
-        },
-    )
-
-
 def _load_station_map() -> DataFrame:
     """Load the city -> ISD candidate-id crosswalk, if available.
 
@@ -455,36 +428,20 @@ def process_isd(
     force: bool = False,
 ) -> None:
     """Fetch NOAA ISD station data, compute daily wet-bulb, and save as parquet shards."""
-    wetbulb_root = f"{out_dir}/wetbulb_data_csv"
-
-    shard_df = nldas._load_nldas_city_shard(city_shard_index, city_shard_count)  # noqa: SLF001
-    if shard_df.empty:
-        LOGGER.info(
-            "No cities found for shard %s/%s.",
-            city_shard_index,
-            city_shard_count,
-        )
-        return
-
-    filesystem, base_path = resolve_filesystem(wetbulb_root)
-    pending_year_list = pending_years(
-        range(start_year, end_year + 1),
-        wetbulb_root,
+    loaded = _load_pending_shard(
         city_shard_index,
-        filesystem,
-        base_path,
-        file_prefix="wetbulb",
+        city_shard_count,
+        start_year,
+        end_year,
+        out_dir,
         force=force,
+        logger=LOGGER,
+        resolve_fs=resolve_filesystem,
+        compute_pending_years=pending_years,
     )
-    if not pending_year_list:
-        LOGGER.info(
-            "city_shard=%d/%d: years %d-%d already present.",
-            city_shard_index,
-            city_shard_count,
-            start_year,
-            end_year,
-        )
+    if loaded is None:
         return
+    shard_df, pending_year_list, filesystem, base_path, wetbulb_root = loaded
 
     station_map = _load_station_map()
     shard_df = shard_df.merge(station_map, on="location_id", how="left")
@@ -538,50 +495,23 @@ def process_isd(
             for location_id in station_to_locations[station_key]
         )
 
-    hourly_df = (
-        pd.concat(hourly_frames, ignore_index=True)
-        if hourly_frames
-        else pd.DataFrame(columns=["location_id", "time", "Tair", "Qair", "PSurf"])
-    )
-    if hourly_df.empty:
-        return
-    daily_df = nldas._compute_daily_wetbulb(hourly_df)  # noqa: SLF001
-    if daily_df.empty:
-        return
-
-    writable_years = [year for year in pending_year_list if year not in gapped_years]
-    if gapped_years:
-        LOGGER.warning(
-            "city_shard=%d/%d: %d year(s) had a transient fetch failure "
-            "somewhere in the shard (%s); skipping the parquet write for "
-            "those so a future run (e.g. with --resume-local) retries just "
-            "them. Other pending year(s) are still written.",
-            city_shard_index,
-            city_shard_count,
-            len(gapped_years),
-            sorted(gapped_years),
-        )
-    if not writable_years:
-        return
-
-    write_pending_year_batches(
-        daily_df,
-        writable_years,
-        wetbulb_root,
+    _write_daily_shard(
+        hourly_frames,
         city_shard_index,
+        city_shard_count,
+        pending_year_list,
+        gapped_years,
+        wetbulb_root,
         filesystem,
         base_path,
-        file_prefix="wetbulb",
+        logger=LOGGER,
+        write_batches=write_pending_year_batches,
     )
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--start-year", type=int, default=nldas.NLDAS_START_YEAR)
-    parser.add_argument("--end-year", type=int, default=nldas.NLDAS_END_YEAR)
-    parser.add_argument("--out-dir", type=str, default=".")
-    parser.add_argument("--city-shard-index", type=int, default=0)
-    parser.add_argument("--city-shard-count", type=int, default=1)
+    _add_common_shard_args(parser)
     parser.add_argument("--concurrency", type=int, default=ISD_DEFAULT_CONCURRENCY)
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()

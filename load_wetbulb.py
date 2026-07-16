@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any
 import psycopg
 
 from load import (
-    COPY_BATCH_SIZE,
     DEFAULT_LOAD_WORKERS,
+    _add_wetbulb_load_args,
     _discover_wetbulb_csv_paths,
     _load_table_files,
     _validate_load_shard_args,
@@ -31,19 +31,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Views and other tables are left untouched."
         ),
     )
-    parser.add_argument("--wetbulb-csv", default="wetbulb.csv")
-    parser.add_argument("--wetbulb-root", default="wetbulb_data_csv")
-    parser.add_argument(
-        "--prefer-wetbulb-csv",
-        action="store_true",
-        help=(
-            "Load the explicit --wetbulb-csv input even when wetbulb parquet "
-            "shards are also present under --wetbulb-root."
-        ),
-    )
-    parser.add_argument("--load-shard-index", type=int, default=0)
-    parser.add_argument("--load-shard-count", type=int, default=1)
-    parser.add_argument("--copy-batch-size", type=int, default=COPY_BATCH_SIZE)
+    _add_wetbulb_load_args(parser)
     parser.add_argument(
         "--load-workers",
         type=int,

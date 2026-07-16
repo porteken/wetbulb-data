@@ -47,7 +47,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import requests
 from dotenv import load_dotenv
@@ -57,6 +57,9 @@ import nldas
 import wetbulb
 from partition_io import pending_years, write_pending_year_batches
 from shards import resolve_filesystem
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 pd = cast("Any", importlib.import_module("pandas"))
 np = cast("Any", importlib.import_module("numpy"))
@@ -368,6 +371,127 @@ def _fetch_stations_batch(
     return results
 
 
+def _load_pending_shard(
+    city_shard_index: int,
+    city_shard_count: int,
+    start_year: int,
+    end_year: int,
+    out_dir: str,
+    *,
+    force: bool,
+    logger: logging.Logger,
+    resolve_fs: Callable[[str], tuple[Any, str]],
+    compute_pending_years: Callable[..., list[int]],
+) -> tuple[DataFrame, list[int], Any, str, str] | None:
+    """Load this shard's cities and pending years; `None` if there's nothing to fetch.
+
+    Shared by `process_lcd` and `process_isd` (via `isd.py`'s import of this
+    function). The dependency callbacks are threaded through explicitly --
+    rather than called directly off this module -- so that tests monkeypatching
+    `isd.pending_years`/`isd.resolve_filesystem` (as opposed to `lcd`'s copies)
+    still take effect for ISD runs.
+    """
+    wetbulb_root = f"{out_dir}/wetbulb_data_csv"
+
+    shard_df = nldas._load_nldas_city_shard(city_shard_index, city_shard_count)  # noqa: SLF001
+    if shard_df.empty:
+        logger.info(
+            "No cities found for shard %s/%s.",
+            city_shard_index,
+            city_shard_count,
+        )
+        return None
+
+    filesystem, base_path = resolve_fs(wetbulb_root)
+    pending_year_list = compute_pending_years(
+        range(start_year, end_year + 1),
+        wetbulb_root,
+        city_shard_index,
+        filesystem,
+        base_path,
+        file_prefix="wetbulb",
+        force=force,
+    )
+    if not pending_year_list:
+        logger.info(
+            "city_shard=%d/%d: years %d-%d already present.",
+            city_shard_index,
+            city_shard_count,
+            start_year,
+            end_year,
+        )
+        return None
+    return shard_df, pending_year_list, filesystem, base_path, wetbulb_root
+
+
+def _write_daily_shard(
+    hourly_frames: list[DataFrame],
+    city_shard_index: int,
+    city_shard_count: int,
+    pending_year_list: list[int],
+    gapped_years: set[int],
+    wetbulb_root: str,
+    filesystem: object,
+    base_path: str,
+    *,
+    logger: logging.Logger,
+    write_batches: Callable[..., None],
+) -> None:
+    """Aggregate hourly rows to daily wet-bulb and write pending years.
+
+    Shared by `process_lcd` and `process_isd`; see `_load_pending_shard` for
+    why `write_batches` is threaded through rather than called directly.
+    """
+    hourly_df = (
+        pd.concat(hourly_frames, ignore_index=True)
+        if hourly_frames
+        else pd.DataFrame(columns=["location_id", "time", "Tair", "Qair", "PSurf"])
+    )
+    if hourly_df.empty:
+        return
+    daily_df = nldas._compute_daily_wetbulb(hourly_df)  # noqa: SLF001
+    if daily_df.empty:
+        return
+
+    writable_years = [year for year in pending_year_list if year not in gapped_years]
+    if gapped_years:
+        logger.warning(
+            "city_shard=%d/%d: %d year(s) had a transient fetch failure "
+            "somewhere in the shard (%s); skipping the parquet write for "
+            "those so a future run (e.g. with --resume-local) retries just "
+            "them. Other pending year(s) are still written.",
+            city_shard_index,
+            city_shard_count,
+            len(gapped_years),
+            sorted(gapped_years),
+        )
+    if not writable_years:
+        return
+
+    write_batches(
+        daily_df,
+        writable_years,
+        wetbulb_root,
+        city_shard_index,
+        filesystem,
+        base_path,
+        file_prefix="wetbulb",
+    )
+
+
+def _add_common_shard_args(parser: argparse.ArgumentParser) -> None:
+    """Add the `--start-year`/`--end-year`/`--out-dir`/`--city-shard-*` flags.
+
+    Shared by `lcd.py` and `isd.py`'s `_parse_args`; each caller adds its own
+    `--concurrency` default and any source-specific flags afterward.
+    """
+    parser.add_argument("--start-year", type=int, default=nldas.NLDAS_START_YEAR)
+    parser.add_argument("--end-year", type=int, default=nldas.NLDAS_END_YEAR)
+    parser.add_argument("--out-dir", type=str, default=".")
+    parser.add_argument("--city-shard-index", type=int, default=0)
+    parser.add_argument("--city-shard-count", type=int, default=1)
+
+
 def process_lcd(
     start_year: int,
     end_year: int,
@@ -379,36 +503,20 @@ def process_lcd(
     force: bool = False,
 ) -> None:
     """Fetch NOAA LCD station data, compute daily wet-bulb, and save as parquet shards."""
-    wetbulb_root = f"{out_dir}/wetbulb_data_csv"
-
-    shard_df = nldas._load_nldas_city_shard(city_shard_index, city_shard_count)  # noqa: SLF001
-    if shard_df.empty:
-        LOGGER.info(
-            "No cities found for shard %s/%s.",
-            city_shard_index,
-            city_shard_count,
-        )
-        return
-
-    filesystem, base_path = resolve_filesystem(wetbulb_root)
-    pending_year_list = pending_years(
-        range(start_year, end_year + 1),
-        wetbulb_root,
+    loaded = _load_pending_shard(
         city_shard_index,
-        filesystem,
-        base_path,
-        file_prefix="wetbulb",
+        city_shard_count,
+        start_year,
+        end_year,
+        out_dir,
         force=force,
+        logger=LOGGER,
+        resolve_fs=resolve_filesystem,
+        compute_pending_years=pending_years,
     )
-    if not pending_year_list:
-        LOGGER.info(
-            "city_shard=%d/%d: years %d-%d already present.",
-            city_shard_index,
-            city_shard_count,
-            start_year,
-            end_year,
-        )
+    if loaded is None:
         return
+    shard_df, pending_year_list, filesystem, base_path, wetbulb_root = loaded
 
     station_map = _load_station_map()
     shard_df = shard_df.merge(station_map, on="location_id", how="left")
@@ -459,50 +567,23 @@ def process_lcd(
             for location_id in station_to_locations[station_id]
         )
 
-    hourly_df = (
-        pd.concat(hourly_frames, ignore_index=True)
-        if hourly_frames
-        else pd.DataFrame(columns=["location_id", "time", "Tair", "Qair", "PSurf"])
-    )
-    if hourly_df.empty:
-        return
-    daily_df = nldas._compute_daily_wetbulb(hourly_df)  # noqa: SLF001
-    if daily_df.empty:
-        return
-
-    writable_years = [year for year in pending_year_list if year not in gapped_years]
-    if gapped_years:
-        LOGGER.warning(
-            "city_shard=%d/%d: %d year(s) had a transient fetch failure "
-            "somewhere in the shard (%s); skipping the parquet write for "
-            "those so a future run (e.g. with --resume-local) retries just "
-            "them. Other pending year(s) are still written.",
-            city_shard_index,
-            city_shard_count,
-            len(gapped_years),
-            sorted(gapped_years),
-        )
-    if not writable_years:
-        return
-
-    write_pending_year_batches(
-        daily_df,
-        writable_years,
-        wetbulb_root,
+    _write_daily_shard(
+        hourly_frames,
         city_shard_index,
+        city_shard_count,
+        pending_year_list,
+        gapped_years,
+        wetbulb_root,
         filesystem,
         base_path,
-        file_prefix="wetbulb",
+        logger=LOGGER,
+        write_batches=write_pending_year_batches,
     )
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--start-year", type=int, default=nldas.NLDAS_START_YEAR)
-    parser.add_argument("--end-year", type=int, default=nldas.NLDAS_END_YEAR)
-    parser.add_argument("--out-dir", type=str, default=".")
-    parser.add_argument("--city-shard-index", type=int, default=0)
-    parser.add_argument("--city-shard-count", type=int, default=1)
+    _add_common_shard_args(parser)
     parser.add_argument("--concurrency", type=int, default=LCD_DEFAULT_CONCURRENCY)
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()

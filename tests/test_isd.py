@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 import isd
+import lcd
 
 _HEADER = (
     '"STATION","DATE","SOURCE","LATITUDE","LONGITUDE","ELEVATION","NAME",'
@@ -412,7 +413,7 @@ class TestProcessIsd:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         monkeypatch.setattr(
-            isd.nldas,
+            lcd.nldas,
             "_load_nldas_city_shard",
             lambda *_a: pd.DataFrame(columns=pd.Index(["location_id", "lat", "lng"])),
         )
@@ -432,7 +433,7 @@ class TestProcessIsd:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         monkeypatch.setattr(
-            isd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            lcd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(isd, "pending_years", lambda *_a, **_k: [])
         called: list[int] = []
@@ -451,7 +452,7 @@ class TestProcessIsd:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         monkeypatch.setattr(
-            isd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            lcd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(isd, "_load_station_map", self._empty_station_map)
         called: list[int] = []
@@ -471,7 +472,7 @@ class TestProcessIsd:
     ) -> None:
         """A gap in one year only blocks that year's write, not the whole shard."""
         monkeypatch.setattr(
-            isd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            lcd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(isd, "_load_station_map", self._station_map_one_station)
 
@@ -489,7 +490,7 @@ class TestProcessIsd:
             lambda *_a, **_k: {"AAA": (station_df, {2021})},
         )
         monkeypatch.setattr(
-            isd.nldas,
+            lcd.nldas,
             "_compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 {
@@ -536,7 +537,7 @@ class TestProcessIsd:
                 "lng": [-74.0, -74.1],
             }
         )
-        monkeypatch.setattr(isd.nldas, "_load_nldas_city_shard", lambda *_a: shard_df)
+        monkeypatch.setattr(lcd.nldas, "_load_nldas_city_shard", lambda *_a: shard_df)
         monkeypatch.setattr(
             isd,
             "_load_station_map",
@@ -585,7 +586,7 @@ class TestProcessIsd:
                 }
             )
 
-        monkeypatch.setattr(isd.nldas, "_compute_daily_wetbulb", fake_daily)
+        monkeypatch.setattr(lcd.nldas, "_compute_daily_wetbulb", fake_daily)
 
         isd.process_isd(2020, 2020, str(tmp_path), 0, 1, 4)
 
@@ -596,7 +597,7 @@ class TestProcessIsd:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
     ) -> None:
         monkeypatch.setattr(
-            isd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            lcd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(isd, "_load_station_map", self._station_map_one_station)
         station_df = pd.DataFrame(
@@ -611,7 +612,7 @@ class TestProcessIsd:
             isd, "_fetch_stations_batch", lambda *_a, **_k: {"AAA": (station_df, set())}
         )
         monkeypatch.setattr(
-            isd.nldas,
+            lcd.nldas,
             "_compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 {
@@ -635,7 +636,7 @@ class TestProcessIsd:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
     ) -> None:
         monkeypatch.setattr(
-            isd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            lcd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(isd, "_load_station_map", self._station_map_one_station)
         station_df = pd.DataFrame(
@@ -650,7 +651,7 @@ class TestProcessIsd:
             isd, "_fetch_stations_batch", lambda *_a, **_k: {"AAA": (station_df, set())}
         )
         monkeypatch.setattr(
-            isd.nldas,
+            lcd.nldas,
             "_compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 columns=pd.Index(["location_id", "date", "wetbulb", "wetbulb_avg"])
@@ -670,8 +671,8 @@ class TestParseArgs:
     def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(isd.sys, "argv", ["isd.py"])
         args = isd._parse_args()
-        assert args.start_year == isd.nldas.NLDAS_START_YEAR
-        assert args.end_year == isd.nldas.NLDAS_END_YEAR
+        assert args.start_year == lcd.nldas.NLDAS_START_YEAR
+        assert args.end_year == lcd.nldas.NLDAS_END_YEAR
         assert args.out_dir == "."
         assert args.city_shard_index == 0
         assert args.city_shard_count == 1

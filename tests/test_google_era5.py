@@ -15,7 +15,6 @@ import pytest
 
 import google_era5
 from google_era5 import (
-    DEFAULT_BATCH_HOURS,
     ERA5_TIME_ORIGIN,
     _approximate_dsrp,
     _BatchWriteTargets,
@@ -36,6 +35,7 @@ from google_era5 import (
     _year_time_slice,
 )
 from partition_io import PartitionTarget as _PartitionTarget
+from shared_config import DEFAULT_BATCH_HOURS
 
 
 class TestArcoStableEndYear:
