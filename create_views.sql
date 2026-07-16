@@ -932,8 +932,11 @@ y.year::smallint AS year,
 y.season,
 y.wetbulb::real AS wetbulb
 FROM yearly_wetbulb AS y
+-- Require >= 95% day coverage so scattered missing days do not disqualify a
+-- year (a strict equality check left ~40% of locations with no Annual
+-- forecast because the model needs at least 10 qualifying years).
 -- noqa: disable=LT01
-WHERE y.days_present = CASE
+WHERE y.days_present >= 0.95 * CASE
 WHEN y.season = public.pet_annual_season () THEN CASE
 WHEN
 MOD (y.year, 4) =
@@ -1023,8 +1026,9 @@ y.year::smallint AS year,
 y.season,
 y.wetbulb::real AS wetbulb
 FROM yearly_wetbulb AS y
+-- Same >= 95% coverage rule as wetbulb_forecast above.
 -- noqa: disable=LT01
-WHERE y.days_present = CASE
+WHERE y.days_present >= 0.95 * CASE
 WHEN y.season = public.pet_annual_season () THEN CASE
 WHEN
 MOD (y.year, 4) =
@@ -1165,6 +1169,8 @@ l.city,
 l.state,
 s.p10::real,
 s.p90::real,
+s.p10_avg::real,
+s.p90_avg::real,
 f.lower::real AS future_lower,
 f.upper::real AS future_upper,
 ROUND ((s.avg_wetbulb - y2k.wetbulb)::numeric, 2)::real AS change_from_2000,
