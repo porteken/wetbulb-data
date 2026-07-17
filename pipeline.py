@@ -145,6 +145,7 @@ class PipelineConfig:
     isd_concurrency: int
     isd_job_limit: int
     resume_local: bool
+    gap_fill: bool
 
     @property
     def do_pet(self) -> bool:
@@ -423,6 +424,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "shard index)."
         ),
     )
+    parser.add_argument(
+        "--gap-fill",
+        action="store_true",
+        default=_env_flag("GAP_FILL"),
+        help=(
+            "After a --wetbulb-source isd run, fill (location_id, date) "
+            "cells the ISD station pipeline couldn't produce (thin "
+            "station-years dropped by the daily coverage gate) using "
+            "NLDAS-2 via the Giovanni API -- see gapfill.py. Gap-filled "
+            "rows are written separately and stamped with source='nldas'; "
+            "they never overwrite a real ISD observation. Ignored for any "
+            "other --wetbulb-source."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -570,6 +585,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         isd_concurrency=max(1, args.isd_concurrency),
         isd_job_limit=max(1, args.isd_job_limit),
         resume_local=args.resume_local,
+        gap_fill=args.gap_fill,
     )
 
 
@@ -1047,6 +1063,55 @@ def _run_isd_pull(cfg: PipelineConfig) -> None:
     )
 
 
+def _local_gapfill_jobs(cfg: PipelineConfig) -> list[list[str]]:
+    """Build one gapfill.py invocation per city shard.
+
+    Reuses the Giovanni sharding/concurrency knobs (`cfg.giovanni_*`): the
+    gap-filler hits the same Giovanni Time Series API with the same
+    rate-limit profile as the primary `--wetbulb-source giovanni` path, so
+    no separate set of knobs is needed.
+    """
+    out_dir = cfg.remote_out_dir if cfg.use_cloud_run else "."
+    start_year = min(cfg.years)
+    end_year = max(cfg.years)
+    jobs: list[list[str]] = []
+    for city_shard in range(cfg.giovanni_city_shard_count):
+        script_args = [
+            "--start-year",
+            str(start_year),
+            "--end-year",
+            str(end_year),
+            "--city-shard-index",
+            str(city_shard),
+            "--city-shard-count",
+            str(cfg.giovanni_city_shard_count),
+            "--concurrency",
+            str(cfg.giovanni_concurrency),
+            "--out-dir",
+            out_dir,
+        ]
+        jobs.append(_python_command("gapfill.py", *script_args))
+    return jobs
+
+
+def _run_gapfill_pull(cfg: PipelineConfig) -> None:
+    """Fill (location_id, date) gaps the ISD pull couldn't produce, via NLDAS-2.
+
+    Runs after `_run_isd_pull` has written its own batches for these years,
+    so gap detection sees ISD's freshest output; see gapfill.py for how
+    holes are found and why gap-filled rows can never overwrite an ISD row.
+    Never clears the remote prefix (unlike `_run_isd_pull`/`_run_giovanni_pull`)
+    -- that would delete the ISD output this step depends on.
+    """
+    _run_local_jobs(
+        _local_gapfill_jobs(cfg),
+        cfg,
+        desc="NLDAS gap-fill jobs",
+        product_label="NLDAS gap-fill",
+        max_workers=cfg.giovanni_job_limit,
+    )
+
+
 def run_nldas_pull(cfg: PipelineConfig) -> None:
     """Compute wetbulb parquet via NOAA ISD, LCD, Giovanni, or NLDAS-2 granule downloads."""
     LOGGER.info(
@@ -1065,8 +1130,18 @@ def run_nldas_pull(cfg: PipelineConfig) -> None:
     else:
         _clear_local_year_outputs(cfg, ["wetbulb"])
 
+    if cfg.gap_fill and cfg.wetbulb_source != "isd":
+        LOGGER.warning(
+            "--gap-fill only applies to --wetbulb-source isd (the NLDAS "
+            "gap-filler fills holes left by the ISD station pipeline); "
+            "ignoring it for --wetbulb-source %s.",
+            cfg.wetbulb_source,
+        )
+
     if cfg.wetbulb_source == "isd":
         _run_isd_pull(cfg)
+        if cfg.gap_fill:
+            _run_gapfill_pull(cfg)
         return
 
     if cfg.wetbulb_source == "lcd":
@@ -1106,7 +1181,18 @@ def sync_outputs_from_s3(cfg: PipelineConfig) -> None:
 
 
 def _discover_product_paths(product: str) -> list[Path]:
-    return sorted(Path(f"{product}_data_csv").rglob(f"{product}_batch_*.parquet"))
+    """Return every batch parquet file for `product`, including gap-fill output.
+
+    `gapfill.py` writes wetbulb rows under a `{product}_fill_batch_*` name
+    (see `gapfill.GAPFILL_FILE_PREFIX`) so its resume tracking stays
+    independent from the primary source's; both patterns must load. No
+    other product currently has a fill variant, so this glob is simply a
+    no-op for them.
+    """
+    root = Path(f"{product}_data_csv")
+    primary = sorted(root.rglob(f"{product}_batch_*.parquet"))
+    fill = sorted(root.rglob(f"{product}_fill_batch_*.parquet"))
+    return primary + fill
 
 
 def assert_outputs_available(cfg: PipelineConfig) -> None:

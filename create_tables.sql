@@ -146,6 +146,25 @@ wetbulb real NOT NULL
 -- the ERA5/Stull daily max and have no daily average value.
 ALTER TABLE public.wetbulb ADD COLUMN IF NOT EXISTS wetbulb_avg real ;
 
+-- source records which pipeline produced each daily row: 'isd' (primary
+-- NOAA ISD station data) or 'nldas' (NLDAS-2 gap-filler via Giovanni, used
+-- only for location/date cells the ISD station pipeline could not produce).
+-- Rows loaded before this column existed all came from the primary path.
+ALTER TABLE public.wetbulb ADD COLUMN IF NOT EXISTS source text
+NOT NULL DEFAULT 'isd' ;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conname = 'wetbulb_source_check'
+        AND conrelid = 'public.wetbulb'::regclass
+    ) THEN
+        ALTER TABLE public.wetbulb
+        ADD CONSTRAINT wetbulb_source_check CHECK (source IN ('isd', 'nldas')) ;
+    END IF ;
+END $$ ;
+
 -- One-time migrations: the covering indexes become UNIQUE so loads can upsert
 -- with ON CONFLICT (location_id, date). Dedupe first (keep the most recently
 -- inserted row). The timeout is lifted with separate top-level statements

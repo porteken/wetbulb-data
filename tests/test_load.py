@@ -301,6 +301,46 @@ class TestDiscoverWetbulbCsvPaths:
 
         assert _discover_wetbulb_csv_paths(args) == [batch_path]
 
+    def test_includes_gap_fill_batches(self, tmp_path: Path) -> None:
+        wetbulb_root = tmp_path / "wetbulb_data_csv"
+        shard_dir = wetbulb_root / "year=2024"
+        shard_dir.mkdir(parents=True)
+        batch_path = shard_dir / "wetbulb_batch_0000_00.parquet"
+        batch_path.touch()
+        fill_path = shard_dir / "wetbulb_fill_batch_0000_00.parquet"
+        fill_path.touch()
+
+        args = argparse.Namespace(
+            wetbulb_root=str(wetbulb_root),
+            wetbulb_csv=str(tmp_path / "missing_wetbulb.csv"),
+            load_shard_index=0,
+            load_shard_count=1,
+            prefer_wetbulb_csv=False,
+        )
+
+        assert _discover_wetbulb_csv_paths(args) == [batch_path, fill_path]
+
+    def test_direct_csv_short_circuit_skips_gap_fill_batches(
+        self, tmp_path: Path
+    ) -> None:
+        wetbulb_root = tmp_path / "wetbulb_data_csv"
+        shard_dir = wetbulb_root / "year=2024"
+        shard_dir.mkdir(parents=True)
+        (shard_dir / "wetbulb_fill_batch_0000_00.parquet").touch()
+
+        wetbulb_csv = tmp_path / "wetbulb_full.csv"
+        wetbulb_csv.write_text("location_id,date,wetbulb\n1,2024-05-01,18.0\n")
+
+        args = argparse.Namespace(
+            wetbulb_root=str(wetbulb_root),
+            wetbulb_csv=str(wetbulb_csv),
+            load_shard_index=0,
+            load_shard_count=1,
+            prefer_wetbulb_csv=True,
+        )
+
+        assert _discover_wetbulb_csv_paths(args) == [wetbulb_csv]
+
 
 class TestIterSqlStatements:
     def test_keeps_dollar_quoted_function_body_intact(self) -> None:
@@ -660,6 +700,50 @@ class TestBulkInsertStaging:
         assert conn.statements == []
         assert "No data inputs" in caplog.text
 
+    def test_mixed_schema_wetbulb_files_union_columns_for_staging(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import pandas as pd
+
+        monkeypatch.chdir(tmp_path)
+        legacy_path = tmp_path / "wetbulb_batch_0000_00.parquet"
+        pd.DataFrame(
+            {
+                "location_id": [1],
+                "date": ["2024-01-01"],
+                "wetbulb": [20.0],
+                "wetbulb_avg": [18.0],
+            }
+        ).to_parquet(legacy_path, index=False)
+        fill_path = tmp_path / "wetbulb_fill_batch_0000_00.parquet"
+        pd.DataFrame(
+            {
+                "location_id": [1],
+                "date": ["2024-01-02"],
+                "wetbulb": [21.0],
+                "wetbulb_avg": [19.0],
+                "source": ["nldas"],
+            }
+        ).to_parquet(fill_path, index=False)
+        conn = CopyRecordingConnection(rowcount=2)
+
+        load.bulk_insert_csv_files(
+            cast("Any", conn),
+            [legacy_path, fill_path],
+            "wetbulb",
+            batch_size=1000,
+            truncate=False,
+        )
+
+        create = next(s for s in conn.statements if s.startswith("CREATE TEMP TABLE"))
+        assert '"source"' in create
+        upsert = next(s for s in conn.statements if s.startswith("INSERT INTO"))
+        assert "COALESCE(\"source\", 'isd')" in upsert
+        copies = [s for s in conn.statements if s.startswith("COPY")]
+        assert len(copies) == 2
+        assert '"source"' not in copies[0]
+        assert '"source"' in copies[1]
+
 
 class TestUpsertFromStaging:
     def test_plain_insert_without_key_columns(self) -> None:
@@ -684,6 +768,56 @@ class TestUpsertFromStaging:
         )
 
         assert "DO NOTHING" in conn.statements[0]
+
+    def test_pet_has_no_source_precedence_guard(self) -> None:
+        conn = CopyRecordingConnection(rowcount=1)
+
+        load._upsert_from_staging(
+            cast("Any", conn),
+            "pet",
+            "pet_load_staging",
+            ["location_id", "date", "pet"],
+            ("location_id", "date"),
+        )
+
+        assert "COALESCE" not in conn.statements[0]
+        assert "WHERE NOT" not in conn.statements[0]
+
+    def test_wetbulb_with_source_column_ranks_isd_over_nldas(self) -> None:
+        conn = CopyRecordingConnection(rowcount=1)
+
+        load._upsert_from_staging(
+            cast("Any", conn),
+            "wetbulb",
+            "wetbulb_load_staging",
+            ["location_id", "date", "wetbulb", "wetbulb_avg", "source"],
+            ("location_id", "date"),
+        )
+
+        statement = conn.statements[0]
+        assert 'COALESCE("source", \'isd\') AS "source"' in statement
+        assert (
+            'ORDER BY "location_id", "date", COALESCE("source", \'isd\')' in statement
+        )
+        assert (
+            'WHERE NOT ("wetbulb"."source" = \'isd\' '
+            "AND EXCLUDED.\"source\" = 'nldas')" in statement
+        )
+
+    def test_wetbulb_without_source_column_skips_precedence_guard(self) -> None:
+        conn = CopyRecordingConnection(rowcount=1)
+
+        load._upsert_from_staging(
+            cast("Any", conn),
+            "wetbulb",
+            "wetbulb_load_staging",
+            ["location_id", "date", "wetbulb", "wetbulb_avg"],
+            ("location_id", "date"),
+        )
+
+        statement = conn.statements[0]
+        assert "COALESCE" not in statement
+        assert "WHERE NOT" not in statement
 
 
 class TestLoadTableFiles:

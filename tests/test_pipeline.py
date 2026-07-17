@@ -38,6 +38,7 @@ def _clean_pipeline_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "LOAD_WORKERS",
         "NLDAS_PARALLEL_YEARS",
         "RESUME_LOCAL",
+        "GAP_FILL",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -115,6 +116,21 @@ class TestBuildConfig:
 
         assert cfg.remote_out_dir == "s3://pet-parquet-files/run/x"
         assert cfg.remote_product_prefix("pet") == "run/x/pet_data_csv"
+
+    def test_gap_fill_defaults_false(self) -> None:
+        cfg = _config(["--years", "2024"])
+
+        assert cfg.gap_fill is False
+
+    def test_gap_fill_cli_flag(self) -> None:
+        cfg = _config(["--years", "2024", "--gap-fill"])
+
+        assert cfg.gap_fill is True
+
+    def test_gap_fill_env_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GAP_FILL", "1")
+
+        assert _config(["--years", "2024"]).gap_fill is True
 
 
 class TestWorkerArgs:
@@ -291,6 +307,34 @@ class TestOutputsAvailable:
             (shard_dir / f"{product}_batch_0000_00.parquet").touch()
 
         pipeline.assert_outputs_available(_config(["--years", "2024"]))
+
+
+class TestDiscoverProductPaths:
+    def test_includes_gap_fill_batches(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        shard_dir = Path("wetbulb_data_csv/year=2024")
+        shard_dir.mkdir(parents=True)
+        primary = shard_dir / "wetbulb_batch_0000_00.parquet"
+        primary.touch()
+        fill = shard_dir / "wetbulb_fill_batch_0000_00.parquet"
+        fill.touch()
+
+        paths = pipeline._discover_product_paths("wetbulb")
+
+        assert set(paths) == {primary, fill}
+
+    def test_no_fill_variant_for_pet(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        shard_dir = Path("pet_data_csv/year=2024")
+        shard_dir.mkdir(parents=True)
+        primary = shard_dir / "pet_batch_0000_00.parquet"
+        primary.touch()
+
+        assert pipeline._discover_product_paths("pet") == [primary]
 
 
 class TestEra5Pull:
@@ -760,6 +804,70 @@ class TestNldasPull:
         pipeline.run_nldas_pull(cfg)
 
         assert marker.exists()
+
+    def test_gap_fill_runs_after_isd_pull(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        commands: list[list[str]] = []
+        monkeypatch.setattr(
+            pipeline,
+            "_run_command",
+            lambda command, **_kwargs: commands.append(command),
+        )
+
+        cfg = _config(
+            [
+                "--local",
+                "--years",
+                "2024",
+                "--gap-fill",
+                "--isd-city-shard-count",
+                "1",
+                "--giovanni-city-shard-count",
+                "1",
+            ],
+        )
+        assert cfg.wetbulb_source == "isd"
+        pipeline.run_nldas_pull(cfg)
+
+        scripts = [command[1] for command in commands]
+        assert "isd.py" in scripts
+        assert "gapfill.py" in scripts
+        assert scripts.index("isd.py") < scripts.index("gapfill.py")
+
+    def test_gap_fill_ignored_for_non_isd_source(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        commands: list[list[str]] = []
+        monkeypatch.setattr(
+            pipeline,
+            "_run_command",
+            lambda command, **_kwargs: commands.append(command),
+        )
+
+        cfg = _config(
+            [
+                "--local",
+                "--years",
+                "2024",
+                "--wetbulb-source",
+                "lcd",
+                "--gap-fill",
+                "--lcd-city-shard-count",
+                "1",
+            ],
+        )
+        with caplog.at_level(logging.WARNING):
+            pipeline.run_nldas_pull(cfg)
+
+        scripts = [command[1] for command in commands]
+        assert "gapfill.py" not in scripts
+        assert "--gap-fill only applies" in caplog.text
 
     def test_resume_local_keeps_existing_lcd_output(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

@@ -40,6 +40,13 @@ TABLE_UNIQUE_KEYS: dict[str, tuple[str, ...]] = {
     "pet": ("location_id", "date"),
     "wetbulb": ("location_id", "date"),
 }
+# Tables carrying a provenance column, and its name. When present, the
+# upsert in `_upsert_from_staging` ranks `SOURCE_RANK_PRIMARY` above
+# `SOURCE_RANK_FILL` so gap-filled rows can never overwrite a real
+# observation, in-batch or against what's already in the table.
+TABLE_SOURCE_COLUMNS: dict[str, str] = {"wetbulb": "source"}
+SOURCE_RANK_PRIMARY = "isd"
+SOURCE_RANK_FILL = "nldas"
 
 
 def _consume_line_comment(sql_text: str, index: int) -> int:
@@ -407,6 +414,22 @@ def _select_partition_shard_paths(
     ]
 
 
+def _union_copy_column_names(table_name: str, file_paths: list[Path]) -> list[str]:
+    """Return the first-seen-ordered union of columns across `file_paths`.
+
+    A wetbulb load can mix legacy 4-column ISD files (no `source` column)
+    with newer 5-column ISD/gap-fill files; the staging table must include
+    every column any file might supply so each file's own COPY (which uses
+    only that file's own columns, see `_copy_parquet_file_in_batches`)
+    succeeds against it.
+    """
+    seen: dict[str, None] = {}
+    for file_path in file_paths:
+        for column_name in _file_copy_column_names(table_name, file_path):
+            seen.setdefault(column_name, None)
+    return list(seen)
+
+
 def _file_copy_column_names(table_name: str, file_path: Path) -> list[str]:
     """Return the destination column names for a parquet or CSV input file."""
     if file_path.suffix == ".parquet":
@@ -525,14 +548,39 @@ def _upsert_from_staging(
     column_names: list[str],
     key_columns: tuple[str, ...],
 ) -> int:
-    """Upsert staged rows into the destination table; return affected rows."""
+    """Upsert staged rows into the destination table; return affected rows.
+
+    When `table_name` has a provenance column (`TABLE_SOURCE_COLUMNS`) and
+    it's present in `column_names`, a legacy file staged a NULL there (it
+    predates the column) and is treated as `SOURCE_RANK_PRIMARY` via
+    COALESCE; both the in-batch DISTINCT ON tiebreak and the ON CONFLICT
+    update are ranked so `SOURCE_RANK_FILL` rows can never shadow or
+    overwrite a `SOURCE_RANK_PRIMARY` row.
+    """
+    source_column = TABLE_SOURCE_COLUMNS.get(table_name)
+    has_source = source_column is not None and source_column in column_names
+
     columns_sql = sql.SQL(", ").join(sql.Identifier(col) for col in column_names)
+    if has_source:
+        select_columns_sql = sql.SQL(", ").join(
+            sql.SQL("COALESCE({col}, {default}) AS {col}").format(
+                col=sql.Identifier(col),
+                default=sql.Literal(SOURCE_RANK_PRIMARY),
+            )
+            if col == source_column
+            else sql.Identifier(col)
+            for col in column_names
+        )
+    else:
+        select_columns_sql = columns_sql
+
     if not key_columns:
         insert_statement = sql.SQL(
-            "INSERT INTO {table} ({columns}) SELECT {columns} FROM {staging}",
+            "INSERT INTO {table} ({columns}) SELECT {select_columns} FROM {staging}",
         ).format(
             table=sql.Identifier("public", table_name),
             columns=columns_sql,
+            select_columns=select_columns_sql,
             staging=sql.Identifier(staging_name),
         )
         with conn.cursor() as cur:
@@ -541,27 +589,59 @@ def _upsert_from_staging(
 
     keys_sql = sql.SQL(", ").join(sql.Identifier(col) for col in key_columns)
     update_columns = [col for col in column_names if col not in key_columns]
-    if update_columns:
+    if not update_columns:
+        conflict_action = sql.SQL("DO NOTHING")
+    elif has_source:
+        # 'isd' (real station observations) always wins over 'nldas'
+        # (gap-fill model values): an nldas row already in the batch may
+        # never overwrite an isd row already in the table, though isd may
+        # freely overwrite a previously gap-filled row (an ISD re-run over a
+        # filled cell flips that row's source back to 'isd').
+        conflict_action = sql.SQL(
+            "DO UPDATE SET {updates} WHERE NOT ({table}.{col} = {isd} "
+            "AND EXCLUDED.{col} = {nldas})",
+        ).format(
+            updates=sql.SQL(", ").join(
+                sql.SQL("{col} = EXCLUDED.{col}").format(col=sql.Identifier(col))
+                for col in update_columns
+            ),
+            table=sql.Identifier(table_name),
+            col=sql.Identifier(cast("str", source_column)),
+            isd=sql.Literal(SOURCE_RANK_PRIMARY),
+            nldas=sql.Literal(SOURCE_RANK_FILL),
+        )
+    else:
         conflict_action = sql.SQL("DO UPDATE SET {}").format(
             sql.SQL(", ").join(
                 sql.SQL("{col} = EXCLUDED.{col}").format(col=sql.Identifier(col))
                 for col in update_columns
             ),
         )
-    else:
-        conflict_action = sql.SQL("DO NOTHING")
 
     # DISTINCT ON guards against duplicate keys inside a single load batch,
     # which would otherwise abort the INSERT ("cannot affect row a second
-    # time"). Ordering by the key keeps b-tree insertion mostly sequential.
+    # time"). Ordering by the key keeps b-tree insertion mostly sequential;
+    # when a source column is present, 'isd' sorts before 'nldas'
+    # alphabetically, so an in-batch duplicate key keeps the station-
+    # observed row over a gap-filled one.
+    order_sql = keys_sql
+    if has_source:
+        order_sql = sql.SQL("{keys}, COALESCE({col}, {default})").format(
+            keys=keys_sql,
+            col=sql.Identifier(cast("str", source_column)),
+            default=sql.Literal(SOURCE_RANK_PRIMARY),
+        )
+
     upsert_statement = sql.SQL(
         "INSERT INTO {table} ({columns}) "
-        "SELECT DISTINCT ON ({keys}) {columns} FROM {staging} ORDER BY {keys} "
-        "ON CONFLICT ({keys}) {conflict_action}",
+        "SELECT DISTINCT ON ({keys}) {select_columns} FROM {staging} "
+        "ORDER BY {order} ON CONFLICT ({keys}) {conflict_action}",
     ).format(
         table=sql.Identifier("public", table_name),
         columns=columns_sql,
+        select_columns=select_columns_sql,
         keys=keys_sql,
+        order=order_sql,
         staging=sql.Identifier(staging_name),
         conflict_action=conflict_action,
     )
@@ -616,9 +696,9 @@ def bulk_insert_csv_files(
 
     key_columns = TABLE_UNIQUE_KEYS.get(table_name, ())
     validated_paths = [_validated_load_path(path) for path in csv_paths]
-    column_names = _file_copy_column_names(table_name, validated_paths[0])
+    column_names = _union_copy_column_names(table_name, validated_paths)
     if not column_names:
-        LOGGER.warning("First input for %s has no columns. Skipping.", table_name)
+        LOGGER.warning("No input for %s has any columns. Skipping.", table_name)
         return
 
     LOGGER.info(
@@ -731,13 +811,32 @@ def _discover_pet_csv_paths(args: argparse.Namespace) -> list[Path]:
 
 
 def _discover_wetbulb_csv_paths(args: argparse.Namespace) -> list[Path]:
-    return _discover_batch_parquet_paths(
+    """Return wetbulb input paths: ISD/LCD/Giovanni batches plus any NLDAS gap-fill batches.
+
+    Gap-fill output (`gapfill.py`) lands in the same `wetbulb_data_csv` tree
+    under a `wetbulb_fill_batch_*.parquet` name so its resume tracking stays
+    independent from the primary pipeline's (see `partition_io.pending_years`
+    `file_prefix`). Skipped when `--prefer-wetbulb-csv` short-circuits to a
+    single direct CSV file, which predates gap-fill and has no counterpart.
+    """
+    batch_paths = _discover_batch_parquet_paths(
         args,
         direct_csv=args.wetbulb_csv,
         root=args.wetbulb_root,
         file_glob="wetbulb_batch_*.parquet",
         prefer_direct=args.prefer_wetbulb_csv,
     )
+    if args.prefer_wetbulb_csv and Path(args.wetbulb_csv).exists():
+        return batch_paths
+
+    fill_paths = _discover_batch_parquet_paths(
+        args,
+        direct_csv=args.wetbulb_csv,
+        root=args.wetbulb_root,
+        file_glob="wetbulb_fill_batch_*.parquet",
+        prefer_direct=False,
+    )
+    return batch_paths + fill_paths
 
 
 def _load_file_group(

@@ -436,11 +436,15 @@ def _write_daily_shard(
     *,
     logger: logging.Logger,
     write_batches: Callable[..., None],
+    source: str = "isd",
 ) -> None:
     """Aggregate hourly rows to daily wet-bulb and write pending years.
 
     Shared by `process_lcd` and `process_isd`; see `_load_pending_shard` for
     why `write_batches` is threaded through rather than called directly.
+    `source` is stamped on every row as provenance ('isd' by default; the
+    NLDAS gap-filler in `gapfill.py` passes 'nldas') so downstream queries
+    can tell station observations from gap-filled model values apart.
     """
     hourly_df = (
         pd.concat(hourly_frames, ignore_index=True)
@@ -452,6 +456,7 @@ def _write_daily_shard(
     daily_df = nldas._compute_daily_wetbulb(hourly_df)  # noqa: SLF001
     if daily_df.empty:
         return
+    daily_df["source"] = source
 
     writable_years = [year for year in pending_year_list if year not in gapped_years]
     if gapped_years:

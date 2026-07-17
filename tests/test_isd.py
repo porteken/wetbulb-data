@@ -631,6 +631,8 @@ class TestProcessIsd:
         )
         isd.process_isd(2020, 2020, str(tmp_path), 0, 1, 4)
         assert len(write_calls) == 1
+        written_frame = write_calls[0][0]
+        assert (written_frame["source"] == "isd").all()
 
     def test_empty_daily_df_returns_early(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
