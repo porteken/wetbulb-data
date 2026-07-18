@@ -301,7 +301,9 @@ def build_station_map(
     for city in cities_df.itertuples():
         ranked = sorted(
             stations,
-            key=lambda s: _haversine_km(city.lat, city.lng, s["lat"], s["lng"]),
+            key=lambda s, city=city: _haversine_km(
+                city.lat, city.lng, s["lat"], s["lng"]
+            ),
         )[:LCD_MAX_CANDIDATES_PER_CITY]
 
         result = _pick_station(

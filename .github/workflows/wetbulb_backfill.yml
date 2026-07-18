@@ -94,7 +94,7 @@ jobs:
         with:
           enable-cache: true
       - name: Sync runtime dependencies
-        run: uv sync --locked --no-dev
+        run: uv sync --locked --no-dev --no-build
       - name: Generate cities.csv
         run: uv run --locked --no-build python cities.py
       - name: Fetch NOAA ISD wet-bulb (writes straight to S3)
@@ -130,7 +130,7 @@ jobs:
         with:
           enable-cache: true
       - name: Sync runtime dependencies
-        run: uv sync --locked --no-dev
+        run: uv sync --locked --no-dev --no-build
       - name: Generate locations.csv
         run: |
           uv run --locked --no-build python cities.py

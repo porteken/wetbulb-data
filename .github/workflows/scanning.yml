@@ -28,7 +28,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --locked --all-extras --dev
+        run: uv sync --locked --all-extras --dev --no-build
 
       - name: Ruff lint
         run: uv run --locked --no-build ruff check .
@@ -40,7 +40,7 @@ jobs:
         run: uv run --locked --no-build python -m py_compile giovanni.py make_nldas_cell_map.py
 
       - name: Run Pytest with Coverage
-        run: uv run --locked pytest
+        run: uv run --locked --no-build pytest
 
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e
