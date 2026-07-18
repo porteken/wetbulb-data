@@ -89,7 +89,7 @@ class TestResolveValidIndices:
 
     def test_finds_nearest_land_cell_for_fill_cell(self) -> None:
         grid = np.ones((5, 5))
-        grid[2, 2] = nldas.NLDAS_FILL_THRESHOLD - 1.0  # fill/water
+        grid[2, 2] = nldas.NLDAS_FILL_THRESHOLD - 1.0
         lats = np.array([nldas.NLDAS_GRID_LAT0 + 2 * nldas.NLDAS_GRID_STEP])
         lons = np.array([nldas.NLDAS_GRID_LON0 + 2 * nldas.NLDAS_GRID_STEP])
         iy, ix = _resolve_valid_indices(np.array([2]), np.array([2]), lats, lons, grid)
@@ -114,7 +114,7 @@ class TestResolveValidIndices:
         lat0 = nldas.NLDAS_GRID_LAT0
         lon0 = nldas.NLDAS_GRID_LON0
         step = nldas.NLDAS_GRID_STEP
-        lats = np.array([lat0 + 3 * step + 0.01])  # nudged toward (4, 3)
+        lats = np.array([lat0 + 3 * step + 0.01])
         lons = np.array([lon0 + 3 * step])
         iy, ix = _resolve_valid_indices(np.array([3]), np.array([3]), lats, lons, grid)
         assert (iy[0], ix[0]) == (4, 3)
@@ -223,7 +223,7 @@ class TestComputeDailyWetbulb:
         df = self._hourly_frame(24)
         df.loc[0, "Tair"] = np.nan
         daily = _compute_daily_wetbulb(df)
-        assert len(daily) == 1  # 23 remaining hours still clears MIN_DAILY_HOURS
+        assert len(daily) == 1
 
 
 class TestIterAndSelectTimeShardBatches:

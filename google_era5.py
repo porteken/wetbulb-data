@@ -454,9 +454,6 @@ def _compute_location_frame(
         method="nearest",
     )
 
-    # Materialize every variable in one parallel pass: computing here (instead
-    # of at each later `.values` access) downloads all nine variables from GCS
-    # concurrently with the requested worker count.
     with dask.config.set(scheduler="threads", num_workers=compute_workers):
         city_data = city_selection.compute()
 

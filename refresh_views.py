@@ -28,8 +28,6 @@ FROM pg_matviews
 WHERE schemaname = 'public'
 """
 
-# Matview-to-matview dependencies recorded by the rewrite rules, so refresh
-# order adapts automatically when create_views.sql changes.
 _MATVIEW_DEPENDENCIES_QUERY: LiteralString = """
 SELECT DISTINCT dependent.relname AS view_name, source.relname AS depends_on
 FROM pg_depend AS d

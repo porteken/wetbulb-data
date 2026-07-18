@@ -3,9 +3,6 @@ name: Yearly Update
 on:
   workflow_dispatch:
   schedule:
-    # Early April: ARCO-ERA5 final (non-preliminary) data for the previous
-    # year is consolidated by then (see SAFE_STABLE_DATA_MONTH). The
-    # build-target-window job also verifies availability before anything runs.
     - cron: "0 5 5 4 *"
 
 concurrency:
@@ -70,10 +67,6 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
-      # Only era5-worker (PET) still runs on Cloud Run; wetbulb now fetches
-      # NOAA ISD station CSVs directly on a GitHub Actions runner (see
-      # compute-wetbulb-isd below), so there's no nldas-worker execution
-      # left to cancel here.
       - name: Cancel running Cloud Run executions
         run: |
           python3 cancel_cloud_run_job_executions.py \
@@ -116,11 +109,6 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
-      # nldas-worker (the granule-download fallback path) is not deployed by
-      # default -- wetbulb now runs via NOAA ISD directly on this runner,
-      # see compute-wetbulb-isd below. Deploy it manually with
-      # DEPLOY_NLDAS_WORKER=1 ./cloudrun_provision.sh if the fallback is
-      # needed (--wetbulb-source granules).
       - name: Build and deploy Cloud Run workers
         env:
           GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
@@ -144,9 +132,6 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
-      # One execution fans out over time shards via Cloud Run task indexing:
-      # each task derives --time-shard-index from CLOUD_RUN_TASK_INDEX, and
-      # per-task retries are handled by the job's --max-retries setting.
       - name: Pull ERA5 & Compute PET (writes straight to S3)
         run: |
           gcloud run jobs execute "${{ env.CLOUD_RUN_JOB_NAME }}" \
@@ -171,14 +156,9 @@ jobs:
         with:
           enable-cache: true
       - name: Sync runtime dependencies
-        run: uv sync --locked --no-dev # NOSONAR
+        run: uv sync --locked --no-dev
       - name: Generate cities.csv
         run: uv run --locked --no-build python cities.py
-      # One year of data for all 500 cities is small enough that this never
-      # needs Cloud Run or multiple shards: isd.py fetches one station-year
-      # CSV per city (up to 500 small GETs, no auth). cities_isd_stations.csv
-      # (checked into the repo) supplies each city's ordered ISD station-id
-      # candidates.
       - name: Pull NOAA ISD & compute wet-bulb (writes straight to S3)
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -207,7 +187,7 @@ jobs:
         with:
           enable-cache: true
       - name: Sync runtime dependencies
-        run: uv sync --locked --no-dev # NOSONAR
+        run: uv sync --locked --no-dev
       - name: Sync year data from S3
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -221,9 +201,6 @@ jobs:
             mkdir -p "${product}"
             aws s3 sync "s3://pet-parquet-files/${prefix}" "./${prefix}"
           done
-      # Upsert loads are idempotent (ON CONFLICT on (location_id, date)), so a
-      # failed or re-run job can never duplicate rows and no delete-window
-      # step is needed. Views stay in place and are refreshed afterwards.
       - name: Load year into Postgres
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
@@ -244,7 +221,7 @@ jobs:
         with:
           enable-cache: true
       - name: Sync runtime dependencies
-        run: uv sync --locked --no-dev # NOSONAR
+        run: uv sync --locked --no-dev
       - name: Refresh materialized views
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}

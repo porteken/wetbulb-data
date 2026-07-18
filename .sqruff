@@ -1,4 +1,2 @@
 [sqruff:layout:type:comparison_operator]
-# Use != instead of <> throughout — sqruff 0.38.0 LT01 splits <> into
-# "< >" regardless of spacing_within = touch, which breaks PyCharm and Squawk.
 spacing_within = touch

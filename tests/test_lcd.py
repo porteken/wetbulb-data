@@ -95,10 +95,6 @@ class TestFetchStationYear:
         session = cast("Any", _FakeSession([_FakeResponse(200, SAMPLE_LCD_CSV)]))
         frame, gap = lcd.fetch_station_year("72503014732", 2024, session=session)
         assert gap is False
-        # Two distinct timestamps: 00:51 (FM-15 only) and 01:51/01:53 (FM-15
-        # wins over FM-16 at the same minute-rounded hour is NOT deduped by
-        # time here since timestamps differ to the second/minute -- both
-        # 01:51 and 01:53 rows survive as distinct times).
         assert len(frame) == 3
         assert set(frame["tair_c"]) == {5.0, 5.5, 5.4}
 
@@ -135,8 +131,6 @@ class TestFetchStationYear:
         frame, gap = lcd.fetch_station_year("72503014732", 2000, session=session)
         assert gap is False
         assert len(frame) == 1
-        # Derived from SLP + elevation via the hypsometric approximation;
-        # should be close to (slightly below) the sea-level value.
         assert frame["pressure_hpa"].iloc[0] < 1017.5
         assert frame["pressure_hpa"].iloc[0] > 1010.0
 
@@ -149,9 +143,6 @@ class TestDewpointToSpecificHumidity:
         pressure_hpa = pd.Series([1000.0, 1000.0])
         qair = lcd._dewpoint_to_specific_humidity(dewpoint_c, pressure_hpa)
 
-        # Reconstruct vapor pressure from qair using the same relation
-        # wetbulb_davies_jones uses internally, and it should match the
-        # Bolton saturation vapor pressure at the dewpoint.
         epsilon = wetbulb._EPSILON
         reconstructed_e = qair * pressure_hpa / (epsilon + (1 - epsilon) * qair)
         expected_e = wetbulb._saturation_vapor_pressure_hpa(dewpoint_c)

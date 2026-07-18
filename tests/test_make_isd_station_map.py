@@ -202,7 +202,6 @@ class TestBuildStationMap:
         def fake_verified(
             candidate_ids: list[str], _year: int, *, session: Any, cache: Any
         ) -> bool:
-            # Only the station derived for location 0 (wban 13750) verifies.
             return bool(candidate_ids) and candidate_ids[0].endswith("13750")
 
         monkeypatch.setattr(stationmap, "_candidate_verified_at", fake_verified)

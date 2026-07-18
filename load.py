@@ -32,18 +32,11 @@ TABLE_NAMES = [
     "pet",
     "wetbulb",
 ]
-# Conflict targets that make loads idempotent: rows are COPYed into a temp
-# staging table and upserted, so re-running a load (or retrying a failed one)
-# can never produce duplicates.
 TABLE_UNIQUE_KEYS: dict[str, tuple[str, ...]] = {
     "locations": ("id",),
     "pet": ("location_id", "date"),
     "wetbulb": ("location_id", "date"),
 }
-# Tables carrying a provenance column, and its name. When present, the
-# upsert in `_upsert_from_staging` ranks `SOURCE_RANK_PRIMARY` above
-# `SOURCE_RANK_FILL` so gap-filled rows can never overwrite a real
-# observation, in-batch or against what's already in the table.
 TABLE_SOURCE_COLUMNS: dict[str, str] = {"wetbulb": "source"}
 SOURCE_RANK_PRIMARY = "isd"
 SOURCE_RANK_FILL = "nldas"
@@ -487,7 +480,7 @@ def _copy_csv_file_in_batches(
     destination: str | None = None,
 ) -> int:
     """Stream a plain CSV file into a table with a single COPY statement."""
-    _ = batch_size  # kept for signature parity with the parquet copy helper
+    _ = batch_size
     with conn.cursor() as cur, csv_path.open("r", encoding="utf-8", newline="") as f:
         header = next(f, None)
         if header is None:
@@ -592,11 +585,6 @@ def _upsert_from_staging(
     if not update_columns:
         conflict_action = sql.SQL("DO NOTHING")
     elif has_source:
-        # 'isd' (real station observations) always wins over 'nldas'
-        # (gap-fill model values): an nldas row already in the batch may
-        # never overwrite an isd row already in the table, though isd may
-        # freely overwrite a previously gap-filled row (an ISD re-run over a
-        # filled cell flips that row's source back to 'isd').
         conflict_action = sql.SQL(
             "DO UPDATE SET {updates} WHERE NOT ({table}.{col} = {isd} "
             "AND EXCLUDED.{col} = {nldas})",
@@ -618,12 +606,6 @@ def _upsert_from_staging(
             ),
         )
 
-    # DISTINCT ON guards against duplicate keys inside a single load batch,
-    # which would otherwise abort the INSERT ("cannot affect row a second
-    # time"). Ordering by the key keeps b-tree insertion mostly sequential;
-    # when a source column is present, 'isd' sorts before 'nldas'
-    # alphabetically, so an in-batch duplicate key keeps the station-
-    # observed row over a gap-filled one.
     order_sql = keys_sql
     if has_source:
         order_sql = sql.SQL("{keys}, COALESCE({col}, {default})").format(

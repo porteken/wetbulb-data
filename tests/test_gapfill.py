@@ -137,8 +137,6 @@ class TestGapYearsByLocation:
 
 class TestFilterMaterialGaps:
     def test_drops_city_years_below_threshold(self) -> None:
-        # loc 1 misses 3 days of 2020 (immaterial) and 20 days of 2021
-        # (material); loc 2 misses 2 days of 2021 (immaterial).
         missing = pd.DataFrame(
             {
                 "location_id": [1] * 3 + [1] * 20 + [2] * 2,
@@ -250,7 +248,6 @@ class TestProcessGapfill:
         monkeypatch.setattr(
             gapfill, "find_missing_cells", lambda *_a, **_k: self._missing_cells()
         )
-        # The stub gap is a single cell; keep it material so the fetch path runs.
         monkeypatch.setattr(gapfill, "_filter_material_gaps", lambda cells, _n: cells)
         monkeypatch.setattr(gapfill.giovanni, "_load_cell_map", self._empty_cell_map)
         monkeypatch.setattr(

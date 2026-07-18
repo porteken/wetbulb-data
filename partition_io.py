@@ -53,10 +53,6 @@ def write_batch_partition(
 
     table = pa.Table.from_pandas(frame, preserve_index=False)
     if getattr(fs, "type_name", "") == "local":
-        # Write-then-rename so an interrupted run never leaves a partial file
-        # at the final path (which the resume check would treat as complete).
-        # S3 writes need no equivalent: an incomplete multipart upload never
-        # materializes the object.
         temp_path = f"{output_path}.tmp"
         with fs.open_output_stream(temp_path) as out_stream:
             pq.write_table(table, out_stream, compression="snappy")
@@ -84,8 +80,6 @@ def batch_exists(
     try:
         if fs.get_file_info(path).type == 0:
             return False
-        # Validate the footer (a cheap ranged read) so a truncated or corrupt
-        # file from an interrupted run is recomputed instead of skipped.
         pq.read_metadata(path, filesystem=fs)
     except OSError, pa.ArrowException:
         return False

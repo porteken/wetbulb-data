@@ -54,8 +54,6 @@ def _list_executions(
     )
     if result.returncode != 0:
         if "NOT_FOUND" in result.stderr:
-            # The job may not have been provisioned yet (e.g. its first-ever
-            # deploy runs after this cancel step); nothing to cancel either way.
             logger.info(
                 "Cloud Run job %r not found in %s; nothing to cancel.",
                 job,

@@ -48,9 +48,6 @@ pd = cast("Any", importlib.import_module("pandas"))
 np = cast("Any", importlib.import_module("numpy"))
 requests = cast("Any", importlib.import_module("requests"))
 
-# Same IPv6 blackhole as hydro1.gesdisc.eosdis.nasa.gov (see nldas.py); set
-# explicitly here too rather than relying only on the `nldas` import so this
-# module stays correct even if that import path ever changes.
 urllib3.util.connection.HAS_IPV6 = False
 
 logging.basicConfig(
@@ -69,10 +66,6 @@ type Filesystem = Any
 GIOVANNI_TIMESERIES_URL = "https://api.giovanni.earthdata.nasa.gov/timeseries"
 GIOVANNI_TOKEN_URL = "https://urs.earthdata.nasa.gov/api/users/find_or_create_token"  # noqa: S105
 
-# Verified live against the Giovanni Time Series API (2026-07): these are the
-# only `data=` values that returned 200 for NLDAS_FORA0125_H v2.0; several
-# plausible alternates (..._2.0_Tair, ..._002_Tair, NLDAS2:...:Tair) all 403'd
-# with "Data parameter is invalid".
 GIOVANNI_VARIABLE_IDS: dict[str, str] = {
     "Tair": "NLDAS_FORA0125_H_2_0_Tair",
     "Qair": "NLDAS_FORA0125_H_2_0_Qair",
@@ -80,32 +73,14 @@ GIOVANNI_VARIABLE_IDS: dict[str, str] = {
 }
 
 GIOVANNI_REQUEST_TIMEOUT_SECONDS = 120
-# A full local backfill run (2026-07) drew sustained HTTP 500s from Giovanni
-# after several minutes of high concurrency, while isolated requests (even
-# 32 concurrent full 26-year ranges in a burst) always succeeded -- pointing
-# at a server-side quota tied to sustained request volume rather than raw
-# concurrency. These retries lean toward "wait out a rate-limit window"
-# rather than "fail fast": exponential backoff capped at
-# GIOVANNI_MAX_RETRY_DELAY_SECONDS, more attempts than the earlier linear
-# schedule.
 GIOVANNI_MAX_RETRIES = 8
 GIOVANNI_RETRY_DELAY_SECONDS = 5
 GIOVANNI_MAX_RETRY_DELAY_SECONDS = 60
 DEFAULT_CONCURRENCY = 8
-
-# A shard's parquet write is skipped entirely if any city has a fetch gap
-# (see process_giovanni), so a single stubborn city would otherwise force
-# discarding an entire shard's worth of good data. Re-fetching just the
-# stragglers a few times, with a pause to let a transient overload window
-# pass, converts most single-city failures into eventual successes instead
-# of wasted work.
 GIOVANNI_SHARD_RETRY_ATTEMPTS = 3
 GIOVANNI_SHARD_RETRY_DELAY_SECONDS = 30
 
 CELL_MAP_PATH = "cities_nldas_cells.csv"
-# If more than this fraction of a city's hourly values come back fill/NaN,
-# the sampled grid cell is probably water, not the intended land cell; log
-# an alarm so it can be added to cities_nldas_cells.csv.
 FILL_FRACTION_ALARM_THRESHOLD = 0.5
 
 _CELL_MAP_WARNED = False

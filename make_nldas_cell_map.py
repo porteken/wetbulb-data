@@ -31,8 +31,6 @@ logging.basicConfig(
 )
 LOGGER = logging.getLogger(__name__)
 
-# A handful of recent, almost-certainly-available hours to try in case any
-# single one is missing/delayed at the source.
 _CANDIDATE_HOURS = [
     pd.Timestamp("2023-07-15 12:00"),
     pd.Timestamp("2023-01-15 12:00"),

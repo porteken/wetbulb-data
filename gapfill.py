@@ -78,13 +78,6 @@ ISD_FILE_PREFIX = "wetbulb"
 GAPFILL_FILE_PREFIX = "wetbulb_fill"
 GAPFILL_SOURCE = "nldas"
 DEFAULT_CONCURRENCY = 8
-# Only fill a city-year whose gap is big enough to matter. Nearly every
-# station-year is missing 1-3 scattered days (ordinary ASOS outages), so
-# without a floor the gap set degenerates to every city x every year -- a
-# re-download of the entire multi-decade backfill to patch days nobody
-# consumes. The downstream forecast views require >=95% day coverage
-# (create_views.sql), i.e. a year missing <19 days passes the gate as-is;
-# filling it changes nothing. Default to that boundary.
 MIN_MISSING_DAYS_DEFAULT = 19
 
 

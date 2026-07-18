@@ -1,17 +1,7 @@
 *.csv
 backup/
-# Static, checked-in output of make_nldas_cell_map.py: land-snapped NLDAS-2
-# cell per city, read by giovanni.py. Cheap to keep in git, expensive to
-# regenerate in CI (needs Earthdata creds + a live granule download), and
-# only needs regenerating if cities.csv's city list changes.
 !cities_nldas_cells.csv
-# Static, checked-in output of make_lcd_station_map.py: nearest verified-
-# hourly NOAA LCD v2 station per city, read by lcd.py (fallback wetbulb
-# source). Same rationale as cities_nldas_cells.csv above.
 !cities_lcd_stations.csv
-# Static, checked-in output of make_isd_station_map.py: ordered ISD
-# Global Hourly station-id candidates per city, read by isd.py (the
-# default wetbulb source). Same rationale as cities_nldas_cells.csv above.
 !cities_isd_stations.csv
 *.parquet
 .ruff_cache/

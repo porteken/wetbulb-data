@@ -214,9 +214,6 @@ class TestBuildStationMap:
         tmp_path: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        # Each city's coordinates exactly match its own nearest station, and
-        # LCD_MAX_CANDIDATES_PER_CITY is pinned to 1 so cities can't "borrow"
-        # each other's stations -- isolating each tier scenario cleanly.
         cities_csv = tmp_path / "cities.csv"
         cities_csv.write_text(
             "location_id,city,state,lat,lng\n"
@@ -234,7 +231,6 @@ class TestBuildStationMap:
         monkeypatch.setattr(stationmap, "fetch_asos_stations", lambda **_k: stations)
 
         def fake_present(station_id: str, _year: int, *, session: Any) -> bool:
-            # DEAD never verifies (simulates a hourly-data-free station).
             return station_id in ("FULL", "SHORT")
 
         monkeypatch.setattr(stationmap, "_lcd_hourly_data_present", fake_present)

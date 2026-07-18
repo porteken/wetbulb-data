@@ -37,12 +37,6 @@ pd = cast("Any", importlib.import_module("pandas"))
 np = cast("Any", importlib.import_module("numpy"))
 requests = cast("Any", importlib.import_module("requests"))
 
-# hydro1.gesdisc.eosdis.nasa.gov publishes an AAAA record but IPv6 to it
-# blackholes (connections hang until socket timeout). GES DISC also replies
-# `Connection: close` on every request, so every granule opens a fresh
-# connection; since urllib3 has no Happy Eyeballs, each one retries IPv6
-# first and stalls for the full timeout before falling back to IPv4. That
-# turned ~1s downloads into ~60s ones. Forcing IPv4 avoids the stall.
 urllib3.util.connection.HAS_IPV6 = False
 
 logging.basicConfig(
@@ -69,10 +63,6 @@ NLDAS_GRID_NLON = 464
 NLDAS_FILL_THRESHOLD = -9000.0
 NLDAS_LAND_SEARCH_RADIUS = 2
 
-# Candidate names cover both the netCDF short names documented for
-# NLDAS_FORA0125_H v2.0 and the GRIB-derived short names some conversions
-# retain; verify against a real downloaded granule before first production
-# use and trim/extend this list if needed.
 NLDAS_VARIABLE_CANDIDATES: dict[str, list[str]] = {
     "Tair": ["Tair", "Tair_f_inst", "TMP"],
     "Qair": ["Qair", "Qair_f_inst", "SPFH"],
@@ -85,13 +75,13 @@ EARTHDATA_AUTH_HOST = "urs.earthdata.nasa.gov"
 NLDAS_MAX_RETRIES = 3
 NLDAS_RETRY_DELAY_SECONDS = 10
 NLDAS_REQUEST_TIMEOUT_SECONDS = 60
-NLDAS_STABLE_DATA_LATENCY_DAYS = 5  # NLDAS-2 near-real-time latency is ~4 days
+NLDAS_STABLE_DATA_LATENCY_DAYS = 5
 
-WETBULB_ROUNDING_FACTOR = 10.0  # round to nearest 0.1 C
-WETBULB_AVG_ROUNDING_FACTOR = 10.0  # round to nearest 0.1 C
+WETBULB_ROUNDING_FACTOR = 10.0
+WETBULB_AVG_ROUNDING_FACTOR = 10.0
 MIN_REASONABLE_WETBULB_C = -50.0
 MAX_REASONABLE_WETBULB_C = 40.0
-MIN_DAILY_HOURS = 20  # require >=20/24 hours before trusting a daily average
+MIN_DAILY_HOURS = 20
 
 NLDAS_THREAD_LOCAL = threading.local()
 

@@ -402,11 +402,8 @@ class TestMain:
     ) -> None:
         import load
 
-        # load.py confines file loads to the current working directory, so
-        # run from tmp_path like the CLI is run from the repo checkout root.
         monkeypatch.chdir(tmp_path)
 
-        # Mock dependencies to avoid actual DB and file ops
         monkeypatch.setattr(
             load,
             "_parse_args",
@@ -438,12 +435,10 @@ class TestMain:
         mock_conn = MagicMock()
         monkeypatch.setattr(load.psycopg, "connect", lambda _uri: mock_conn)
 
-        # Mock table loading
         monkeypatch.setattr(load, "bulk_insert_csv_files", MagicMock())
         monkeypatch.setattr(load, "execute_sql_file", MagicMock())
         monkeypatch.setattr(load, "refresh_query_planner_statistics", MagicMock())
 
-        # Create dummy locations file
         loc_file = tmp_path / "loc.csv"
         loc_file.write_text("id,city,state,lat,lng\n0,A,B,1,2\n")
 

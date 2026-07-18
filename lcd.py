@@ -87,26 +87,10 @@ _STATION_MAP_WARNED = False
 
 _HOURLY_FRAME_COLUMNS = ("time", "tair_c", "dewpoint_c", "pressure_hpa")
 
-# Sub-daily report types that carry hourly-cadence temperature/dewpoint
-# observations. FM-15 is routine hourly METAR, FM-16 is special (off-hour)
-# METAR, FM-12 is SYNOP (seen in more recent files). SY-MT (synoptic) and
-# the Daily/Monthly summary rows (SOD/SOM) are excluded: SY-MT duplicates
-# FM-15 timestamps at a coarser ~4x/day cadence, and SOD/SOM aren't
-# per-hour observations.
 HOURLY_REPORT_TYPES: tuple[str, ...] = ("FM-15", "FM-16", "FM-12")
 
-# Standard gas constant / gravity scale height (R/g for dry air, in
-# m/K) used to approximate station pressure from sea-level pressure when
-# HourlyStationPressure is absent (pre-~2005 files). This is a simplified
-# hypsometric approximation using the observed station temperature rather
-# than the full NWS virtual-temperature reduction -- adequate given the
-# accepted ~1-2 C shift already inherent to switching from a grid-cell
-# source to point station observations.
 _HYPSOMETRIC_SCALE_M_PER_K = 29.263
 
-# ICAO standard-atmosphere coefficients for reducing altimeter setting to
-# station pressure (used only when neither station pressure nor sea-level
-# pressure is available).
 _ICAO_LAPSE_K_PER_M = 0.0065
 _ICAO_SEA_LEVEL_T_K = 288.15
 _ICAO_EXPONENT = 5.255
@@ -206,8 +190,6 @@ def fetch_station_year(
     if hourly.empty:
         return _empty_hourly_frame(), False
 
-    # Prefer the routine hourly report when a timestamp has more than one
-    # report type (FM-15 over FM-16/FM-12).
     report_priority = {"FM-15": 0, "FM-16": 1, "FM-12": 2}
     hourly["_priority"] = hourly["REPORT_TYPE"].map(report_priority)
     hourly = hourly.sort_values(["time", "_priority"]).drop_duplicates(

@@ -62,12 +62,56 @@ logging.basicConfig(
 LOGGER = logging.getLogger(__name__)
 
 CONUS_STATES: tuple[str, ...] = (
-    "AL", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "ID", "IL", "IN",
-    "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT",
-    "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA",
-    "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+    "AL",
+    "AZ",
+    "AR",
+    "CA",
+    "CO",
+    "CT",
+    "DE",
+    "FL",
+    "GA",
+    "ID",
+    "IL",
+    "IN",
+    "IA",
+    "KS",
+    "KY",
+    "LA",
+    "ME",
+    "MD",
+    "MA",
+    "MI",
+    "MN",
+    "MS",
+    "MO",
+    "MT",
+    "NE",
+    "NV",
+    "NH",
+    "NJ",
+    "NM",
+    "NY",
+    "NC",
+    "ND",
+    "OH",
+    "OK",
+    "OR",
+    "PA",
+    "RI",
+    "SC",
+    "SD",
+    "TN",
+    "TX",
+    "UT",
+    "VT",
+    "VA",
+    "WA",
+    "WV",
+    "WI",
+    "WY",
     "DC",
-)  # fmt: skip
+)
 
 IEM_NETWORK_GEOJSON_URL = (
     "https://mesonet.agron.iastate.edu/geojson/network/{state}_ASOS.geojson"
@@ -84,9 +128,6 @@ LCD_MAX_CANDIDATES_PER_CITY = 15
 LCD_MAX_REASONABLE_DIST_KM = 100
 TIER_FULL_WINDOW = 1
 TIER_SHORT_ARCHIVE = 2
-# ~200 KB is comfortably more than a month of hourly rows (observed row
-# width is a few hundred bytes); if a station reports hourly at all, this
-# window is expected to catch it.
 LCD_PROBE_RANGE_BYTES = 200_000
 _HOURLY_REPORT_TYPE_MARKERS = tuple(f'"{rt}"' for rt in HOURLY_REPORT_TYPES)
 

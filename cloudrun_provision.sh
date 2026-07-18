@@ -20,23 +20,11 @@ AWS_CLOUD_RUN_REGION=${AWS_DEFAULT_REGION:-${AWS_REGION:-}}
 AWS_KEY_SECRET_NAME=${AWS_KEY_SECRET_NAME:-${CLOUD_RUN_JOB_NAME}-aws-access-key-id}
 AWS_SECRET_SECRET_NAME=${AWS_SECRET_SECRET_NAME:-${CLOUD_RUN_JOB_NAME}-aws-secret-access-key}
 
-# nldas-worker is the granule-download fallback path (--wetbulb-source
-# granules); wetbulb normally runs via the Giovanni Time Series API directly
-# on a GitHub Actions runner instead (see giovanni.py, wetbulb_backfill.yml,
-# yearly_update.yml), so this job is not deployed by default. Opt in with
-# DEPLOY_NLDAS_WORKER=1 if the fallback is needed.
 DEPLOY_NLDAS_WORKER=${DEPLOY_NLDAS_WORKER:-0}
 
-# nldas-worker shares the same image (both scripts are baked into it; entrypoint.sh
-# picks the one to run via WORKER_SCRIPT) but gets its own job so Earthdata
-# credentials stay scoped away from era5-worker and it can run with less memory.
 NLDAS_CLOUD_RUN_JOB_NAME=${NLDAS_CLOUD_RUN_JOB_NAME:-nldas-worker}
 NLDAS_CLOUD_RUN_JOB_CPU=${NLDAS_CLOUD_RUN_JOB_CPU:-1}
 NLDAS_CLOUD_RUN_JOB_MEMORY=${NLDAS_CLOUD_RUN_JOB_MEMORY:-2Gi}
-# NLDAS historical batches download and parse 720 hourly NetCDF granules per
-# task.  With Earthdata throttling and request retries, that work regularly
-# exceeds 30 minutes; keep a generous default while allowing an operator to
-# override it for a smaller smoke run.
 NLDAS_CLOUD_RUN_TASK_TIMEOUT=${NLDAS_CLOUD_RUN_TASK_TIMEOUT:-14400s}
 EARTHDATA_USERNAME_SECRET_NAME=${EARTHDATA_USERNAME_SECRET_NAME:-${NLDAS_CLOUD_RUN_JOB_NAME}-earthdata-username}
 EARTHDATA_PASSWORD_SECRET_NAME=${EARTHDATA_PASSWORD_SECRET_NAME:-${NLDAS_CLOUD_RUN_JOB_NAME}-earthdata-password}
@@ -49,8 +37,6 @@ if [[ "$DEPLOY_NLDAS_WORKER" == "1" ]]; then
   : "${EARTHDATA_PASSWORD:?EARTHDATA_PASSWORD must be set (free NASA Earthdata account with the 'NASA GESDISC DATA ARCHIVE' application authorized)}"
 fi
 
-# Store AWS credentials in Secret Manager and mount them with --set-secrets so
-# they never appear in the job definition or the Cloud Run console.
 _upsert_secret() {
     local secret_name=$1
     local secret_value=$2

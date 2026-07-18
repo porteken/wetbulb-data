@@ -113,17 +113,8 @@ _STATION_MAP_WARNED = False
 
 _HOURLY_FRAME_COLUMNS = ("time", "tair_c", "dewpoint_c", "pressure_hpa")
 
-# Sub-daily report types that carry hourly-cadence temperature/dewpoint
-# observations -- same vocabulary as lcd.py, since ISD is that product's
-# source dataset. See lcd.py's HOURLY_REPORT_TYPES for the rationale.
 HOURLY_REPORT_TYPES: tuple[str, ...] = ("FM-15", "FM-16", "FM-12")
 
-# ISD quality codes (the second half of each comma-packed element) that
-# mark a present value as failing NCEI's automated/manual QC -- reject
-# these alongside the NOAA "missing" sentinel. 1/5 = passed; 9 accompanies
-# supplementary fields without a definitive check (not a missing marker by
-# itself -- the sentinel already covers true absence); 2/3/6/7 =
-# suspect/erroneous (standard and NCEI-source variants).
 _ISD_REJECT_QC_CODES = frozenset({"2", "3", "6", "7"})
 _ISD_MISSING_TMP_DEW = "9999"
 _ISD_MISSING_PRESSURE = "99999"
@@ -251,8 +242,6 @@ def _parse_isd_response(response_text: str, *, lon: float | None) -> DataFrame:
     if hourly.empty:
         return _empty_hourly_frame()
 
-    # Prefer the routine hourly report when a timestamp has more than one
-    # report type (FM-15 over FM-16/FM-12), same tie-break as lcd.py.
     report_priority = {"FM-15": 0, "FM-16": 1, "FM-12": 2}
     hourly["_priority"] = hourly["REPORT_TYPE"].map(report_priority)
     hourly = hourly.sort_values(["time_utc", "_priority"]).drop_duplicates(
@@ -281,9 +270,6 @@ def _parse_isd_response(response_text: str, *, lon: float | None) -> DataFrame:
             _column_or_missing(hourly, "LONGITUDE"), errors="coerce"
         ).dropna()
         station_lon = float(observed_lon.iloc[0]) if not observed_lon.empty else 0.0
-    # station_lon is a plain Python float here (not a numpy scalar), so
-    # round() returns a plain int -- required by pd.to_timedelta below,
-    # which warns on numpy "generic" integer units otherwise.
     utc_offset_hours = round(station_lon / 15.0)
     local_time = hourly["time_utc"] + pd.to_timedelta(utc_offset_hours, unit="h")
 

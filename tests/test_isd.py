@@ -16,9 +16,6 @@ _HEADER = (
     '"STATION","DATE","SOURCE","LATITUDE","LONGITUDE","ELEVATION","NAME",'
     '"REPORT_TYPE","CALL_SIGN","QUALITY_CONTROL","TMP","DEW","SLP","MA1"'
 )
-
-# Two distinct-time FM-15 rows plus a same-time FM-16/FM-15 pair (FM-15
-# should win the dedup) plus one SOD-only row that must be filtered out.
 SAMPLE_ISD_CSV = f"""{_HEADER}
 "72503014732","2024-01-01T00:53:00","4","40.7789","-73.9692","39.6","NEW YORK CENTRAL PARK, NY US","FM-15","KNYC ","V020","+0050,5","+0020,5","10175,5","10176,5,10160,5"
 "72503014732","2024-01-01T01:53:00","4","40.7789","-73.9692","39.6","NEW YORK CENTRAL PARK, NY US","FM-16","KNYC ","V020","+0054,5","+0024,5","10176,5","10178,5,10161,5"
@@ -35,9 +32,6 @@ NO_STATION_PRESSURE_CSV = f"""{_HEADER}
 "72503014732","2000-01-01T00:51:00","4","40.7789","-73.9692","39.6","NEW YORK CENTRAL PARK, NY US","FM-15","KNYC ","V020","+0050,5","+0020,5","10175,5","10176,5,99999,9"
 """
 
-# No MA1 column at all -- NCEI omits it entirely for some station-years
-# rather than leaving it blank (verified empirically: an Austin, TX
-# station-year with only daily/monthly summaries had no MA1 header).
 NO_MA1_COLUMN_CSV = (
     '"STATION","DATE","SOURCE","LATITUDE","LONGITUDE","ELEVATION","NAME",'
     '"REPORT_TYPE","CALL_SIGN","QUALITY_CONTROL","TMP","DEW","SLP"\n'
@@ -156,10 +150,9 @@ class TestFetchStationYear:
         session = cast("Any", _FakeSession([_FakeResponse(200, SAMPLE_ISD_CSV)]))
         frame, gap = isd.fetch_station_year(["72503014732"], 2024, session=session)
         assert gap is False
-        # 00:53 (FM-15) and 01:53 (FM-15 wins over FM-16 at the same time).
         assert len(frame) == 2
         assert set(frame["tair_c"]) == {5.0, 5.5}
-        assert 5.4 not in set(frame["tair_c"])  # the FM-16 value lost the tie-break
+        assert 5.4 not in set(frame["tair_c"])
 
     def test_returns_empty_not_gap_when_every_candidate_404s(self) -> None:
         session = cast("Any", _FakeSession([_FakeResponse(404), _FakeResponse(404)]))
@@ -208,7 +201,6 @@ class TestFetchStationYear:
         )
         assert frame.empty
         assert gap is True
-        # Only the first candidate's retries were attempted.
         assert len(cast("_FakeSession", session).calls) == isd.ISD_MAX_RETRIES
 
     def test_pressure_fallback_uses_sea_level_when_station_pressure_missing(
@@ -232,9 +224,6 @@ class TestFetchStationYear:
         )
         assert gap is False
         assert len(frame) == 1
-        # Derived via the hypsometric approximation from SLP (1017.5) and
-        # elevation (39.6 m); should be slightly below the sea-level value,
-        # not NaN/crashed despite the MA1 column being entirely absent.
         assert frame["pressure_hpa"].iloc[0] < 1017.5
         assert frame["pressure_hpa"].iloc[0] > 1010.0
 
@@ -251,14 +240,12 @@ class TestFetchStationYear:
         frame, _gap = isd.fetch_station_year(
             ["72503014732"], 2024, lon=-75.0, session=session
         )
-        # -75/15 = -5h; the 00:53 UTC row shifts to the previous day locally.
         first = pd.Timestamp(frame.sort_values("time")["time"].iloc[0])
         assert first == pd.Timestamp("2023-12-31T19:53:00")
 
     def test_local_time_shift_falls_back_to_file_longitude(self) -> None:
         session = cast("Any", _FakeSession([_FakeResponse(200, SAMPLE_ISD_CSV)]))
         frame, _gap = isd.fetch_station_year(["72503014732"], 2024, session=session)
-        # File LONGITUDE is -73.9692 -> round(-73.9692/15) = -5h, same as above.
         first = pd.Timestamp(frame.sort_values("time")["time"].iloc[0])
         assert first == pd.Timestamp("2023-12-31T19:53:00")
 

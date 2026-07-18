@@ -9,9 +9,6 @@ from datetime import UTC, date, datetime
 
 from shared_config import mrt_available_end_date
 
-# Root attributes of the ARCO-ERA5 store publish the range that holds final
-# (non-preliminary) data; the time axis itself is pre-allocated decades ahead,
-# so array shape says nothing about availability.
 ARCO_ZATTRS_URL = (
     "https://storage.googleapis.com/gcp-public-data-arco-era5/ar/"
     "full_37-1h-0p25deg-chunk-1.zarr-v3/.zattrs"

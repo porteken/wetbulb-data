@@ -1,15 +1,5 @@
 name: Wetbulb Backfill (NOAA ISD)
 
-# One-shot (or resumable) historical wet-bulb backfill via NOAA's ISD
-# Global Hourly bulk archive (see isd.py), the default wetbulb source.
-# Plain HTTPS station-year CSV downloads, no auth, no rate limiting
-# observed against NCEI's bulk archive -- unlike the Giovanni/NLDAS-2
-# fallback paths (giovanni.py/nldas.py, still selectable via
-# `pipeline.py --wetbulb-source giovanni`), ISD needs no Earthdata
-# credentials at all. Unlike LCD (`lcd.py`, kept as a fallback source),
-# every ISD element carries a quality-control flag this pipeline honors --
-# LCD is unfiltered and confirmed corrupt readings have flowed straight
-# into computed daily-max wetbulb. Runs here for free on GitHub Actions.
 
 on:
   workflow_dispatch:
@@ -104,13 +94,9 @@ jobs:
         with:
           enable-cache: true
       - name: Sync runtime dependencies
-        run: uv sync --locked --no-dev # NOSONAR
+        run: uv sync --locked --no-dev
       - name: Generate cities.csv
         run: uv run --locked --no-build python cities.py
-      # cities_isd_stations.csv (each city's ordered ISD station-id
-      # candidates, see make_isd_station_map.py) is checked into the repo,
-      # so no regeneration needed here -- it just comes along with
-      # actions/checkout.
       - name: Fetch NOAA ISD wet-bulb (writes straight to S3)
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -144,7 +130,7 @@ jobs:
         with:
           enable-cache: true
       - name: Sync runtime dependencies
-        run: uv sync --locked --no-dev # NOSONAR
+        run: uv sync --locked --no-dev
       - name: Generate locations.csv
         run: |
           uv run --locked --no-build python cities.py
@@ -157,9 +143,6 @@ jobs:
         run: |
           mkdir -p wetbulb_data_csv
           aws s3 sync s3://pet-parquet-files/wetbulb_data_csv/ ./wetbulb_data_csv/ --delete
-      # Full rebuild: truncate+reload only the wetbulb table (locations is
-      # upserted, idempotent; pet is left untouched since this workflow
-      # never fetches PET/ERA5 data).
       - name: Load wetbulb into Postgres (full rebuild)
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}

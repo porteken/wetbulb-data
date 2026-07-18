@@ -16,13 +16,10 @@ _STULL_C5 = 1.5
 _STULL_C6 = 0.023101
 _STULL_OFFSET = 4.686035
 
-# Bolton (1980) constants for saturation vapor pressure, the LCL temperature
-# (eq. 15), and equivalent potential temperature (eq. 39). These feed the
-# Davies-Jones (2008) pseudoadiabatic wet-bulb calculation below.
-_EPSILON = 0.622  # ratio of gas constants, dry air / water vapor
-_BOLTON_ES_A = 6.112  # hPa
+_EPSILON = 0.622
+_BOLTON_ES_A = 6.112
 _BOLTON_ES_B = 17.67
-_BOLTON_ES_C = 243.5  # deg C
+_BOLTON_ES_C = 243.5
 _KELVIN_OFFSET = 273.15
 _P0_HPA = 1000.0
 _LCL_A = 56.0
@@ -170,8 +167,6 @@ def wetbulb_davies_jones(
             mid_c = mid - _KELVIN_OFFSET
             es_mid = _saturation_vapor_pressure_hpa(mid_c)
             rs_mid = _EPSILON * es_mid / (pressure_hpa - es_mid)
-            # A saturated parcel's LCL is itself, so eq. 39 is evaluated
-            # with lcl_temp_k = mid.
             theta_e_mid = _equivalent_potential_temperature_k(
                 mid,
                 mid,

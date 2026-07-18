@@ -108,8 +108,6 @@ def export_pet(
                 product=product,
             )
 
-            # psycopg streams COPY output as memoryview chunks, which may split a
-            # multi-byte character, so write bytes straight through without decoding.
             with Path(output_path).open("wb") as csv_file:  # NOSONAR
                 copy_context = (
                     cur.copy(copy_query)

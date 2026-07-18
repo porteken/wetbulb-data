@@ -78,8 +78,6 @@ ISD_URL_TEMPLATE = (
     "https://www.ncei.noaa.gov/data/global-hourly/access/{year}/{station_id}.csv"
 )
 ISD_EXISTENCE_TIMEOUT_SECONDS = 20
-# ~50 KB is comfortably more than the ~500-byte average ISD row width, so a
-# station reporting hourly near the start of the probed year will show up.
 ISD_PROBE_RANGE_BYTES = 50_000
 _HOURLY_REPORT_TYPE_MARKERS = ('"FM-15"', '"FM-16"', '"FM-12"')
 PLACEHOLDER_USAF = "999999"

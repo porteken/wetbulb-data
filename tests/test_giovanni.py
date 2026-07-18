@@ -300,7 +300,6 @@ class TestFetchVariableSeries:
         )
         assert df.empty
         assert had_gap is True
-        # Only the single, full-range request was made -- no recursive splits.
         assert calls == [("2020-01-01T00:00:00", "2022-01-01T00:00:00")]
 
     def test_halves_range_on_persistent_parse_failure(
@@ -326,8 +325,6 @@ class TestFetchVariableSeries:
         )
         assert df.empty
         assert had_gap is True
-        # Both individual years were attempted once the 2-year range's
-        # response failed to parse.
         assert 2020 in requested_start_years
         assert 2021 in requested_start_years
 
@@ -365,8 +362,8 @@ class TestFetchVariableSeries:
             SimpleNamespace(), _StubTokenManager(), "VAR", 1.0, 2.0, 2020, 2023
         )
         assert had_gap is False
-        assert len(df) == 3 * 4  # SAMPLE_CSV's 3 rows per single-year leaf
-        assert (2020, 2023) in requested_ranges  # the oversized top-level try
+        assert len(df) == 3 * 4
+        assert (2020, 2023) in requested_ranges
         leaves = [r for r in requested_ranges if r[1] - r[0] == 0]
         assert sorted(leaves) == [
             (2020, 2020),
@@ -401,8 +398,6 @@ class TestFetchVariableSeries:
             start: str,
             end: str,
         ) -> str:
-            # Only the single-year 2020 request returns a parseable body;
-            # everything else (the full range, and the 2021 leaf) doesn't.
             if start.startswith("2020") and end.startswith("2021"):
                 return SAMPLE_CSV
             return "not,a,valid,response"
@@ -411,8 +406,8 @@ class TestFetchVariableSeries:
         df, had_gap = _fetch_variable_series(
             SimpleNamespace(), _StubTokenManager(), "VAR", 1.0, 2.0, 2020, 2021
         )
-        assert len(df) == 3  # only the 2020 leaf contributed rows
-        assert had_gap is True  # the 2021 leaf still failed
+        assert len(df) == 3
+        assert had_gap is True
 
 
 class TestFetchCityHourly:
@@ -482,8 +477,6 @@ class TestFetchCityHourly:
             _start_year: int,
             _end_year: int,
         ) -> tuple[pd.DataFrame, bool]:
-            # Mostly-fill data (as if a Giovanni request partially failed),
-            # plus had_gap=True signaling a real fetch failure occurred.
             times = pd.date_range("2024-01-01", periods=4, freq="h")
             values = [giovanni.nldas.NLDAS_FILL_THRESHOLD - 1.0] * 4
             return pd.DataFrame({"time": times, "value": values}), True

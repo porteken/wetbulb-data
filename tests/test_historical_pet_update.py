@@ -300,7 +300,6 @@ def test_delete_window_deletes_rows_and_truncates_analytics(
 
     assert conn.autocommit is True
     assert conn.closed is True
-    # Views must be left untouched: the DDL files exist but are not executed.
     assert not any(
         call[0] == "DROP VIEW IF EXISTS pet_year;" for call in conn.execute_calls
     )

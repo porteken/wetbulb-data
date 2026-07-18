@@ -55,17 +55,8 @@ FULL_BATCH_HOURS = 720
 FULL_TIME_SHARD_COUNT = 13
 PRODUCT_TABLES = ("pet", "wetbulb")
 
-# nldas-worker downloads hourly HTTP granules rather than reading a GCS zarr
-# store, but reuses the same batch/time-shard partitioning defaults as the
-# ERA5 worker since both are tuned for similar per-task run times.
-# GES DISC throttles concurrent connections from one client: 16 concurrent
-# downloads reproducibly drew a 503 and triggered the granule retry/backoff
-# path (NLDAS_RETRY_DELAY_SECONDS), stalling whole batches by 10s+; 12 ran
-# clean in repeated measurement.
 NLDAS_DEFAULT_DOWNLOAD_WORKERS = 12
 
-# Keep numpy/BLAS single-threaded inside worker subprocesses; parallelism is
-# managed at the process level.
 SINGLE_THREAD_ENV = {
     "OMP_NUM_THREADS": "1",
     "OPENBLAS_NUM_THREADS": "1",

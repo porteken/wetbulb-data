@@ -40,7 +40,6 @@ class TestBuildCellMap:
         with caplog.at_level("ERROR"):
             result = cellmap.build_cell_map(str(cities_csv))
 
-        # Sorted by location_id: 1 (unchanged), 2 (missing, iy=-1), 3 (snapped).
         assert list(result["location_id"]) == [1, 2, 3]
         assert any("no valid land cell" in m for m in caplog.messages)
 
@@ -49,8 +48,6 @@ class TestBuildCellMap:
             cellmap.nldas.NLDAS_GRID_LAT0 + 10 * cellmap.nldas.NLDAS_GRID_STEP
         )
 
-        # A missing cell (iy=-1) still differs from its raw index, so it's
-        # reported as "snapped" even though its cell_lat/cell_lon are NaN.
         assert bool(result.loc[1, "snapped"]) is True
         assert np.isnan(result.loc[1, "cell_lat"])
         assert np.isnan(result.loc[1, "cell_lon"])
