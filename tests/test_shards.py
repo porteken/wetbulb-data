@@ -91,6 +91,24 @@ class TestDiscoverParquetShards:
         result = discover_parquet_shards(tmp_path)
         assert result == {}
 
+    def test_skips_files_missing_shard_partitions(self, tmp_path: Path) -> None:
+        shard_dir = tmp_path / "year=2020"
+        shard_dir.mkdir(parents=True)
+        pd.DataFrame({"x": [1]}).to_parquet(shard_dir / "no_tile.parquet")
+
+        result = discover_parquet_shards(tmp_path)
+        assert result == {}
+
+    def test_skips_files_with_non_integer_partition_values(
+        self, tmp_path: Path
+    ) -> None:
+        shard_dir = tmp_path / "year=2020" / "tile_id=not-an-int"
+        shard_dir.mkdir(parents=True)
+        pd.DataFrame({"x": [1]}).to_parquet(shard_dir / "data.parquet")
+
+        result = discover_parquet_shards(tmp_path)
+        assert result == {}
+
 
 class TestDiscoverCommonShards:
     def test_returns_empty_on_no_roots(self) -> None:
