@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import argparse
+
 import pandas as pd
 import pytest
 
 import backtest_forecast
+
+
+def test_safe_cli_path_rejects_paths_outside_the_working_directory() -> None:
+    """CLI output paths cannot traverse out of the repository."""
+    with pytest.raises(argparse.ArgumentTypeError):
+        backtest_forecast._safe_cli_path("../backtest_report.json")
 
 
 def test_calibration_uses_only_observable_group_balanced_errors(

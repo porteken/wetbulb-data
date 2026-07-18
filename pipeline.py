@@ -42,7 +42,7 @@ def _validated_output_directory(value: str) -> str:
 def _validated_positive_integer(value: int, option: str) -> int:
     """Return an integer which cannot be interpreted as a child CLI option."""
     value_as_string = str(value)
-    if not re.fullmatch(r"[1-9][0-9]*", value_as_string):
+    if not re.fullmatch(r"[1-9]\d*", value_as_string):
         msg = f"{option} must be a positive integer"
         raise argparse.ArgumentTypeError(msg)
     return int(value_as_string)

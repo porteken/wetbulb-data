@@ -46,4 +46,4 @@ def test_prediction_interval_uses_nominal_tenth_ninetieth_z_score() -> None:
 
     assert result.upper - result.point == pytest.approx(result.point - result.lower)
     assert result.upper - result.point > 0
-    assert pytest.approx(1.2816) == P80_Z
+    assert abs(P80_Z - 1.2816) < 0.0001

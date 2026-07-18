@@ -10,13 +10,20 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 from pathlib import Path
 from typing import cast
 
 import numpy as np
 import pandas as pd
 
-from forecast_model import LinearFit, dersimonian_laird, fit_linear, forecast
+from forecast_model import (
+    LinearFit,
+    PooledPrior,
+    dersimonian_laird,
+    fit_linear,
+    forecast,
+)
 
 FIRST_YEAR = 2000
 ORIGINS = range(2012, 2025)
@@ -124,9 +131,9 @@ def _representative_fits(
         if group:
             by_group.setdefault(group, []).append((location_id, fit))
     return [
-        sorted(
-            candidates, key=lambda item: (-item[1].n, item[1].slope_variance, item[0])
-        )[0][1]
+        min(candidates, key=lambda item: (-item[1].n, item[1].slope_variance, item[0]))[
+            1
+        ]
         for candidates in by_group.values()
     ]
 
@@ -158,6 +165,81 @@ def _legacy_prediction(
     return fit.intercept_mean + fit.slope * (target_year - fit.predictor_mean)
 
 
+def _location_fits(
+    training: pd.DataFrame, metric: str, observations: pd.Series
+) -> tuple[dict[int, LinearFit], dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]]]:
+    """Fit locations with enough complete observations for one metric."""
+    fits: dict[int, LinearFit] = {}
+    metric_values: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    for location_id, group in training.groupby("location_id"):
+        if not isinstance(location_id, (int, np.integer)):
+            message = "location_id must be an integer"
+            raise TypeError(message)
+        valid = group.dropna(subset=[metric])
+        years = valid["year"].to_numpy(dtype=int)
+        values = valid[metric].to_numpy(dtype=float)
+        gmst = observations.reindex(years).to_numpy(dtype=float)
+        fit = fit_linear(gmst, values)
+        if fit is not None and fit.n >= MIN_TRAINING_YEARS:
+            fits[int(location_id)] = fit
+            metric_values[int(location_id)] = (years, values, gmst)
+    return fits, metric_values
+
+
+def _metric_forecast_cases(
+    future: pd.DataFrame,
+    fits: dict[int, LinearFit],
+    metric_values: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    prior: PooledPrior,
+    observations: pd.Series,
+    training_gmst: pd.Series,
+    station_groups: dict[int, str],
+    *,
+    metric: str,
+    season: str,
+    origin: int,
+    oracle: bool,
+) -> list[dict[str, float | int | str | bool]]:
+    """Produce backtest rows for one origin, season, and metric."""
+    rows: list[dict[str, float | int | str | bool]] = []
+    for location_id_value, target_year_value, actual_value in future[
+        ["location_id", "year", metric]
+    ].itertuples(index=False, name=None):
+        location_id = int(location_id_value)
+        target_year = int(target_year_value)
+        fit = fits.get(location_id)
+        if fit is None:
+            continue
+        if oracle:
+            predictor, predictor_variance = float(observations[target_year]), 0.0
+        else:
+            predictor, predictor_variance = _gmst_extrapolation(
+                training_gmst, target_year
+            )
+        model = forecast(fit, prior, predictor, predictor_variance=predictor_variance)
+        years, values, _ = metric_values[location_id]
+        legacy = _legacy_prediction(years, values, target_year)
+        if legacy is not None:
+            rows.append(
+                {
+                    "location_id": location_id,
+                    "station_group": station_groups[location_id],
+                    "origin": origin,
+                    "year": target_year,
+                    "horizon": target_year - origin,
+                    "metric": metric,
+                    "season": season,
+                    "actual": float(actual_value),
+                    "gmst": model.point,
+                    "legacy": legacy,
+                    "lower": model.lower,
+                    "upper": model.upper,
+                    "oracle": oracle,
+                }
+            )
+    return rows
+
+
 def _forecast_cases(
     annual: pd.DataFrame,
     observations: pd.Series,
@@ -179,17 +261,7 @@ def _forecast_cases(
                     & (season_rows["year"] <= origin),
                     ["location_id", "year", metric],
                 ]
-                fits: dict[int, LinearFit] = {}
-                metric_values: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
-                for location_id, group in training.groupby("location_id"):
-                    valid = group.dropna(subset=[metric])
-                    years = valid["year"].to_numpy(dtype=int)
-                    values = valid[metric].to_numpy(dtype=float)
-                    gmst = observations.reindex(years).to_numpy(dtype=float)
-                    fit = fit_linear(gmst, values)
-                    if fit is not None and fit.n >= MIN_TRAINING_YEARS:
-                        fits[int(location_id)] = fit
-                        metric_values[int(location_id)] = (years, values, gmst)
+                fits, metric_values = _location_fits(training, metric, observations)
                 representatives = _representative_fits(fits, station_groups)
                 if not representatives:
                     continue
@@ -201,44 +273,21 @@ def _forecast_cases(
                     season_rows["year"].between(origin + 1, origin + 10),
                     ["location_id", "year", metric],
                 ].dropna()
-                for row in future.itertuples(index=False):
-                    location_id = int(row.location_id)
-                    target_year = int(row.year)
-                    fit = fits.get(location_id)
-                    if fit is None:
-                        continue
-                    if oracle:
-                        predictor = float(observations[target_year])
-                        predictor_variance = 0.0
-                    else:
-                        predictor, predictor_variance = _gmst_extrapolation(
-                            training_gmst, target_year
-                        )
-                    model = forecast(
-                        fit, prior, predictor, predictor_variance=predictor_variance
+                rows.extend(
+                    _metric_forecast_cases(
+                        future,
+                        fits,
+                        metric_values,
+                        prior,
+                        observations,
+                        training_gmst,
+                        station_groups,
+                        metric=metric,
+                        season=season,
+                        origin=origin,
+                        oracle=oracle,
                     )
-                    years, values, _ = metric_values[location_id]
-                    legacy = _legacy_prediction(years, values, target_year)
-                    if legacy is None:
-                        continue
-                    actual = float(getattr(row, metric))
-                    rows.append(
-                        {
-                            "location_id": location_id,
-                            "station_group": station_groups[location_id],
-                            "origin": origin,
-                            "year": target_year,
-                            "horizon": target_year - origin,
-                            "metric": metric,
-                            "season": season,
-                            "actual": actual,
-                            "gmst": model.point,
-                            "legacy": legacy,
-                            "lower": model.lower,
-                            "upper": model.upper,
-                            "oracle": oracle,
-                        }
-                    )
+                )
     return pd.DataFrame(rows)
 
 
@@ -415,14 +464,30 @@ def bootstrap_diagnostics(cases: pd.DataFrame) -> dict[str, object]:
     }
 
 
+def _safe_cli_path(value: str) -> Path:
+    """Resolve a CLI path only when it remains within the working directory."""
+    resolved = os.path.realpath(value)
+    base_dir = os.path.realpath(os.getcwd())  # noqa: PTH109
+    if resolved != base_dir and not resolved.startswith(base_dir + os.sep):
+        msg = "paths must not escape the working directory"
+        raise argparse.ArgumentTypeError(msg)
+    return Path(resolved)
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-root", type=Path, default=Path("wetbulb_data_csv"))
     parser.add_argument(
-        "--annual-cache", type=Path, default=Path("forecast_inputs/annual_metrics.csv")
+        "--data-root", type=_safe_cli_path, default=_safe_cli_path("wetbulb_data_csv")
     )
     parser.add_argument(
-        "--output", type=Path, default=Path("forecast_inputs/backtest_report.json")
+        "--annual-cache",
+        type=_safe_cli_path,
+        default=_safe_cli_path("forecast_inputs/annual_metrics.csv"),
+    )
+    parser.add_argument(
+        "--output",
+        type=_safe_cli_path,
+        default=_safe_cli_path("forecast_inputs/backtest_report.json"),
     )
     return parser.parse_args()
 
@@ -430,7 +495,9 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     """Run the operational and oracle diagnostics and write a machine-readable report."""
     args = _parse_args()
-    annual = annual_metrics(args.data_root, args.annual_cache)
+    annual = annual_metrics(
+        _safe_cli_path(args.data_root), _safe_cli_path(args.annual_cache)
+    )
     observations = cast(
         "pd.Series",
         pd.read_csv("forecast_inputs/gmst_observations.csv").set_index("year")[
@@ -477,7 +544,9 @@ def main() -> None:
         "production_calibration_factors": production_factors,
         "oracle_diagnostic": {"passed": oracle_passed, **oracle_gate},
     }
-    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    _safe_cli_path(args.output).write_text(
+        json.dumps(report, indent=2) + "\n", encoding="utf-8"
+    )
     LOGGER.info("%s", json.dumps(report, indent=2))
 
 

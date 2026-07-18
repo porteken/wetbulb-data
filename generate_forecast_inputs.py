@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import os
 from pathlib import Path
 from typing import cast
 
@@ -12,7 +13,8 @@ import numpy as np
 import pandas as pd
 import requests
 
-HADCRUT_VERSION = "5.1.0.0"
+HADCRUT_RELEASE = (5, 1, 0, 0)
+HADCRUT_VERSION = ".".join(str(part) for part in HADCRUT_RELEASE)
 HADCRUT_URL = (
     "https://hadleyserver.metoffice.gov.uk/hadobs/hadcrut5/data/"
     f"HadCRUT.{HADCRUT_VERSION}/analysis/diagnostics/"
@@ -148,13 +150,27 @@ def build_station_groups(mapping_path: Path) -> pd.DataFrame:
     return result.sort_values(by="location_id")
 
 
+def _safe_cli_path(value: str) -> Path:
+    """Resolve a CLI path only when it remains within the working directory."""
+    resolved = os.path.realpath(value)
+    base_dir = os.path.realpath(os.getcwd())  # noqa: PTH109
+    if resolved != base_dir and not resolved.startswith(base_dir + os.sep):
+        msg = "paths must not escape the working directory"
+        raise argparse.ArgumentTypeError(msg)
+    return Path(resolved)
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--hadcrut-csv", type=Path)
+    parser.add_argument("--hadcrut-csv", type=_safe_cli_path)
     parser.add_argument(
-        "--station-map", type=Path, default=Path("cities_isd_stations.csv")
+        "--station-map",
+        type=_safe_cli_path,
+        default=_safe_cli_path("cities_isd_stations.csv"),
     )
-    parser.add_argument("--output-dir", type=Path, default=Path("forecast_inputs"))
+    parser.add_argument(
+        "--output-dir", type=_safe_cli_path, default=_safe_cli_path("forecast_inputs")
+    )
     return parser.parse_args()
 
 
@@ -166,17 +182,18 @@ def main() -> None:
     scenarios = build_scenarios(observations)
     station_groups = build_station_groups(args.station_map)
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = _safe_cli_path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     observations.to_csv(
-        args.output_dir / "gmst_observations.csv",
+        output_dir / "gmst_observations.csv",
         index=False,
         quoting=csv.QUOTE_MINIMAL,
     )
     scenarios.to_csv(
-        args.output_dir / "gmst_scenarios.csv", index=False, quoting=csv.QUOTE_MINIMAL
+        output_dir / "gmst_scenarios.csv", index=False, quoting=csv.QUOTE_MINIMAL
     )
     station_groups.to_csv(
-        args.output_dir / "forecast_station_groups.csv",
+        output_dir / "forecast_station_groups.csv",
         index=False,
         quoting=csv.QUOTE_MINIMAL,
     )
