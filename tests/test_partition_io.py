@@ -74,7 +74,7 @@ class TestPendingYears:
             0,
             df.copy(),
             0,
-            file_prefix="wetbulb",
+            file_prefix="archive",
             filesystem=filesystem,
             base_path=base_path,
         )
@@ -84,7 +84,7 @@ class TestPendingYears:
             0,
             filesystem,
             base_path,
-            file_prefix="pet",
+            file_prefix="wetbulb",
             force=False,
         )
         assert result == [2020]
@@ -142,14 +142,14 @@ class TestWritePendingYearBatches:
             }
         )
         partition_io.write_pending_year_batches(
-            daily_df, [2020], root, 0, filesystem, base_path, file_prefix="pet"
+            daily_df, [2020], root, 0, filesystem, base_path, file_prefix="wetbulb"
         )
         assert partition_io.batch_exists(
             root,
             2020,
             0,
             0,
-            file_prefix="pet",
+            file_prefix="wetbulb",
             filesystem=filesystem,
             base_path=base_path,
         )
@@ -158,7 +158,7 @@ class TestWritePendingYearBatches:
             2020,
             0,
             0,
-            file_prefix="wetbulb",
+            file_prefix="archive",
             filesystem=filesystem,
             base_path=base_path,
         )

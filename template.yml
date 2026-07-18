@@ -1,14 +1,14 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Infrastructure for PET Data Pipeline (S3 Bucket)
+Description: Infrastructure for wet-bulb data pipeline (S3 bucket)
 
 Parameters:
   BucketName:
     Type: String
-    Default: pet-parquet-files
+    Default: wetbulb-parquet-files
     Description: Name of the S3 bucket (Must be globally unique)
 
 Resources:
-  PetParquetFilesAccessLogsBucket:
+  WetbulbParquetFilesAccessLogsBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "${BucketName}-access-logs"
@@ -24,10 +24,10 @@ Resources:
       VersioningConfiguration:
         Status: Enabled
 
-  PetParquetFilesAccessLogsBucketPolicy:
+  WetbulbParquetFilesAccessLogsBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Ref PetParquetFilesAccessLogsBucket
+      Bucket: !Ref WetbulbParquetFilesAccessLogsBucket
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -36,7 +36,7 @@ Resources:
             Principal:
               Service: logging.s3.amazonaws.com
             Action: s3:PutObject
-            Resource: !Sub "${PetParquetFilesAccessLogsBucket.Arn}/s3-access-logs/*"
+            Resource: !Sub "${WetbulbParquetFilesAccessLogsBucket.Arn}/s3-access-logs/*"
             Condition:
               StringEquals:
                 aws:SourceAccount: !Ref AWS::AccountId
@@ -47,15 +47,15 @@ Resources:
             Principal: "*"
             Action: "s3:*"
             Resource:
-              - !GetAtt PetParquetFilesAccessLogsBucket.Arn
-              - !Sub "${PetParquetFilesAccessLogsBucket.Arn}/*"
+              - !GetAtt WetbulbParquetFilesAccessLogsBucket.Arn
+              - !Sub "${WetbulbParquetFilesAccessLogsBucket.Arn}/*"
             Condition:
               Bool:
                 aws:SecureTransport: "false"
 
-  PetParquetFilesBucket: # NOSONAR
+  WetbulbParquetFilesBucket: # NOSONAR
     Type: AWS::S3::Bucket # NOSONAR
-    DependsOn: PetParquetFilesAccessLogsBucketPolicy
+    DependsOn: WetbulbParquetFilesAccessLogsBucketPolicy
     Properties:
       BucketName: !Ref BucketName
       PublicAccessBlockConfiguration:
@@ -70,13 +70,13 @@ Resources:
       VersioningConfiguration:
         Status: Enabled
       LoggingConfiguration:
-        DestinationBucketName: !Ref PetParquetFilesAccessLogsBucket
+        DestinationBucketName: !Ref WetbulbParquetFilesAccessLogsBucket
         LogFilePrefix: s3-access-logs/
 
-  PetParquetFilesBucketPolicy:
+  WetbulbParquetFilesBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Ref PetParquetFilesBucket
+      Bucket: !Ref WetbulbParquetFilesBucket
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -85,16 +85,16 @@ Resources:
             Principal: "*"
             Action: "s3:*"
             Resource:
-              - !GetAtt PetParquetFilesBucket.Arn
-              - !Sub "${PetParquetFilesBucket.Arn}/*"
+              - !GetAtt WetbulbParquetFilesBucket.Arn
+              - !Sub "${WetbulbParquetFilesBucket.Arn}/*"
             Condition:
               Bool:
                 aws:SecureTransport: "false"
 
 Outputs:
   BucketName:
-    Value: !Ref PetParquetFilesBucket
+    Value: !Ref WetbulbParquetFilesBucket
     Description: The name of the S3 Bucket
   AccessLogsBucketName:
-    Value: !Ref PetParquetFilesAccessLogsBucket
+    Value: !Ref WetbulbParquetFilesAccessLogsBucket
     Description: The name of the S3 bucket receiving server access logs

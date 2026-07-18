@@ -95,7 +95,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 COPY --from=builder /app/.venv /app/.venv
-COPY entrypoint.sh cities.py google_era5.py nldas.py partition_io.py pet_corrected.py shards.py wetbulb.py ./
+COPY entrypoint.sh cities.py nldas.py partition_io.py shards.py wetbulb.py ./
 
 RUN groupadd -r appuser && useradd -r -g appuser appuser \
     && chown -R appuser:appuser /app \

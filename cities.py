@@ -54,7 +54,7 @@ MAX_CITIES = 500
 
 
 def process_cities(df: DataFrame) -> DataFrame:
-    """Deduplicate by ERA5 grid cell, cap at 500 cities, and assign location IDs."""
+    """Deduplicate by grid cell, cap at 500 cities, and assign location IDs."""
     df = df.copy()
 
     df = df.sort_values("population", ascending=False)

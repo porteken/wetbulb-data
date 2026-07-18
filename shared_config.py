@@ -221,7 +221,7 @@ def shared_area() -> list[float]:
 
 
 def add_year_month_shard_args(parser: argparse.ArgumentParser) -> None:
-    """Add the `--year`/`--months`/shard/`--batch-hours` flags shared by `nldas.py` and `google_era5.py`."""
+    """Add the common year, month, shard, and batch-duration flags."""
     parser.add_argument("--year", required=True, type=int)
     parser.add_argument(
         "--months",
@@ -247,6 +247,6 @@ def add_year_month_shard_args(parser: argparse.ArgumentParser) -> None:
 
 
 def resolve_time_shard_index(args: argparse.Namespace) -> None:
-    """Default `args.time_shard_index` from `CLOUD_RUN_TASK_INDEX` when unset."""
+    """Set `args.time_shard_index` from `CLOUD_RUN_TASK_INDEX` when unset."""
     if args.time_shard_index is None:
         args.time_shard_index = int(os.environ.get("CLOUD_RUN_TASK_INDEX", "0"))

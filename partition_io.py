@@ -1,6 +1,6 @@
 """Shared parquet partition write/resume helpers for pipeline workers.
 
-Used by both `google_era5.py` (PET) and `nldas.py` (wet-bulb) so batch
+Used by wet-bulb data producers so batch
 outputs land in the same `year=YYYY/{prefix}_batch_NNNN_SS.parquet` tree
 regardless of which worker produced them.
 """
@@ -68,7 +68,7 @@ def batch_exists(
     city_shard_index: int,
     batch_index: int,
     *,
-    file_prefix: str = "pet",
+    file_prefix: str = "wetbulb",
     filesystem: object | None = None,
     base_path: str | None = None,
 ) -> bool:

@@ -5,7 +5,7 @@ from NASA GES DISC (deterministic URLs, no CMR search needed), extracts the
 nearest 0.125-degree grid cell for each city, and computes wet-bulb
 temperature with the Davies-Jones (2008) method (see `wetbulb.py`). Output
 parquet lands in the same `wetbulb_data_csv/year=YYYY/wetbulb_batch_*`
-tree that `google_era5.py` used to write, so `load.py`/`load_wetbulb.py`
+tree consumed by `load.py`
 and the pipeline's S3 sync/resume logic need no changes.
 """
 

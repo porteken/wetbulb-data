@@ -10,6 +10,6 @@
   "python-envs.defaultPackageManager": "ms-python.python:conda",
   "sonarlint.connectedMode.project": {
     "connectionId": "porteken",
-    "projectKey": "porteken_pet-data"
+    "projectKey": "porteken_wetbulb-data"
   }
 }

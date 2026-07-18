@@ -130,19 +130,19 @@ class TestResolveDatabaseUri:
         password_env_name = "PG" + "PASSWORD"
         resolved_uri = build_postgres_uri_from_pg_env(
             {
-                "PGHOST": "primary.pet.example.run",
+                "PGHOST": "primary.wetbulb.example.run",
                 "PGPORT": "29432",
-                "PGDATABASE": "pet_data",
-                "PGUSER": "pet_user",
+                "PGDATABASE": "wetbulb_data",
+                "PGUSER": "wetbulb_user",
                 password_env_name: "demo space",
                 "PGSSLMODE": "require",
             }
         )
 
         assert resolved_uri is not None
-        assert resolved_uri.startswith("postgresql://pet_user:")
+        assert resolved_uri.startswith("postgresql://wetbulb_user:")
         assert "demo%20space" in resolved_uri
-        assert "@primary.pet.example.run:29432/pet_data" in resolved_uri
+        assert "@primary.wetbulb.example.run:29432/wetbulb_data" in resolved_uri
         assert resolved_uri.endswith("?sslmode=require")
 
     def test_falls_back_to_database_url(self) -> None:

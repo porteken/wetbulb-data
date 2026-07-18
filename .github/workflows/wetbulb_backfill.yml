@@ -69,7 +69,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
-        run: python3 clear_s3_prefix.py --bucket pet-parquet-files --prefix wetbulb_data_csv/ --max-workers 8
+        run: python3 clear_s3_prefix.py --bucket wetbulb-parquet-files --prefix wetbulb_data_csv/ --max-workers 8
 
   fetch:
     needs: [prepare, clear-wetbulb-output]
@@ -113,7 +113,7 @@ jobs:
             --city-shard-index ${{ matrix.shard }} \
             --city-shard-count "$SHARD_COUNT" \
             --concurrency "$CONCURRENCY" \
-            --out-dir s3://pet-parquet-files
+            --out-dir s3://wetbulb-parquet-files
 
   load-to-db:
     if: ${{ !inputs.skip_db_load }}
@@ -142,11 +142,11 @@ jobs:
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
         run: |
           mkdir -p wetbulb_data_csv
-          aws s3 sync s3://pet-parquet-files/wetbulb_data_csv/ ./wetbulb_data_csv/ --delete
+          aws s3 sync s3://wetbulb-parquet-files/wetbulb_data_csv/ ./wetbulb_data_csv/ --delete
       - name: Load wetbulb into Postgres (full rebuild)
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
-        run: uv run --locked --no-build python load.py --skip-table pet --truncate-table wetbulb --ensure-schema
+        run: uv run --locked --no-build python load.py --truncate-table wetbulb --ensure-schema
 
   notify-on-failure:
     if: failure()

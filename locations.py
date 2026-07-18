@@ -35,7 +35,7 @@ def locations_frame_from_cities_csv(csv_path: str | Path = CITIES_CSV) -> DataFr
 
     Deriving from the same file the compute workers read guarantees the
     locations table can never disagree with the location_ids embedded in the
-    PET/wetbulb data.
+    wet-bulb data.
     """
     city_frame = pd.read_csv(csv_path)
     return city_frame.rename(columns={"location_id": "id"})[

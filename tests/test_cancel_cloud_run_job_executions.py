@@ -90,7 +90,7 @@ class TestListExecutions:
         with pytest.raises(subprocess.CalledProcessError):
             _list_executions(
                 gcloud_bin="gcloud",
-                job="era5-worker",
+                job="nldas-worker",
                 region="us-east1",
                 project="x",
             )
@@ -101,16 +101,16 @@ def test_cancel_running_executions_integration(mock_run: MagicMock) -> None:
     from cancel_cloud_run_job_executions import cancel_running_executions
 
     mock_run.return_value.returncode = 0
-    mock_run.return_value.stdout = '[{"metadata": {"name": "era5-worker-running"}, "status": {}}, {"metadata": {"name": "era5-worker-running-2"}, "status": {}}]'
+    mock_run.return_value.stdout = '[{"metadata": {"name": "nldas-worker-running"}, "status": {}}, {"metadata": {"name": "nldas-worker-running-2"}, "status": {}}]'
 
     cancelled = cancel_running_executions(
         gcloud_bin="gcloud",
-        job="era5-worker",
+        job="nldas-worker",
         region="us-central1",
         project="my-project",
     )
 
     assert cancelled == [
-        "era5-worker-running",
-        "era5-worker-running-2",
+        "nldas-worker-running",
+        "nldas-worker-running-2",
     ]

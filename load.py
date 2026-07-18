@@ -29,12 +29,10 @@ DEFAULT_LOAD_WORKERS = 4
 DOLLAR_QUOTE_RE = re.compile(r"\$(?:[A-Za-z_]\w*)?\$")
 TABLE_NAMES = [
     "locations",
-    "pet",
     "wetbulb",
 ]
 TABLE_UNIQUE_KEYS: dict[str, tuple[str, ...]] = {
     "locations": ("id",),
-    "pet": ("location_id", "date"),
     "wetbulb": ("location_id", "date"),
 }
 TABLE_SOURCE_COLUMNS: dict[str, str] = {"wetbulb": "source"}
@@ -199,7 +197,7 @@ def _add_wetbulb_load_args(parser: argparse.ArgumentParser) -> None:
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Load shard-aware PET CSV outputs into the database and recreate views."
+            "Load shard-aware wet-bulb CSV outputs into the database and recreate views."
         ),
     )
     parser.add_argument(
@@ -207,16 +205,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--cities-csv",
         dest="locations_csv",
         default="locations.csv",
-    )
-    parser.add_argument("--pet-csv", default="pet.csv")
-    parser.add_argument("--pet-root", default="pet_data_csv")
-    parser.add_argument(
-        "--prefer-pet-csv",
-        action="store_true",
-        help=(
-            "Load the explicit --pet-csv input even when PET parquet shards are "
-            "also present under --pet-root."
-        ),
     )
     _add_wetbulb_load_args(parser)
     parser.add_argument(
@@ -782,16 +770,6 @@ def _discover_batch_parquet_paths(
     )
 
 
-def _discover_pet_csv_paths(args: argparse.Namespace) -> list[Path]:
-    return _discover_batch_parquet_paths(
-        args,
-        direct_csv=args.pet_csv,
-        root=args.pet_root,
-        file_glob="pet_batch_*.parquet",
-        prefer_direct=args.prefer_pet_csv,
-    )
-
-
 def _discover_wetbulb_csv_paths(args: argparse.Namespace) -> list[Path]:
     """Return wetbulb input paths: ISD/LCD/Giovanni batches plus any NLDAS gap-fill batches.
 
@@ -905,7 +883,6 @@ def _load_requested_tables(
 ) -> None:
     table_csv_resolvers = (
         ("locations", _discover_locations_csv_paths),
-        ("pet", _discover_pet_csv_paths),
         ("wetbulb", _discover_wetbulb_csv_paths),
     )
 

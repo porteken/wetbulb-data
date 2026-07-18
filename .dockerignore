@@ -13,7 +13,6 @@ __pycache__/
 .env
 analytics_data_csv/
 output_tiles/
-pet_data_csv/
 test_out/
 tmp_*/
 weather_data_parquet_test/

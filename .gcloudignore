@@ -12,10 +12,8 @@ env/
 *.parquet
 *.csv
 *.tmp
-era5_data_parquet/
 weather_data_parquet/
 utci_data_parquet/
-pet_data_csv/
 analytics_data_csv/
 combined_data_parquet/
 output_tiles/

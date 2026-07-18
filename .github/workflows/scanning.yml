@@ -34,7 +34,7 @@ jobs:
         run: uv run --locked --no-build ruff check .
 
       - name: Compile Cloud Run worker modules
-        run: uv run --locked --no-build python -m py_compile cities.py google_era5.py nldas.py partition_io.py pet_corrected.py shards.py wetbulb.py
+        run: uv run --locked --no-build python -m py_compile cities.py nldas.py partition_io.py shards.py wetbulb.py
 
       - name: Compile GitHub Actions worker modules
         run: uv run --locked --no-build python -m py_compile giovanni.py make_nldas_cell_map.py

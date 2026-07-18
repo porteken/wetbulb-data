@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "${HERE}/pull_all.sh" --products wetbulb "$@"
+exec python3 "${HERE}/pipeline.py" --products wetbulb "$@"

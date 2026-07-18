@@ -1,4 +1,4 @@
-"""Shared fixtures for the PET pipeline tests."""
+"""Shared fixtures for the wet-bulb pipeline tests."""
 
 from __future__ import annotations
 
