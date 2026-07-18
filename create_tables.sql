@@ -22,3 +22,32 @@ CONSTRAINT wetbulb_source_check CHECK (source IN ('isd', 'nldas', 'lcd', 'giovan
 
 CREATE UNIQUE INDEX IF NOT EXISTS wetbulb_location_date_uidx
 ON public.wetbulb (location_id, date) ;
+
+CREATE TABLE IF NOT EXISTS public.gmst_observations (
+year smallint PRIMARY KEY,
+anomaly double precision NOT NULL,
+anomaly_lo double precision NOT NULL,
+anomaly_hi double precision NOT NULL,
+source_version text NOT NULL
+) ;
+
+CREATE TABLE IF NOT EXISTS public.gmst_scenarios (
+scenario text NOT NULL,
+year smallint NOT NULL,
+anomaly double precision NOT NULL,
+anomaly_lo double precision NOT NULL,
+anomaly_hi double precision NOT NULL,
+sigma_g double precision NOT NULL,
+PRIMARY KEY (scenario, year),
+CONSTRAINT gmst_scenario_check CHECK (scenario IN ('ssp126', 'ssp245', 'ssp370'))
+) ;
+
+CREATE TABLE IF NOT EXISTS public.forecast_station_groups (
+location_id smallint PRIMARY KEY,
+station_group text NOT NULL
+) ;
+
+CREATE TABLE IF NOT EXISTS public.forecast_interval_calibration (
+metric text PRIMARY KEY,
+calibration_factor double precision NOT NULL CHECK (calibration_factor > = 1.0)
+) ;

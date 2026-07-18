@@ -30,10 +30,18 @@ DOLLAR_QUOTE_RE = re.compile(r"\$(?:[A-Za-z_]\w*)?\$")
 TABLE_NAMES = [
     "locations",
     "wetbulb",
+    "gmst_observations",
+    "gmst_scenarios",
+    "forecast_station_groups",
+    "forecast_interval_calibration",
 ]
 TABLE_UNIQUE_KEYS: dict[str, tuple[str, ...]] = {
     "locations": ("id",),
     "wetbulb": ("location_id", "date"),
+    "gmst_observations": ("year",),
+    "gmst_scenarios": ("scenario", "year"),
+    "forecast_station_groups": ("location_id",),
+    "forecast_interval_calibration": ("metric",),
 }
 TABLE_SOURCE_COLUMNS: dict[str, str] = {"wetbulb": "source"}
 SOURCE_RANK_PRIMARY = "isd"
@@ -168,6 +176,37 @@ def execute_sql_file(conn: Connection[Any], file_path: str | Path) -> None:
     LOGGER.info("Successfully executed %s (%d statements).", file_path, len(statements))
 
 
+def execute_sql_files_atomically(
+    conn: Connection[Any], file_paths: tuple[str | Path, ...]
+) -> None:
+    """Execute several SQL files in one transaction.
+
+    View replacement is deliberately all-or-nothing: a failed creation leaves
+    the previous materialized-view contract in place rather than exposing a
+    partially dropped schema to the application.
+    """
+    statements_by_file: list[tuple[Path, list[str]]] = []
+    for file_path in file_paths:
+        path = Path(file_path)
+        if not path.exists():
+            LOGGER.warning("SQL file %s not found. Skipping.", file_path)
+            continue
+        statements_by_file.append(
+            (path, list(_iter_sql_statements(path.read_text(encoding="utf-8"))))
+        )
+
+    if not statements_by_file:
+        return
+    with conn.transaction(), conn.cursor() as cur:
+        for path, statements in statements_by_file:
+            LOGGER.info("Executing SQL file: %s...", path)
+            for statement in statements:
+                cur.execute(cast("LiteralString", statement))
+    LOGGER.info(
+        "Successfully executed %d SQL file(s) atomically.", len(statements_by_file)
+    )
+
+
 def refresh_query_planner_statistics(conn: Connection[Any]) -> None:
     """Refresh planner statistics for the core runtime tables."""
     LOGGER.info("Refreshing query planner statistics...")
@@ -205,6 +244,22 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--cities-csv",
         dest="locations_csv",
         default="locations.csv",
+    )
+    parser.add_argument(
+        "--gmst-observations-csv",
+        default="forecast_inputs/gmst_observations.csv",
+    )
+    parser.add_argument(
+        "--gmst-scenarios-csv",
+        default="forecast_inputs/gmst_scenarios.csv",
+    )
+    parser.add_argument(
+        "--forecast-station-groups-csv",
+        default="forecast_inputs/forecast_station_groups.csv",
+    )
+    parser.add_argument(
+        "--forecast-interval-calibration-csv",
+        default="forecast_inputs/forecast_interval_calibration.csv",
     )
     _add_wetbulb_load_args(parser)
     parser.add_argument(
@@ -737,6 +792,26 @@ def _discover_locations_csv_paths(args: argparse.Namespace) -> list[Path]:
     return [Path(args.locations_csv)]
 
 
+def _discover_gmst_observations_csv_paths(args: argparse.Namespace) -> list[Path]:
+    return [Path(args.gmst_observations_csv)]
+
+
+def _discover_gmst_scenarios_csv_paths(args: argparse.Namespace) -> list[Path]:
+    return [Path(args.gmst_scenarios_csv)]
+
+
+def _discover_forecast_station_groups_csv_paths(
+    args: argparse.Namespace,
+) -> list[Path]:
+    return [Path(args.forecast_station_groups_csv)]
+
+
+def _discover_forecast_interval_calibration_csv_paths(
+    args: argparse.Namespace,
+) -> list[Path]:
+    return [Path(args.forecast_interval_calibration_csv)]
+
+
 def _discover_batch_parquet_paths(
     args: argparse.Namespace,
     *,
@@ -884,6 +959,13 @@ def _load_requested_tables(
     table_csv_resolvers = (
         ("locations", _discover_locations_csv_paths),
         ("wetbulb", _discover_wetbulb_csv_paths),
+        ("gmst_observations", _discover_gmst_observations_csv_paths),
+        ("gmst_scenarios", _discover_gmst_scenarios_csv_paths),
+        ("forecast_station_groups", _discover_forecast_station_groups_csv_paths),
+        (
+            "forecast_interval_calibration",
+            _discover_forecast_interval_calibration_csv_paths,
+        ),
     )
 
     for table_name, csv_resolver in table_csv_resolvers:
@@ -937,9 +1019,6 @@ def main() -> None:
     should_refresh_schema = not args.skip_drop_views or not args.skip_create_views
 
     try:
-        if not args.skip_drop_views:
-            execute_sql_file(conn, "drop_views.sql")
-
         if should_refresh_schema or args.ensure_schema:
             execute_sql_file(conn, "create_tables.sql")
 
@@ -951,7 +1030,14 @@ def main() -> None:
             skip_tables=skip_tables,
         )
 
-        if not args.skip_create_views:
+        if not args.skip_drop_views and not args.skip_create_views:
+            execute_sql_files_atomically(
+                conn,
+                ("drop_views.sql", "create_views.sql", "create_gmst_views.sql"),
+            )
+        elif not args.skip_drop_views:
+            execute_sql_file(conn, "drop_views.sql")
+        elif not args.skip_create_views:
             execute_sql_file(conn, "create_views.sql")
 
         if should_refresh_schema:

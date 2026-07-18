@@ -1,3 +1,5 @@
+DROP MATERIALIZED VIEW IF EXISTS public.wetbulb_forecast_max_scenarios CASCADE ;
+DROP MATERIALIZED VIEW IF EXISTS public.wetbulb_forecast_scenarios CASCADE ;
 DROP MATERIALIZED VIEW IF EXISTS public.wetbulb_forecast_max CASCADE ;
 DROP MATERIALIZED VIEW IF EXISTS public.wetbulb_forecast CASCADE ;
 DROP MATERIALIZED VIEW IF EXISTS public.wetbulb_year_stats CASCADE ;

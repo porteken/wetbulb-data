@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
 
 import load_wetbulb
+from load import execute_sql_files_atomically
 
 
 class FakeCursor:
@@ -46,6 +48,19 @@ class FakeConnection:
         self.closed = True
 
 
+class TransactionConnection(FakeConnection):
+    def transaction(self) -> TransactionConnection:
+        return self
+
+    def __enter__(self) -> TransactionConnection:
+        """Enter the fake transaction context."""
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """Exit the fake transaction context."""
+        _ = (exc_type, exc, tb)
+
+
 def _make_shard(tmp_path: Path) -> Path:
     shard_dir = tmp_path / "wetbulb_data_csv" / "year=2024"
     shard_dir.mkdir(parents=True)
@@ -73,6 +88,21 @@ class TestParseArgs:
         assert args.truncate is False
         assert args.skip_analyze is False
         assert args.load_shard_count == 1
+
+
+def test_execute_sql_files_atomically_uses_one_transaction(tmp_path: Path) -> None:
+    first = tmp_path / "first.sql"
+    second = tmp_path / "second.sql"
+    first.write_text("SELECT 1;", encoding="utf-8")
+    second.write_text("SELECT 2;", encoding="utf-8")
+    conn = TransactionConnection()
+
+    execute_sql_files_atomically(cast("Any", conn), (first, second))
+
+    assert [str(statement) for statement, _ in conn.executed_statements] == [
+        "SELECT 1;",
+        "SELECT 2;",
+    ]
 
 
 class TestMain:
