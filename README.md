@@ -1,6 +1,6 @@
 # Wetbulb Data Pipeline
 
-This is the automated pipeline for processing wet-bulb temperature data and loading it into the web application.
+This is the automated pipeline for processing wetbulb data and loading it into the [Web Application](https://wetbulb-app.vercel.app/). The repository for the web application itself is [porteken/wetbulb-app](https://github.com/porteken/wetbulb-app).
 
 1. **Compute**: Wet-bulb comes from NOAA's ISD Global Hourly station observations via the Davies-Jones (2008) method, which stores both the daily average and daily max; it's fetched from NCEI's bulk archive directly on GitHub Actions runners, with NOAA LCD v2 and NLDAS-2 gridded reanalysis kept as fallback sources.
 2. **Store**: Workers write parquet shards directly to an AWS S3 bucket, partitioned by year.
