@@ -16,7 +16,7 @@ _STULL_C5 = 1.5
 _STULL_C6 = 0.023101
 _STULL_OFFSET = 4.686035
 
-_EPSILON = 0.622
+EPSILON = 0.622
 _BOLTON_ES_A = 6.112
 _BOLTON_ES_B = 17.67
 _BOLTON_ES_C = 243.5
@@ -78,7 +78,7 @@ def _broadcast_inputs(values: list[object]) -> tuple[list[Dyn], bool]:
     return [np.broadcast_to(a, max_len).astype(float) for a in arrays], is_scalar
 
 
-def _saturation_vapor_pressure_hpa(temp_c: Dyn) -> Dyn:
+def saturation_vapor_pressure_hpa(temp_c: Dyn) -> Dyn:
     """Bolton (1980) eq. 10 saturation vapor pressure over liquid water."""
     return _BOLTON_ES_A * np.exp(
         _BOLTON_ES_B * temp_c / (temp_c + _BOLTON_ES_C),
@@ -132,7 +132,7 @@ def wetbulb_davies_jones(
     pressure_hpa = pressure_pa / 100.0
 
     with np.errstate(invalid="ignore", divide="ignore"):
-        vapor_pressure_hpa = q * pressure_hpa / (_EPSILON + (1 - _EPSILON) * q)
+        vapor_pressure_hpa = q * pressure_hpa / (EPSILON + (1 - EPSILON) * q)
         invalid = (
             ~np.isfinite(temp_k)
             | ~np.isfinite(vapor_pressure_hpa)
@@ -142,7 +142,7 @@ def wetbulb_davies_jones(
         vapor_pressure_hpa = np.where(invalid, np.nan, vapor_pressure_hpa)
 
         mixing_ratio = (
-            _EPSILON * vapor_pressure_hpa / (pressure_hpa - vapor_pressure_hpa)
+            EPSILON * vapor_pressure_hpa / (pressure_hpa - vapor_pressure_hpa)
         )
 
         log_e_ratio = np.log(vapor_pressure_hpa / _BOLTON_ES_A)
@@ -165,8 +165,8 @@ def wetbulb_davies_jones(
         for _ in range(_DAVIES_JONES_BISECTION_ITERS):
             mid = 0.5 * (lo + hi)
             mid_c = mid - _KELVIN_OFFSET
-            es_mid = _saturation_vapor_pressure_hpa(mid_c)
-            rs_mid = _EPSILON * es_mid / (pressure_hpa - es_mid)
+            es_mid = saturation_vapor_pressure_hpa(mid_c)
+            rs_mid = EPSILON * es_mid / (pressure_hpa - es_mid)
             theta_e_mid = _equivalent_potential_temperature_k(
                 mid,
                 mid,

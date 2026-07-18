@@ -177,7 +177,7 @@ def merge_csvs(
 
         try:
             frame = _load_data_frame_from_path(source_path, pd, product=product)
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, ValueError) as exc:
             print(f"Error processing {source_path}: {exc}")
             continue
 

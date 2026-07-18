@@ -14,12 +14,12 @@ import pytest
 import giovanni
 from giovanni import (
     TokenManager,
-    _contiguous_year_ranges,
     _fetch_variable_series,
     _get_timeseries_csv,
-    _load_cell_map,
     _parse_timeseries_csv,
+    contiguous_year_ranges,
     fetch_city_hourly,
+    load_cell_map,
 )
 
 SAMPLE_CSV = """prod_name,NLDAS_FORA0125_H.2.0
@@ -75,20 +75,20 @@ class TestParseTimeseriesCsv:
 
 class TestContiguousYearRanges:
     def test_single_run(self) -> None:
-        assert _contiguous_year_ranges([2020, 2021, 2022]) == [(2020, 2022)]
+        assert contiguous_year_ranges([2020, 2021, 2022]) == [(2020, 2022)]
 
     def test_multiple_runs(self) -> None:
-        assert _contiguous_year_ranges([2000, 2001, 2005, 2010, 2011]) == [
+        assert contiguous_year_ranges([2000, 2001, 2005, 2010, 2011]) == [
             (2000, 2001),
             (2005, 2005),
             (2010, 2011),
         ]
 
     def test_unsorted_and_duplicate_input(self) -> None:
-        assert _contiguous_year_ranges([2022, 2020, 2021, 2021]) == [(2020, 2022)]
+        assert contiguous_year_ranges([2022, 2020, 2021, 2021]) == [(2020, 2022)]
 
     def test_empty_input(self) -> None:
-        assert _contiguous_year_ranges([]) == []
+        assert contiguous_year_ranges([]) == []
 
 
 class _FakeResponse:
@@ -498,8 +498,8 @@ class TestLoadCellMap:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
     ) -> None:
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr(giovanni, "_CELL_MAP_WARNED", False)
-        df = _load_cell_map()
+        monkeypatch.setattr(giovanni, "_CELL_MAP_WARNED", [False])
+        df = load_cell_map()
         assert list(df.columns) == ["location_id", "cell_lat", "cell_lon"]
         assert df.empty
         assert df["cell_lat"].dtype == np.float64
@@ -512,7 +512,7 @@ class TestLoadCellMap:
         csv_path.write_text(
             "location_id,lat,lng,cell_lat,cell_lon,snapped\n0,40.7,-74.0,40.6875,-74.0625,False\n"
         )
-        df = _load_cell_map()
+        df = load_cell_map()
         assert len(df) == 1
         assert df.loc[0, "cell_lat"] == pytest.approx(40.6875)
 
@@ -529,8 +529,8 @@ class TestParseTimeseriesCsvRoundTrip:
 
 def test_module_reuses_nldas_helpers() -> None:
     """giovanni.py should reuse nldas.py's daily wet-bulb math, not reimplement it."""
-    assert giovanni.nldas._compute_daily_wetbulb is not None
-    assert cast("Any", giovanni.nldas)._load_nldas_city_shard is not None
+    assert giovanni.nldas.compute_daily_wetbulb is not None
+    assert cast("Any", giovanni.nldas).load_nldas_city_shard is not None
 
 
 class TestGetTimeseriesCsvExhaustion:
@@ -569,7 +569,7 @@ class TestSleepWithBackoff:
     ) -> None:
         sleeps: list[float] = []
         monkeypatch.setattr(giovanni.time, "sleep", sleeps.append)
-        monkeypatch.setattr(giovanni.random, "uniform", lambda _a, _b: 0.0)
+        monkeypatch.setattr(giovanni._RNG, "uniform", lambda _a, _b: 0.0)
         giovanni._sleep_with_backoff(2, retry_after="not-a-number")
         assert sleeps == [giovanni.GIOVANNI_RETRY_DELAY_SECONDS * 2]
 
@@ -617,7 +617,7 @@ class TestFetchCitySeries:
 
         monkeypatch.setattr(giovanni, "fetch_city_hourly", fake_fetch_city_hourly)
         row = SimpleNamespace(location_id=1, fetch_lat=10.0, fetch_lon=-70.0)
-        df, had_gap = giovanni._fetch_city_series(
+        df, had_gap = giovanni.fetch_city_series(
             SimpleNamespace(), _StubTokenManager(), row, [(2020, 2020), (2021, 2021)]
         )
         assert len(df) == 2
@@ -636,7 +636,7 @@ class TestFetchCitiesBatch:
                 {"location_id": [row.location_id]}
             ), row.location_id == 2
 
-        monkeypatch.setattr(giovanni, "_fetch_city_series", fake_fetch_city_series)
+        monkeypatch.setattr(giovanni, "fetch_city_series", fake_fetch_city_series)
         rows = [SimpleNamespace(location_id=i) for i in (1, 2, 3)]
         results = giovanni._fetch_cities_batch(
             rows,
@@ -728,7 +728,7 @@ class TestProcessGiovanni:
     ) -> None:
         monkeypatch.setattr(
             giovanni.nldas,
-            "_load_nldas_city_shard",
+            "load_nldas_city_shard",
             lambda *_a: pd.DataFrame(columns=pd.Index(["location_id", "lat", "lng"])),
         )
         called: list[int] = []
@@ -747,7 +747,7 @@ class TestProcessGiovanni:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         monkeypatch.setattr(
-            giovanni.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            giovanni.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(giovanni, "pending_years", lambda *_a, **_k: [])
         called: list[int] = []
@@ -766,9 +766,9 @@ class TestProcessGiovanni:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         monkeypatch.setattr(
-            giovanni.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            giovanni.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
-        monkeypatch.setattr(giovanni, "_load_cell_map", self._empty_cell_map)
+        monkeypatch.setattr(giovanni, "load_cell_map", self._empty_cell_map)
         monkeypatch.setattr(giovanni.TokenManager, "from_env", _StubTokenManager)
         monkeypatch.setattr(giovanni.requests, "Session", SimpleNamespace)
         df = pd.DataFrame(
@@ -785,7 +785,7 @@ class TestProcessGiovanni:
         )
         monkeypatch.setattr(
             giovanni.nldas,
-            "_compute_daily_wetbulb",
+            "compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 {
                     "location_id": [1],
@@ -810,9 +810,9 @@ class TestProcessGiovanni:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
     ) -> None:
         monkeypatch.setattr(
-            giovanni.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            giovanni.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
-        monkeypatch.setattr(giovanni, "_load_cell_map", self._empty_cell_map)
+        monkeypatch.setattr(giovanni, "load_cell_map", self._empty_cell_map)
         monkeypatch.setattr(giovanni.TokenManager, "from_env", _StubTokenManager)
         monkeypatch.setattr(giovanni.requests, "Session", SimpleNamespace)
         df = pd.DataFrame(
@@ -829,7 +829,7 @@ class TestProcessGiovanni:
         )
         monkeypatch.setattr(
             giovanni.nldas,
-            "_compute_daily_wetbulb",
+            "compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 columns=pd.Index(["location_id", "date", "wetbulb", "wetbulb_avg"])
             ),
@@ -847,9 +847,9 @@ class TestProcessGiovanni:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
     ) -> None:
         monkeypatch.setattr(
-            giovanni.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            giovanni.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
-        monkeypatch.setattr(giovanni, "_load_cell_map", self._empty_cell_map)
+        monkeypatch.setattr(giovanni, "load_cell_map", self._empty_cell_map)
         monkeypatch.setattr(giovanni.TokenManager, "from_env", _StubTokenManager)
         monkeypatch.setattr(giovanni.requests, "Session", SimpleNamespace)
         df = pd.DataFrame(
@@ -866,7 +866,7 @@ class TestProcessGiovanni:
         )
         monkeypatch.setattr(
             giovanni.nldas,
-            "_compute_daily_wetbulb",
+            "compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 {
                     "location_id": [1],

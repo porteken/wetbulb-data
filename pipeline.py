@@ -22,10 +22,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, LiteralString, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import psycopg
 from dotenv import load_dotenv
+from psycopg import sql
 from tqdm.auto import tqdm
 
 import cities as cities_module
@@ -590,8 +591,7 @@ def _run_command(
     env = None
     if extra_env:
         env = {**os.environ, **extra_env}
-    # S603: commands are built from config, not untrusted input.
-    process = subprocess.Popen(command, env=env)  # noqa: S603
+    process = subprocess.Popen(command, env=env)
     with _PROCESS_LOCK:
         _ACTIVE_PROCESSES.add(process)
     try:
@@ -1195,9 +1195,11 @@ def assert_outputs_available(cfg: PipelineConfig) -> None:
 
 
 def _distinct_year_count(conn: Connection[Any], table: str) -> int:
-    query = f"SELECT count(DISTINCT date_part('year', date)) FROM public.{table}"  # noqa: S608 - table names come from PRODUCT_TABLES
+    query = sql.SQL(
+        "SELECT count(DISTINCT date_part('year', date)) FROM public.{}",
+    ).format(sql.Identifier(table))
     with conn.cursor() as cur:
-        cur.execute(cast("LiteralString", query))
+        cur.execute(query)
         row = cur.fetchone()
     return int(row[0]) if row else 0
 

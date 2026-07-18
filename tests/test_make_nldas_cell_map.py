@@ -26,12 +26,12 @@ class TestBuildCellMap:
         )
         monkeypatch.setattr(
             cellmap.nldas,
-            "_nearest_grid_indices",
+            "nearest_grid_indices",
             lambda _lats, _lons: (np.array([10, 11, 12]), np.array([20, 21, 22])),
         )
         monkeypatch.setattr(
             cellmap.nldas,
-            "_resolve_location_indices",
+            "resolve_location_indices",
             lambda _shard_df, _candidate_hours: (
                 np.array([10, -1, 13]),
                 np.array([20, -1, 22]),
@@ -67,12 +67,12 @@ class TestBuildCellMap:
         cities_csv.write_text("location_id,lat,lng\n1,40.0,-74.0\n")
         monkeypatch.setattr(
             cellmap.nldas,
-            "_nearest_grid_indices",
+            "nearest_grid_indices",
             lambda _lats, _lons: (np.array([10]), np.array([20])),
         )
         monkeypatch.setattr(
             cellmap.nldas,
-            "_resolve_location_indices",
+            "resolve_location_indices",
             lambda _shard_df, _candidate_hours: (np.array([10]), np.array([20])),
         )
         with caplog.at_level("ERROR"):
@@ -117,12 +117,12 @@ class TestMain:
         )
         monkeypatch.setattr(
             cellmap.nldas,
-            "_nearest_grid_indices",
+            "nearest_grid_indices",
             lambda _lats, _lons: (np.array([10]), np.array([20])),
         )
         monkeypatch.setattr(
             cellmap.nldas,
-            "_resolve_location_indices",
+            "resolve_location_indices",
             lambda _shard_df, _candidate_hours: (np.array([11]), np.array([20])),
         )
         with caplog.at_level("INFO"):

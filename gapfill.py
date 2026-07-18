@@ -5,7 +5,7 @@ observations beat a gridded model on the extreme-value days this dataset
 exists for (a 15-city LCD-vs-NLDAS pilot showed NLDAS's p95 daily-max error
 is ~4.4 C -- an 8 F swing -- concentrated on exactly the high-humidity days
 this dataset cares about). But some station-years are thin: the 20/24-hour
-daily coverage gate in `nldas._compute_daily_wetbulb` drops a day whenever
+daily coverage gate in `nldas.compute_daily_wetbulb` drops a day whenever
 the assigned station didn't report enough hours, which happens for ~77
 cities in 2000-2010 (pre-ASOS/AWOS automation, no better station existed
 then either) and a handful of cities more recently.
@@ -203,18 +203,18 @@ def _fetch_gapfill_batch(
 
     Unlike `giovanni._fetch_cities_batch` (every city in a shard fetches the
     same pending years), each city here has its own gap-year set, so
-    `_contiguous_year_ranges` is computed per row rather than once for the
+    `contiguous_year_ranges` is computed per row rather than once for the
     whole batch.
     """
     results: dict[int, tuple[DataFrame, bool]] = {}
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = {
             executor.submit(
-                giovanni._fetch_city_series,  # noqa: SLF001
+                giovanni.fetch_city_series,
                 session,
                 token_manager,
                 row,
-                giovanni._contiguous_year_ranges(  # noqa: SLF001
+                giovanni.contiguous_year_ranges(
                     gap_years_by_location[row.location_id],
                 ),
             ): row.location_id
@@ -309,7 +309,7 @@ def _fetch_filled_rows(
     if not hourly_frames:
         return None
     hourly_df = pd.concat(hourly_frames, ignore_index=True)
-    daily_df = nldas._compute_daily_wetbulb(hourly_df)  # noqa: SLF001
+    daily_df = nldas.compute_daily_wetbulb(hourly_df)
     if daily_df.empty:
         return None
 
@@ -358,7 +358,7 @@ def process_gapfill(
     """Fill (location_id, date) cells the ISD pipeline could not produce, via NLDAS-2."""
     wetbulb_root = f"{out_dir}/wetbulb_data_csv"
 
-    shard_df = nldas._load_nldas_city_shard(city_shard_index, city_shard_count)  # noqa: SLF001
+    shard_df = nldas.load_nldas_city_shard(city_shard_index, city_shard_count)
     if location_ids is not None:
         shard_df = shard_df[shard_df["location_id"].isin(location_ids)]
     if shard_df.empty:
@@ -424,7 +424,7 @@ def process_gapfill(
         len(missing_cells),
     )
 
-    cell_map = giovanni._load_cell_map()  # noqa: SLF001
+    cell_map = giovanni.load_cell_map()
     shard_df = shard_df.merge(cell_map, on="location_id", how="left")
     shard_df["fetch_lat"] = shard_df["cell_lat"].fillna(shard_df["lat"])
     shard_df["fetch_lon"] = shard_df["cell_lon"].fillna(shard_df["lng"])
@@ -456,7 +456,7 @@ def process_gapfill(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    lcd._add_common_shard_args(parser)  # noqa: SLF001
+    lcd.add_common_shard_args(parser)
     parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY)
     parser.add_argument("--force", action="store_true")
     parser.add_argument(

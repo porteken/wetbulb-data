@@ -36,6 +36,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 LOGGER = logging.getLogger(__name__)
+_RNG = random.SystemRandom()
 
 type DataFrame = Any
 type Dataset = Any
@@ -54,6 +55,7 @@ PET_INPUT_COLUMNS = ["v", "t", "rh", "mrt"]
 
 GCS_BATCH_MAX_RETRIES = 3
 GCS_BATCH_RETRY_DELAY_SECONDS = 10
+GCSFS_ANONYMOUS_ACCESS = "anon"
 
 MIN_RH = 1.0
 MAX_RH = 100.0
@@ -180,7 +182,7 @@ def _open_zarr_store() -> Dataset:
     zarr = cast("Any", _import_optional_module("zarr"))
 
     fs = gcsfs.GCSFileSystem(
-        token="anon",  # noqa: S106
+        token=GCSFS_ANONYMOUS_ACCESS,
         default_block_size=8 * 1024 * 1024,
         skip_instance_cache=True,
     )
@@ -732,7 +734,7 @@ def _process_era5_batch_with_thread_dataset(
             if attempt == GCS_BATCH_MAX_RETRIES:
                 raise
 
-            jitter = random.uniform(0.0, 2.0)  # noqa: S311
+            jitter = _RNG.uniform(0.0, 2.0)
             time.sleep(GCS_BATCH_RETRY_DELAY_SECONDS * attempt + jitter)
 
     return batch_index

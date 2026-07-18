@@ -45,6 +45,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 LOGGER = logging.getLogger(__name__)
+_RNG = random.SystemRandom()
 
 type DataFrame = Any
 type Dataset = Any
@@ -159,9 +160,10 @@ def granule_url(timestamp: object) -> str:
     )
 
 
-def _nearest_grid_indices(
+def nearest_grid_indices(
     lats: ArrayLike, lons: ArrayLike
 ) -> tuple[ArrayLike, ArrayLike]:
+    """Return the nearest 0.125-degree NLDAS grid (row, col) indices for each point."""
     iy = np.clip(
         np.round(
             (np.asarray(lats, dtype="float64") - NLDAS_GRID_LAT0) / NLDAS_GRID_STEP,
@@ -301,7 +303,7 @@ def _download_granule(session: Session, url: str) -> bytes | None:
                     attempt,
                 )
                 return None
-            jitter = random.uniform(0.0, 2.0)  # noqa: S311
+            jitter = _RNG.uniform(0.0, 2.0)
             time.sleep(NLDAS_RETRY_DELAY_SECONDS * attempt + jitter)
         else:
             return response.content
@@ -325,14 +327,14 @@ def _fetch_hour(
         return None
 
 
-def _resolve_location_indices(
+def resolve_location_indices(
     shard_df: DataFrame,
     candidate_hours: list[Any],
 ) -> tuple[ArrayLike, ArrayLike]:
     """Resolve land-adjusted grid indices using one representative granule."""
     lats = shard_df["lat"].to_numpy(dtype="float64")
     lons = shard_df["lng"].to_numpy(dtype="float64")
-    iy, ix = _nearest_grid_indices(lats, lons)
+    iy, ix = nearest_grid_indices(lats, lons)
 
     session = _build_earthdata_session()
     for ts in candidate_hours:
@@ -351,7 +353,8 @@ def _resolve_location_indices(
     return iy, ix
 
 
-def _load_nldas_city_shard(city_shard_index: int, city_shard_count: int) -> DataFrame:
+def load_nldas_city_shard(city_shard_index: int, city_shard_count: int) -> DataFrame:
+    """Return the slice of `cities.csv` assigned to this city shard."""
     cities_df = pd.read_csv("cities.csv", usecols=["location_id", "lat", "lng"])
     cities_df = cities_df.sort_values("location_id").reset_index(drop=True)
 
@@ -430,7 +433,8 @@ def _process_time_batch(
     return pd.concat(rows, ignore_index=True)
 
 
-def _compute_daily_wetbulb(hourly_df: DataFrame) -> DataFrame:
+def compute_daily_wetbulb(hourly_df: DataFrame) -> DataFrame:
+    """Aggregate hourly Tair/Qair/PSurf into daily max/avg wet-bulb temperature."""
     output_columns = ["location_id", "date", "wetbulb", "wetbulb_avg"]
     df = hourly_df.dropna(subset=list(NLDAS_VARIABLES)).copy()
     if df.empty:
@@ -493,7 +497,7 @@ def process_nldas(
     """Download NLDAS-2 data, compute daily wet-bulb, and save as parquet shards."""
     wetbulb_root = f"{out_dir}/wetbulb_data_csv"
 
-    shard_df = _load_nldas_city_shard(city_shard_index, city_shard_count)
+    shard_df = load_nldas_city_shard(city_shard_index, city_shard_count)
     if shard_df.empty:
         LOGGER.info(
             "No cities found for shard %s/%s.",
@@ -538,11 +542,11 @@ def process_nldas(
         len(pending_batches),
     )
 
-    iy, ix = _resolve_location_indices(shard_df, pending_batches[0][1])
+    iy, ix = resolve_location_indices(shard_df, pending_batches[0][1])
 
     for batch_index, hours in tqdm(pending_batches, desc=f"NLDAS->wetbulb {year}"):
         hourly_df = _process_time_batch(shard_df, iy, ix, hours, download_workers)
-        daily_df = _compute_daily_wetbulb(hourly_df)
+        daily_df = compute_daily_wetbulb(hourly_df)
         if daily_df.empty:
             continue
         write_batch_partition(

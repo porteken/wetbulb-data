@@ -18,11 +18,11 @@ ARCO_CHECK_TIMEOUT_SECONDS = 30.0
 
 def arco_final_data_end_date() -> date:
     """Return the last date covered by final ERA5 data in the ARCO store."""
-    request = urllib.request.Request(  # noqa: S310 - fixed https URL
+    request = urllib.request.Request(
         ARCO_ZATTRS_URL,
         headers={"User-Agent": "pet-data-preflight"},
     )
-    with urllib.request.urlopen(  # noqa: S310 - fixed https URL
+    with urllib.request.urlopen(
         request,
         timeout=ARCO_CHECK_TIMEOUT_SECONDS,
     ) as response:

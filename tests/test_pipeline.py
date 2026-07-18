@@ -959,9 +959,10 @@ class _HistoryCursor:
         self._counts = counts
         self._result = 0
 
-    def execute(self, statement: str) -> None:
+    def execute(self, statement: Any) -> None:
+        rendered = statement.as_string(None)
         for table, count in self._counts.items():
-            if f"public.{table}" in statement:
+            if f'public."{table}"' in rendered:
                 self._result = count
 
     def fetchone(self) -> tuple[int]:

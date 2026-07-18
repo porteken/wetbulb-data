@@ -12,14 +12,14 @@ import pytest
 import nldas
 from nldas import (
     EarthdataSession,
-    _compute_daily_wetbulb,
     _extract_point_values,
     _iter_time_batches,
-    _nearest_grid_indices,
     _resolve_valid_indices,
     _resolve_variable_name,
     _select_time_shard_batches,
+    compute_daily_wetbulb,
     granule_url,
+    nearest_grid_indices,
 )
 
 
@@ -56,20 +56,20 @@ class TestGranuleUrl:
 
 class TestNearestGridIndices:
     def test_snaps_to_grid_origin(self) -> None:
-        iy, ix = _nearest_grid_indices(
+        iy, ix = nearest_grid_indices(
             np.array([nldas.NLDAS_GRID_LAT0]),
             np.array([nldas.NLDAS_GRID_LON0]),
         )
         assert (iy[0], ix[0]) == (0, 0)
 
     def test_clips_out_of_range_coordinates(self) -> None:
-        iy, ix = _nearest_grid_indices(np.array([90.0]), np.array([-200.0]))
+        iy, ix = nearest_grid_indices(np.array([90.0]), np.array([-200.0]))
         assert iy[0] == nldas.NLDAS_GRID_NLAT - 1
         assert ix[0] == 0
 
     def test_nearest_rounding(self) -> None:
         lat = nldas.NLDAS_GRID_LAT0 + 2 * nldas.NLDAS_GRID_STEP + 0.01
-        iy, _ix = _nearest_grid_indices(
+        iy, _ix = nearest_grid_indices(
             np.array([lat]), np.array([nldas.NLDAS_GRID_LON0])
         )
         assert iy[0] == 2
@@ -197,32 +197,32 @@ class TestComputeDailyWetbulb:
 
     def test_computes_max_and_avg(self) -> None:
         df = self._hourly_frame(24)
-        daily = _compute_daily_wetbulb(df)
+        daily = compute_daily_wetbulb(df)
         assert len(daily) == 1
         assert daily.loc[0, "wetbulb"] >= daily.loc[0, "wetbulb_avg"] - 1e-6
 
     def test_drops_incomplete_days(self) -> None:
         df = self._hourly_frame(19)
-        daily = _compute_daily_wetbulb(df)
+        daily = compute_daily_wetbulb(df)
         assert daily.empty
 
     def test_keeps_day_with_minimum_hours(self) -> None:
         df = self._hourly_frame(nldas.MIN_DAILY_HOURS)
-        daily = _compute_daily_wetbulb(df)
+        daily = compute_daily_wetbulb(df)
         assert len(daily) == 1
 
     def test_empty_input_returns_empty_with_columns(self) -> None:
         empty = pd.DataFrame(
             columns=pd.Index(["location_id", "time", "Tair", "Qair", "PSurf"]),
         )
-        daily = _compute_daily_wetbulb(empty)
+        daily = compute_daily_wetbulb(empty)
         assert list(daily.columns) == ["location_id", "date", "wetbulb", "wetbulb_avg"]
         assert daily.empty
 
     def test_drops_rows_with_missing_inputs(self) -> None:
         df = self._hourly_frame(24)
         df.loc[0, "Tair"] = np.nan
-        daily = _compute_daily_wetbulb(df)
+        daily = compute_daily_wetbulb(df)
         assert len(daily) == 1
 
 

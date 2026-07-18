@@ -187,7 +187,7 @@ class TestProcessGapfill:
     ) -> None:
         monkeypatch.setattr(
             gapfill.nldas,
-            "_load_nldas_city_shard",
+            "load_nldas_city_shard",
             lambda *_a: pd.DataFrame(columns=pd.Index(["location_id", "lat", "lng"])),
         )
         with caplog.at_level("INFO"):
@@ -201,7 +201,7 @@ class TestProcessGapfill:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         monkeypatch.setattr(
-            gapfill.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            gapfill.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(gapfill, "pending_years", lambda *_a, **_k: [])
         with caplog.at_level("INFO"):
@@ -215,7 +215,7 @@ class TestProcessGapfill:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         monkeypatch.setattr(
-            gapfill.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            gapfill.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(gapfill, "pending_years", lambda *_a, **_k: [2020])
         monkeypatch.setattr(
@@ -242,14 +242,14 @@ class TestProcessGapfill:
 
     def _stub_fetch_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            gapfill.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            gapfill.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(gapfill, "pending_years", lambda *_a, **_k: [2020])
         monkeypatch.setattr(
             gapfill, "find_missing_cells", lambda *_a, **_k: self._missing_cells()
         )
         monkeypatch.setattr(gapfill, "_filter_material_gaps", lambda cells, _n: cells)
-        monkeypatch.setattr(gapfill.giovanni, "_load_cell_map", self._empty_cell_map)
+        monkeypatch.setattr(gapfill.giovanni, "load_cell_map", self._empty_cell_map)
         monkeypatch.setattr(
             gapfill.giovanni.TokenManager, "from_env", _StubTokenManager
         )
@@ -276,7 +276,7 @@ class TestProcessGapfill:
         )
         monkeypatch.setattr(
             gapfill.nldas,
-            "_compute_daily_wetbulb",
+            "compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 {
                     "location_id": [1],
@@ -315,7 +315,7 @@ class TestProcessGapfill:
         )
         monkeypatch.setattr(
             gapfill.nldas,
-            "_compute_daily_wetbulb",
+            "compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 columns=pd.Index(["location_id", "date", "wetbulb", "wetbulb_avg"])
             ),
@@ -351,7 +351,7 @@ class TestProcessGapfill:
         )
         monkeypatch.setattr(
             gapfill.nldas,
-            "_compute_daily_wetbulb",
+            "compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 {
                     "location_id": [1],
@@ -390,7 +390,7 @@ class TestProcessGapfill:
         )
         monkeypatch.setattr(
             gapfill.nldas,
-            "_compute_daily_wetbulb",
+            "compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 {
                     "location_id": [1, 1],
@@ -443,7 +443,7 @@ class TestProcessGapfill:
         )
 
         monkeypatch.setattr(
-            gapfill.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            gapfill.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         called: list[int] = []
         monkeypatch.setattr(

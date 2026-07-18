@@ -43,11 +43,11 @@ def build_cell_map(cities_csv: str = "cities.csv") -> DataFrame:
     cities_df = pd.read_csv(cities_csv, usecols=["location_id", "lat", "lng"])
     cities_df = cities_df.sort_values("location_id").reset_index(drop=True)
 
-    raw_iy, raw_ix = nldas._nearest_grid_indices(  # noqa: SLF001
+    raw_iy, raw_ix = nldas.nearest_grid_indices(
         cities_df["lat"].to_numpy(dtype="float64"),
         cities_df["lng"].to_numpy(dtype="float64"),
     )
-    iy, ix = nldas._resolve_location_indices(cities_df, _CANDIDATE_HOURS)  # noqa: SLF001
+    iy, ix = nldas.resolve_location_indices(cities_df, _CANDIDATE_HOURS)
 
     missing = int((iy < 0).sum())
     if missing:

@@ -143,9 +143,9 @@ class TestDewpointToSpecificHumidity:
         pressure_hpa = pd.Series([1000.0, 1000.0])
         qair = lcd._dewpoint_to_specific_humidity(dewpoint_c, pressure_hpa)
 
-        epsilon = wetbulb._EPSILON
+        epsilon = wetbulb.EPSILON
         reconstructed_e = qair * pressure_hpa / (epsilon + (1 - epsilon) * qair)
-        expected_e = wetbulb._saturation_vapor_pressure_hpa(dewpoint_c)
+        expected_e = wetbulb.saturation_vapor_pressure_hpa(dewpoint_c)
         assert reconstructed_e.to_numpy() == pytest.approx(
             expected_e.to_numpy(), rel=1e-9
         )
@@ -235,7 +235,7 @@ class TestLoadStationMap:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         monkeypatch.setattr(lcd, "STATION_MAP_PATH", str(tmp_path / "missing.csv"))
-        monkeypatch.setattr(lcd, "_STATION_MAP_WARNED", False)
+        monkeypatch.setattr(lcd, "_STATION_MAP_WARNED", [False])
         with caplog.at_level("WARNING"):
             result = lcd._load_station_map()
         assert result.empty
@@ -299,7 +299,7 @@ class TestProcessLcd:
     ) -> None:
         monkeypatch.setattr(
             lcd.nldas,
-            "_load_nldas_city_shard",
+            "load_nldas_city_shard",
             lambda *_a: pd.DataFrame(columns=pd.Index(["location_id", "lat", "lng"])),
         )
         called: list[int] = []
@@ -318,7 +318,7 @@ class TestProcessLcd:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         monkeypatch.setattr(
-            lcd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            lcd.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(lcd, "pending_years", lambda *_a, **_k: [])
         called: list[int] = []
@@ -337,7 +337,7 @@ class TestProcessLcd:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         monkeypatch.setattr(
-            lcd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            lcd.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(lcd, "_load_station_map", self._empty_station_map)
         called: list[int] = []
@@ -360,7 +360,7 @@ class TestProcessLcd:
         This is the key semantic difference from giovanni's whole-shard skip.
         """
         monkeypatch.setattr(
-            lcd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            lcd.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(lcd, "_load_station_map", self._station_map_one_station)
 
@@ -379,7 +379,7 @@ class TestProcessLcd:
         )
         monkeypatch.setattr(
             lcd.nldas,
-            "_compute_daily_wetbulb",
+            "compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 {
                     "location_id": [1, 1],
@@ -425,7 +425,7 @@ class TestProcessLcd:
                 "lng": [-74.0, -74.1],
             }
         )
-        monkeypatch.setattr(lcd.nldas, "_load_nldas_city_shard", lambda *_a: shard_df)
+        monkeypatch.setattr(lcd.nldas, "load_nldas_city_shard", lambda *_a: shard_df)
         monkeypatch.setattr(
             lcd,
             "_load_station_map",
@@ -469,7 +469,7 @@ class TestProcessLcd:
                 }
             )
 
-        monkeypatch.setattr(lcd.nldas, "_compute_daily_wetbulb", fake_daily)
+        monkeypatch.setattr(lcd.nldas, "compute_daily_wetbulb", fake_daily)
 
         lcd.process_lcd(2020, 2020, str(tmp_path), 0, 1, 4)
 
@@ -480,7 +480,7 @@ class TestProcessLcd:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
     ) -> None:
         monkeypatch.setattr(
-            lcd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            lcd.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(lcd, "_load_station_map", self._station_map_one_station)
         station_df = pd.DataFrame(
@@ -496,7 +496,7 @@ class TestProcessLcd:
         )
         monkeypatch.setattr(
             lcd.nldas,
-            "_compute_daily_wetbulb",
+            "compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 {
                     "location_id": [1],
@@ -521,7 +521,7 @@ class TestProcessLcd:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
     ) -> None:
         monkeypatch.setattr(
-            lcd.nldas, "_load_nldas_city_shard", lambda *_a: self._shard_df()
+            lcd.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
         monkeypatch.setattr(lcd, "_load_station_map", self._station_map_one_station)
         station_df = pd.DataFrame(
@@ -537,7 +537,7 @@ class TestProcessLcd:
         )
         monkeypatch.setattr(
             lcd.nldas,
-            "_compute_daily_wetbulb",
+            "compute_daily_wetbulb",
             lambda _df: pd.DataFrame(
                 columns=pd.Index(["location_id", "date", "wetbulb", "wetbulb_avg"])
             ),
