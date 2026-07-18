@@ -82,7 +82,7 @@ class TestStationVerifiedAt:
         import make_lcd_station_map as mod
 
         original = mod._lcd_hourly_data_present
-        mod._lcd_hourly_data_present = fake_present  # type: ignore[assignment]
+        mod._lcd_hourly_data_present = fake_present
         try:
             cache: dict[tuple[str, int], bool] = {}
             assert stationmap._station_verified_at(

@@ -97,7 +97,7 @@ def export_pet(
         with conn.cursor() as cur:
             cur.execute(_TO_REGCLASS_QUERY, (f"public.{table}",))
             regclass = cur.fetchone()
-            if regclass is None or regclass[0] is None:  # type: ignore[index]
+            if regclass is None or regclass[0] is None:
                 print(f"Table '{table}' does not exist. Creating empty export.")
                 _write_empty_csv(output_path, product)
                 return
@@ -217,7 +217,7 @@ def _existing_public_tables(
         for table_name in table_names:
             cur.execute(_TO_REGCLASS_QUERY, (f"public.{table_name}",))
             row = cur.fetchone()
-            if row is not None and row[0] is not None:  # type: ignore[index]
+            if row is not None and row[0] is not None:
                 existing_tables.append(table_name)
     return existing_tables
 
@@ -245,7 +245,7 @@ def delete_window(window_start: str, window_end: str) -> None:
                 label = DATA_PRODUCTS[product]["label"]
                 cur.execute(_TO_REGCLASS_QUERY, (f"public.{table}",))
                 regclass = cur.fetchone()
-                if regclass is None or regclass[0] is None:  # type: ignore[index]
+                if regclass is None or regclass[0] is None:
                     continue
                 print(
                     f"Deleting {label} data in window [{window_start}, {window_end}]..."

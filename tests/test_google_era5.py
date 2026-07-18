@@ -679,7 +679,7 @@ def _make_fake_dataset(
     n_locs: int,
     hot_temp_k: float,
     cold_temp_k: float,
-) -> MagicMock:
+) -> _FakeDataset:
     """Return a minimal xarray-like Dataset mock with two distinct temperature profiles."""
     temps = np.empty((n_times, n_locs), dtype=float)
     temps[:, 0] = hot_temp_k
@@ -708,7 +708,7 @@ def _make_fake_dataset(
     start_h = int((pd.Timestamp("2010-01-01") - epoch).total_seconds() // 3600)
     time_vals = np.arange(start_h, start_h + n_times, dtype=int)
 
-    return _FakeDataset(raw, time_vals)  # type: ignore[return-value]
+    return _FakeDataset(raw, time_vals)
 
 
 class TestComputeLocationFrameAlignment:
@@ -781,7 +781,7 @@ class TestComputeLocationFrameAlignment:
         )
 
         result = _compute_location_frame(
-            fake_ds_with_slice,  # type: ignore[arg-type]
+            fake_ds_with_slice,
             cities,
             compute_workers=1,
         )

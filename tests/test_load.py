@@ -14,6 +14,8 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Generator
 
+    from psycopg import sql
+
 import load
 from load import (
     TABLE_NAMES,
@@ -555,16 +557,16 @@ class CopyRecordingCursor:
         self._connection = connection
         self.rowcount = connection.rowcount
 
-    def execute(self, statement: object, params: object = None) -> None:
+    def execute(self, statement: str | sql.Composed, params: object = None) -> None:
         _ = params
         rendered = (
-            statement if isinstance(statement, str) else statement.as_string(None)  # type: ignore[union-attr]
+            statement if isinstance(statement, str) else statement.as_string(None)
         )
         self._connection.statements.append(rendered)
 
-    def copy(self, statement: object) -> _CopyContext:
+    def copy(self, statement: str | sql.Composed) -> _CopyContext:
         rendered = (
-            statement if isinstance(statement, str) else statement.as_string(None)  # type: ignore[union-attr]
+            statement if isinstance(statement, str) else statement.as_string(None)
         )
         self._connection.statements.append(rendered)
         return _CopyContext(self._connection.copy_payloads)

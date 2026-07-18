@@ -163,7 +163,7 @@ class TestCandidateVerifiedAt:
             return True
 
         original = stationmap._isd_hourly_data_present
-        stationmap._isd_hourly_data_present = fake_present  # type: ignore[assignment]
+        stationmap._isd_hourly_data_present = fake_present
         try:
             cache: dict[tuple[str, int], bool] = {}
             stationmap._candidate_verified_at(
@@ -217,8 +217,8 @@ class TestBuildStationMap:
         assert by_id.loc[0, "isd_ids"] == "72205113750"
         assert by_id.loc[0, "wban"] == "13750"
 
-        assert pd.isna(by_id.loc[1, "isd_ids"])  # wban 99999 -> no history row
-        assert pd.isna(by_id.loc[2, "isd_ids"])  # no lcd_id at all
+        assert pd.isna(by_id.loc[1, "isd_ids"])
+        assert pd.isna(by_id.loc[2, "isd_ids"])
 
         assert any(
             "2 city/cities have no verified ISD station" in m for m in caplog.messages

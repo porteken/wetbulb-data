@@ -34,7 +34,6 @@ DATABASE_CONFIG_HINT = (
 
 def _resolve_environ(environ: Mapping[str, str] | None = None) -> Mapping[str, str]:
     """Return the supplied environment mapping or the current process environment."""
-    # noinspection PyTypeChecker
     return os.environ if environ is None else environ
 
 
