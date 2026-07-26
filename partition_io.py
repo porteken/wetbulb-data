@@ -12,6 +12,7 @@ pq = cast("Any", importlib.import_module("pyarrow.parquet"))
 pd = cast("Any", importlib.import_module("pandas"))
 
 type DataFrame = Any
+_PARQUET_METADATA_ERRORS = (OSError, pa.ArrowException)
 
 
 class PartitionTarget(NamedTuple):
@@ -76,7 +77,7 @@ def batch_exists(
         if fs.get_file_info(path).type == 0:
             return False
         pq.read_metadata(path, filesystem=fs)
-    except OSError, pa.ArrowException:
+    except _PARQUET_METADATA_ERRORS:
         return False
     return True
 

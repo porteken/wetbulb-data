@@ -30,6 +30,7 @@ type DataFrame = Any
 type Session = Any
 type CityRow = Any
 type Filesystem = Any
+_PARQUET_LIST_ERRORS = (OSError, pa.ArrowException)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,7 +65,7 @@ def _existing_cells(
     partition_dir = f"{base_path}/year={year}"
     try:
         file_infos = filesystem.get_file_info(fs_module.FileSelector(partition_dir))
-    except OSError, pa.ArrowException:
+    except _PARQUET_LIST_ERRORS:
         return _empty_cells_frame()
 
     paths = [

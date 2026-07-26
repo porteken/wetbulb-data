@@ -18,6 +18,7 @@ fs_module = cast("Any", import_module("pyarrow.fs"))
 type DataFrame = Any
 LOGGER = logging.getLogger(__name__)
 type ShardMapping = dict["ShardKey", list[str]]
+_SHARD_KEY_ERRORS = (KeyError, ValueError)
 
 
 @dataclass(frozen=True, order=True)
@@ -160,5 +161,5 @@ def _parse_shard_key(root_path: str, file_path: str) -> ShardKey | None:
             month=int(partitions.get("month", "0")),
             tile_id=int(partitions["tile_id"]),
         )
-    except KeyError, ValueError:
+    except _SHARD_KEY_ERRORS:
         return None
