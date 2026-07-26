@@ -30,13 +30,14 @@ Pull ECCC observations into a Canada-specific shard tree (separate output
 directories prevent Canadian and US Parquet filenames from colliding):
 
 ```bash
-uv run python pipeline.py \
-  --region ca \
-  --wetbulb-source eccc \
-  --years $(seq 1991 2025) \
-  --out-dir ca \
-  --concurrency 4
+./pull_wetbulb_ca.sh
+./pull_wetbulb_ca.sh --yes load views
 ```
+
+The wrapper is resumable and supports individual `cities`, `crosswalk`,
+`pull`, `gapfill`, `load`, and `views` steps. Run
+`./pull_wetbulb_ca.sh --help` for concurrency, year, sharding, and dry-run
+options.
 
 ECCC timestamps marked LST are aggregated as local-standard calendar days.
 The worker rejects missing/erroneous temperature, dew-point, and pressure
