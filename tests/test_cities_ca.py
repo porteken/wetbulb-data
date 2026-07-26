@@ -69,8 +69,10 @@ class TestNormalizePopulationCentres:
         assert ottawa["lat"] == 45.44
 
     def test_rejects_input_missing_columns(self) -> None:
+        source = pd.DataFrame({"PCNAME": ["A"]})
+
         with pytest.raises(ValueError, match="missing columns"):
-            cities_ca.normalize_population_centres(pd.DataFrame({"PCNAME": ["A"]}))
+            cities_ca.normalize_population_centres(source)
 
     def test_merges_the_secondary_province_of_a_split_centre(self) -> None:
         source = pd.DataFrame(
@@ -156,11 +158,12 @@ class TestResolveLocalPath:
     ) -> None:
         working = tmp_path / "work"
         working.mkdir()
+        sibling = str(tmp_path / "work-secret")
         (tmp_path / "work-secret").mkdir()
         monkeypatch.chdir(working)
 
         with pytest.raises(ValueError, match="escapes the working directory"):
-            cities_ca.resolve_local_path(str(tmp_path / "work-secret"))
+            cities_ca.resolve_local_path(sibling)
 
 
 class TestLoadGeosuitePopctr:

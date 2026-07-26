@@ -75,8 +75,10 @@ class TestColumn:
         assert cities._column(frame, "INTPTLONG", "INTPTLONG20") == "INTPTLONG20"
 
     def test_raises_when_no_alias_matches(self) -> None:
+        frame = pd.DataFrame({"x": [1]})
+
         with pytest.raises(ValueError, match="missing required column"):
-            cities._column(pd.DataFrame({"x": [1]}), "GEOID", "GEOID20")
+            cities._column(frame, "GEOID", "GEOID20")
 
 
 class TestNormalizeName:
@@ -136,9 +138,10 @@ class TestSelectTopPlaces:
     def test_rejects_an_unknown_state_fips(self) -> None:
         estimates = _estimates(CITY_COUNT)
         estimates.loc[0, "STATE"] = "72"
+        gazetteer = _gazetteer(estimates)
 
         with pytest.raises(ValueError, match="unknown or non-CONUS state FIPS"):
-            cities.select_top_places(estimates, _gazetteer(estimates))
+            cities.select_top_places(estimates, gazetteer)
 
     def test_rejects_a_gazetteer_missing_an_internal_point(self) -> None:
         estimates = _estimates()
@@ -149,9 +152,10 @@ class TestSelectTopPlaces:
 
     def test_rejects_fewer_than_500_places(self) -> None:
         estimates = _estimates(CITY_COUNT - 1)
+        gazetteer = _gazetteer(estimates)
 
         with pytest.raises(ValueError, match="500 unique incorporated places"):
-            cities.select_top_places(estimates, _gazetteer(estimates))
+            cities.select_top_places(estimates, gazetteer)
 
 
 class TestMatchGeonames:
@@ -172,9 +176,10 @@ class TestMatchGeonames:
 
     def test_rejects_geonames_input_missing_columns(self) -> None:
         places = self._places(2)
+        geonames = pd.DataFrame({"geonameid": ["1"]})
 
         with pytest.raises(ValueError, match="missing columns"):
-            cities.match_geonames(places, pd.DataFrame({"geonameid": ["1"]}))
+            cities.match_geonames(places, geonames)
 
     def test_raises_when_a_place_has_no_match(self) -> None:
         places = self._places(2)
@@ -268,9 +273,10 @@ class TestResolveOutputPath:
         working.mkdir()
         (tmp_path / "work-secret").mkdir()
         monkeypatch.chdir(working)
+        sibling = str(tmp_path / "work-secret" / "x.csv")
 
         with pytest.raises(ValueError, match="escapes the working directory"):
-            cities.resolve_output_path(str(tmp_path / "work-secret" / "x.csv"))
+            cities.resolve_output_path(sibling)
 
 
 class TestAtomicWrite:
@@ -412,9 +418,10 @@ class TestReadSource:
         with zipfile.ZipFile(buffer, "w") as archive:
             archive.writestr("one.csv", "a\n1\n")
             archive.writestr("two.csv", "a\n1\n")
+        payload = buffer.getvalue()
 
         with pytest.raises(ValueError, match="expected one data file"):
-            cities._read_source(buffer.getvalue(), "https://example.test/x.zip")
+            cities._read_source(payload, "https://example.test/x.zip")
 
     def test_reads_geonames_as_headerless_tsv(self) -> None:
         row = "\t".join(["1", "Name", "Ascii", "alt", "32.0", "-86.0"] + [""] * 13)

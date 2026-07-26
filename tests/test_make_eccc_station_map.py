@@ -91,9 +91,10 @@ class TestLoadStationInventory:
     def test_rejects_an_inventory_missing_columns(self, tmp_path: Path) -> None:
         path = tmp_path / "inventory.csv"
         path.write_text(f"{INVENTORY_HEADER}Station ID,Name\n1,Ottawa\n")
+        source = str(path)
 
         with pytest.raises(ValueError, match="missing columns"):
-            stationmap.load_station_inventory(str(path))
+            stationmap.load_station_inventory(source)
 
 
 class TestHaversineKm:

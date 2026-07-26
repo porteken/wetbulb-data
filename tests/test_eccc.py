@@ -224,8 +224,10 @@ class TestLoadStationMap:
         ]
 
     def test_raises_a_helpful_error_when_absent(self, tmp_path: Any) -> None:
+        missing = str(tmp_path / "missing.csv")
+
         with pytest.raises(FileNotFoundError, match=r"make_eccc_station_map\.py"):
-            eccc._load_station_map(str(tmp_path / "missing.csv"))
+            eccc._load_station_map(missing)
 
 
 class TestProcessEccc:
