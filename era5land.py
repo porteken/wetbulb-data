@@ -56,13 +56,11 @@ import nldas
 from gapfill import (
     GAPFILL_FILE_PREFIX,
     MIN_MISSING_DAYS_DEFAULT,
-    _filter_material_gaps,
     _gap_years_by_location,
-    find_missing_cells,
+    resolve_gapfill_targets,
 )
 from lcd import _KELVIN_OFFSET, _dewpoint_to_specific_humidity
-from partition_io import pending_years, write_pending_year_batches
-from shards import resolve_filesystem
+from partition_io import write_pending_year_batches
 
 pd = cast("Any", importlib.import_module("pandas"))
 
@@ -335,42 +333,21 @@ def process_era5land_gapfill(
     """Fill (location_id, date) cells the ISD pipeline could not produce, via ERA5-Land."""
     wetbulb_root = f"{out_dir}/wetbulb_data_csv"
 
-    shard_df = nldas.load_nldas_city_shard(
-        city_shard_index, city_shard_count, cities_csv
-    )
-    if location_ids is not None:
-        shard_df = shard_df[shard_df["location_id"].isin(location_ids)]
-    if shard_df.empty:
-        LOGGER.info(
-            "No cities found for shard %s/%s.", city_shard_index, city_shard_count
-        )
-        return
-
-    filesystem, base_path = resolve_filesystem(wetbulb_root)
-    pending_year_list = pending_years(
-        range(start_year, end_year + 1),
+    resolved = resolve_gapfill_targets(
+        nldas.load_nldas_city_shard(city_shard_index, city_shard_count, cities_csv),
         wetbulb_root,
+        start_year,
+        end_year,
         city_shard_index,
-        filesystem,
-        base_path,
-        file_prefix=GAPFILL_FILE_PREFIX,
+        city_shard_count,
+        location_ids=location_ids,
+        min_missing_days=min_missing_days,
         force=force,
+        logger=LOGGER,
     )
-    if not pending_year_list:
-        LOGGER.info(
-            "city_shard=%d/%d: gap-fill years %d-%d already present.",
-            city_shard_index,
-            city_shard_count,
-            start_year,
-            end_year,
-        )
+    if resolved is None:
         return
-
-    location_id_list = shard_df["location_id"].tolist()
-    all_missing_cells = find_missing_cells(
-        location_id_list, pending_year_list, filesystem, base_path
-    )
-    missing_cells = _filter_material_gaps(all_missing_cells, min_missing_days)
+    shard_df, filesystem, base_path, pending_year_list, _, missing_cells = resolved
     if missing_cells.empty:
         LOGGER.info(
             "city_shard=%d/%d: no material gaps found in ISD output for "

@@ -444,13 +444,17 @@ def compute_daily_wetbulb(hourly_df: DataFrame) -> DataFrame:
     if df.empty:
         return pd.DataFrame(columns=output_columns)
 
-    tw = np.asarray(
-        wetbulb_davies_jones(
-            df["Tair"].to_numpy(dtype="float64"),
-            df["Qair"].to_numpy(dtype="float64"),
-            df["PSurf"].to_numpy(dtype="float64"),
-        ),
-        dtype="float64",
+    # `wetbulb_davies_jones` returns a bare float for length-1 input, which
+    # would make the `invalid` mask below a 0-d scalar.
+    tw = np.atleast_1d(
+        np.asarray(
+            wetbulb_davies_jones(
+                df["Tair"].to_numpy(dtype="float64"),
+                df["Qair"].to_numpy(dtype="float64"),
+                df["PSurf"].to_numpy(dtype="float64"),
+            ),
+            dtype="float64",
+        )
     )
     invalid = (
         ~np.isfinite(tw)

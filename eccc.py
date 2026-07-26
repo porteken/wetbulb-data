@@ -163,6 +163,24 @@ def download_eccc_month(
     return None, True
 
 
+def _fetch_station_year_months(
+    station_id: int,
+    year: int,
+    elevation_m: float | None,
+    session: requests.Session,
+) -> tuple[list[DataFrame], bool]:
+    frames: list[DataFrame] = []
+    for month in range(1, 13):
+        text, gap = download_eccc_month(station_id, year, month, session=session)
+        if gap:
+            return [], True
+        if text:
+            frame = parse_eccc_hourly(text, elevation_m=elevation_m)
+            if not frame.empty:
+                frames.append(frame)
+    return frames, False
+
+
 def fetch_station_year(
     station_ids: list[int],
     year: int,
@@ -173,15 +191,9 @@ def fetch_station_year(
     """Fetch one year, using the first candidate with usable hourly data."""
     http = session or requests.Session()
     for station_id in station_ids:
-        frames: list[DataFrame] = []
-        for month in range(1, 13):
-            text, gap = download_eccc_month(station_id, year, month, session=http)
-            if gap:
-                return _empty_hourly(), True
-            if text:
-                frame = parse_eccc_hourly(text, elevation_m=elevation_m)
-                if not frame.empty:
-                    frames.append(frame)
+        frames, gap = _fetch_station_year_months(station_id, year, elevation_m, http)
+        if gap:
+            return _empty_hourly(), True
         if frames:
             return pd.concat(frames, ignore_index=True), False
     return _empty_hourly(), False

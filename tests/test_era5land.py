@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 import era5land
+import gapfill
 
 
 class _StubCdsClient:
@@ -210,7 +211,7 @@ class TestProcessEra5landGapfill:
         monkeypatch.setattr(
             era5land.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
-        monkeypatch.setattr(era5land, "pending_years", lambda *_a, **_k: [])
+        monkeypatch.setattr(gapfill, "pending_years", lambda *_a, **_k: [])
         with caplog.at_level("INFO"):
             era5land.process_era5land_gapfill(2020, 2020, str(tmp_path), 0, 1, 2)
         assert any("already present" in m for m in caplog.messages)
@@ -224,9 +225,9 @@ class TestProcessEra5landGapfill:
         monkeypatch.setattr(
             era5land.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
-        monkeypatch.setattr(era5land, "pending_years", lambda *_a, **_k: [2020])
+        monkeypatch.setattr(gapfill, "pending_years", lambda *_a, **_k: [2020])
         monkeypatch.setattr(
-            era5land,
+            gapfill,
             "find_missing_cells",
             lambda *_a, **_k: pd.DataFrame(
                 {
@@ -254,11 +255,11 @@ class TestProcessEra5landGapfill:
         monkeypatch.setattr(
             era5land.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )
-        monkeypatch.setattr(era5land, "pending_years", lambda *_a, **_k: [2020])
+        monkeypatch.setattr(gapfill, "pending_years", lambda *_a, **_k: [2020])
         monkeypatch.setattr(
-            era5land, "find_missing_cells", lambda *_a, **_k: self._missing_cells()
+            gapfill, "find_missing_cells", lambda *_a, **_k: self._missing_cells()
         )
-        monkeypatch.setattr(era5land, "_filter_material_gaps", lambda cells, _n: cells)
+        monkeypatch.setattr(gapfill, "_filter_material_gaps", lambda cells, _n: cells)
         monkeypatch.setattr(era5land, "_cds_client", object)
         monkeypatch.setattr(
             era5land,

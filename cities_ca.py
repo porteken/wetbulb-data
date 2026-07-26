@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import io
 import logging
+import os
 import zipfile
 from importlib import import_module
 from pathlib import Path
@@ -123,18 +124,28 @@ def normalize_population_centres(frame: DataFrame) -> DataFrame:
     return grouped[["location_id", "city", "state", "lat", "lng"]]
 
 
+def resolve_local_path(path: str) -> Path:
+    """Canonicalize a local path and reject anything outside the working tree."""
+    resolved = os.path.realpath(path)
+    base_dir = os.path.realpath(os.getcwd())  # noqa: PTH109
+    if resolved != base_dir and not resolved.startswith(base_dir + os.sep):
+        message = f"path escapes the working directory: {path}"
+        raise ValueError(message)
+    return Path(resolved)
+
+
 def load_geosuite_popctr(
     source: str = GEOSUITE_URL,
     *,
     session: requests.Session | None = None,
 ) -> DataFrame:
     """Download GeoSuite and return its population-centre reference table."""
-    if source.startswith(("http://", "https://")):
+    if source.startswith("https://"):
         response = (session or requests.Session()).get(source, timeout=300)
         response.raise_for_status()
         archive_bytes = response.content
     else:
-        with Path(source).open("rb") as stream:
+        with resolve_local_path(source).open("rb") as stream:
             archive_bytes = stream.read()
     with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
         population_tables = [

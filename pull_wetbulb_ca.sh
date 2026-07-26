@@ -96,12 +96,13 @@ confirm_db_step() {
 }
 
 require_file() {
-  [[ -f $1 ]] && return 0
+  local path=$1 step=$2
+  [[ -f ${path} ]] && return 0
   if ((DRY_RUN)); then
-    log "  [dry-run] would require $1 (from the '$2' step)"
+    log "  [dry-run] would require ${path} (from the '${step}' step)"
     return 0
   fi
-  die "$1 not found -- run the '$2' step first"
+  die "${path} not found -- run the '${step}' step first"
 }
 
 run_sharded() {
@@ -236,9 +237,10 @@ step_views() {
 }
 
 main() {
-  local steps=()
+  local steps=() argument
   while (($#)); do
-    case $1 in
+    argument=$1
+    case ${argument} in
     -n | --dry-run) DRY_RUN=1 ;;
     -y | --yes) ASSUME_YES=1 ;;
     -h | --help)
@@ -246,9 +248,9 @@ main() {
       return
       ;;
     all) steps+=("${ALL_STEPS[@]}") ;;
-    cities | crosswalk | pull | gapfill | load | views) steps+=("$1") ;;
-    -*) die "unknown option: $1 (try --help)" ;;
-    *) die "unknown step: $1 (valid: ${ALL_STEPS[*]}, all)" ;;
+    cities | crosswalk | pull | gapfill | load | views) steps+=("${argument}") ;;
+    -*) die "unknown option: ${argument} (try --help)" ;;
+    *) die "unknown step: ${argument} (valid: ${ALL_STEPS[*]}, all)" ;;
     esac
     shift
   done

@@ -110,5 +110,9 @@ for step in "${STEPS[@]}"; do
       ((CONFIRM_DB)) || { echo "views requires --confirm-db-write" >&2; exit 1; }
       run python3 "${HERE}/refresh_views.py"
       ;;
+    *)
+      echo "unknown step: $step" >&2
+      exit 2
+      ;;
   esac
 done

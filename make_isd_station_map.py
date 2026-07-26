@@ -317,25 +317,35 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    """Build and write the city-to-ISD-station map."""
-    args = _parse_args()
-    station_map = build_station_map(
-        args.lcd_stations_csv,
-        start_year=args.start_year,
-        end_year=args.end_year,
-    )
-    station_map.to_csv(args.out, index=False, quoting=csv.QUOTE_MINIMAL)
+def write_station_map(
+    station_map: DataFrame, out: str, *, logger: logging.Logger
+) -> None:
+    """Write a crosswalk, exiting non-zero when any city lacks a station."""
+    station_map.to_csv(out, index=False, quoting=csv.QUOTE_MINIMAL)
     matched = int(station_map["isd_ids"].notna().sum())
     total = len(station_map)
-    LOGGER.info("Wrote %d row(s) to %s (%d matched).", total, args.out, matched)
+    logger.info("Wrote %d row(s) to %s (%d matched).", total, out, matched)
     if matched < total:
-        LOGGER.error(
+        logger.error(
             "%d of %d cities have no verified ISD station -- see warnings above.",
             total - matched,
             total,
         )
         sys.exit(1)
+
+
+def main() -> None:
+    """Build and write the city-to-ISD-station map."""
+    args = _parse_args()
+    write_station_map(
+        build_station_map(
+            args.lcd_stations_csv,
+            start_year=args.start_year,
+            end_year=args.end_year,
+        ),
+        args.out,
+        logger=LOGGER,
+    )
 
 
 if __name__ == "__main__":

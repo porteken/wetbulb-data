@@ -155,26 +155,22 @@ class TestCandidateVerifiedAt:
             ["AAA", "BBB"], 2005, session=session, cache=cache
         )
 
-    def test_caches_by_station_and_year(self) -> None:
+    def test_caches_by_station_and_year(self, monkeypatch: pytest.MonkeyPatch) -> None:
         calls: list[tuple[str, int]] = []
 
         def fake_present(station_id: str, year: int, *, session: Any) -> bool:
             calls.append((station_id, year))
             return True
 
-        original = stationmap._isd_hourly_data_present
-        stationmap._isd_hourly_data_present = fake_present
-        try:
-            cache: dict[tuple[str, int], bool] = {}
-            stationmap._candidate_verified_at(
-                ["AAA"], 2005, session=cast("Any", None), cache=cache
-            )
-            stationmap._candidate_verified_at(
-                ["AAA"], 2005, session=cast("Any", None), cache=cache
-            )
-            assert calls == [("AAA", 2005)]
-        finally:
-            stationmap._isd_hourly_data_present = original
+        monkeypatch.setattr(stationmap, "_isd_hourly_data_present", fake_present)
+        cache: dict[tuple[str, int], bool] = {}
+        stationmap._candidate_verified_at(
+            ["AAA"], 2005, session=cast("Any", None), cache=cache
+        )
+        stationmap._candidate_verified_at(
+            ["AAA"], 2005, session=cast("Any", None), cache=cache
+        )
+        assert calls == [("AAA", 2005)]
 
 
 class TestBuildStationMap:

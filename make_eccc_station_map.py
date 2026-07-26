@@ -49,7 +49,7 @@ def load_station_inventory(
 ) -> DataFrame:
     """Load and normalize ECCC's station inventory CSV."""
     csv_source: Any = source
-    if source.startswith(("http://", "https://")):
+    if source.startswith("https://"):
         response = (session or requests.Session()).get(source, timeout=60)
         response.raise_for_status()
         csv_source = io.BytesIO(response.content)

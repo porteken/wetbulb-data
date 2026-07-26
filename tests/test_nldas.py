@@ -206,6 +206,11 @@ class TestComputeDailyWetbulb:
         daily = compute_daily_wetbulb(df)
         assert daily.empty
 
+    def test_single_hourly_row_does_not_raise(self) -> None:
+        """`wetbulb_davies_jones` returns a bare float for length-1 input."""
+        daily = compute_daily_wetbulb(self._hourly_frame(1))
+        assert daily.empty
+
     def test_keeps_day_with_minimum_hours(self) -> None:
         df = self._hourly_frame(nldas.MIN_DAILY_HOURS)
         daily = compute_daily_wetbulb(df)

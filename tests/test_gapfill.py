@@ -170,6 +170,54 @@ class TestFilterMaterialGaps:
         assert gapfill._filter_material_gaps(empty, 19).empty
 
 
+class TestResolveGapfillTargets:
+    @staticmethod
+    def _shard_df() -> pd.DataFrame:
+        return pd.DataFrame(
+            {"location_id": [1, 2], "lat": [40.0, 41.0], "lng": [-74.0, -75.0]}
+        )
+
+    def _resolve(self, tmp_path: Any, *, location_ids: list[int] | None) -> Any:
+        return gapfill.resolve_gapfill_targets(
+            self._shard_df(),
+            f"{tmp_path}/wetbulb_data_csv",
+            2020,
+            2020,
+            0,
+            1,
+            location_ids=location_ids,
+            min_missing_days=1,
+            force=False,
+            logger=gapfill.LOGGER,
+        )
+
+    def test_narrows_the_shard_to_the_requested_locations(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        monkeypatch.setattr(
+            gapfill,
+            "find_missing_cells",
+            lambda ids, *_a, **_k: pd.DataFrame(
+                {"location_id": ids, "date": pd.to_datetime(["2020-01-01"] * len(ids))}
+            ),
+        )
+
+        resolved = self._resolve(tmp_path, location_ids=[2])
+
+        assert resolved is not None
+        assert resolved[0]["location_id"].tolist() == [2]
+        assert resolved[4]["location_id"].tolist() == [2]
+
+    def test_returns_none_when_the_filter_empties_the_shard(
+        self, tmp_path: Any, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level("INFO"):
+            resolved = self._resolve(tmp_path, location_ids=[999])
+
+        assert resolved is None
+        assert any("No cities found" in message for message in caplog.messages)
+
+
 class TestProcessGapfill:
     @staticmethod
     def _shard_df() -> pd.DataFrame:

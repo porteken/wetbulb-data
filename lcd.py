@@ -84,6 +84,7 @@ LCD_RETRY_DELAY_SECONDS = 5
 LCD_DEFAULT_CONCURRENCY = 8
 
 STATION_MAP_PATH = "cities_lcd_stations.csv"
+DEFAULT_CITIES_CSV = "cities.csv"
 _STATION_MAP_WARNED = [False]
 
 _HOURLY_FRAME_COLUMNS = ("time", "tair_c", "dewpoint_c", "pressure_hpa")
@@ -364,7 +365,7 @@ def _load_pending_shard(
     logger: logging.Logger,
     resolve_fs: Callable[[str], tuple[Any, str]],
     compute_pending_years: Callable[..., list[int]],
-    cities_csv: str = "cities.csv",
+    cities_csv: str = DEFAULT_CITIES_CSV,
 ) -> tuple[DataFrame, list[int], Any, str, str] | None:
     """Load this shard's cities and pending years; `None` if there's nothing to fetch.
 
@@ -480,7 +481,7 @@ def add_common_shard_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--out-dir", type=str, default=".")
     parser.add_argument("--city-shard-index", type=int, default=0)
     parser.add_argument("--city-shard-count", type=int, default=1)
-    parser.add_argument("--cities-csv", type=str, default="cities.csv")
+    parser.add_argument("--cities-csv", type=str, default=DEFAULT_CITIES_CSV)
 
 
 def process_lcd(
@@ -492,7 +493,7 @@ def process_lcd(
     concurrency: int,
     *,
     force: bool = False,
-    cities_csv: str = "cities.csv",
+    cities_csv: str = DEFAULT_CITIES_CSV,
 ) -> None:
     """Fetch NOAA LCD station data, compute daily wet-bulb, and save as parquet shards."""
     loaded = _load_pending_shard(

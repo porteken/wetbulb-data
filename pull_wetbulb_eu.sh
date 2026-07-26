@@ -114,14 +114,15 @@ confirm_db_step() {
 }
 
 require_file() {
-  [[ -f $1 ]] && return 0
+  local path=$1 step=$2
+  [[ -f ${path} ]] && return 0
   # Under --dry-run the earlier steps never actually produced their outputs,
   # so a missing input is expected rather than fatal.
   ((DRY_RUN)) && {
-    log "  [dry-run] would require $1 (from the '$2' step)"
+    log "  [dry-run] would require ${path} (from the '${step}' step)"
     return 0
   }
-  die "$1 not found -- run the '$2' step first"
+  die "${path} not found -- run the '${step}' step first"
 }
 
 # Run one command per city shard, in parallel, failing if any shard fails.
@@ -286,9 +287,10 @@ step_views() {
 }
 
 main() {
-  local steps=()
+  local steps=() argument
   while (($#)); do
-    case $1 in
+    argument=$1
+    case ${argument} in
     -n | --dry-run) DRY_RUN=1 ;;
     -y | --yes) ASSUME_YES=1 ;;
     -h | --help)
@@ -296,9 +298,11 @@ main() {
       return 0
       ;;
     all) steps+=("${ALL_STEPS[@]}") ;;
-    cities | crosswalk | trial | backfill | gapfill | load | views) steps+=("$1") ;;
-    -*) die "unknown option: $1 (try --help)" ;;
-    *) die "unknown step: $1 (valid: ${ALL_STEPS[*]}, all)" ;;
+    cities | crosswalk | trial | backfill | gapfill | load | views)
+      steps+=("${argument}")
+      ;;
+    -*) die "unknown option: ${argument} (try --help)" ;;
+    *) die "unknown step: ${argument} (valid: ${ALL_STEPS[*]}, all)" ;;
     esac
     shift
   done

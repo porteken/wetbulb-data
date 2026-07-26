@@ -5,7 +5,7 @@ module is an explicit catalog migration: the three source files are downloaded,
 validated, matched, and written atomically together with a reproducibility
 manifest.
 """
-# ruff: noqa: ANN401, B023, EM101, EM102, PLC0415, PTH105, TRY003
+# ruff: noqa: ANN401, EM101, EM102, PLC0415, PTH105, TRY003
 
 from __future__ import annotations
 
@@ -52,6 +52,10 @@ GAZETTEER_SOURCE_URL = (
 )
 GEONAMES_SOURCE_URL = "https://download.geonames.org/export/dump/US.zip"
 CITIES_SOURCE_URL = CENSUS_SOURCE_URL  # compatibility for locations.py
+
+FEATURE_CLASS_COLUMN = "feature class"
+COUNTRY_CODE_COLUMN = "country code"
+ADMIN1_CODE_COLUMN = "admin1 code"
 
 CATALOG_COLUMNS = [
     "location_id",
@@ -265,9 +269,9 @@ def match_geonames(places: DataFrame, geonames: DataFrame) -> DataFrame:
         "alternatenames",
         "latitude",
         "longitude",
-        "feature class",
-        "country code",
-        "admin1 code",
+        FEATURE_CLASS_COLUMN,
+        COUNTRY_CODE_COLUMN,
+        ADMIN1_CODE_COLUMN,
         "population",
         "dem",
         "timezone",
@@ -276,7 +280,8 @@ def match_geonames(places: DataFrame, geonames: DataFrame) -> DataFrame:
     if missing:
         raise ValueError(f"GeoNames input missing columns: {sorted(missing)}")
     geo = geonames[
-        (geonames["country code"] == "US") & (geonames["feature class"] == "P")
+        (geonames[COUNTRY_CODE_COLUMN] == "US")
+        & (geonames[FEATURE_CLASS_COLUMN] == "P")
     ].copy()
     geo["_names"] = geo.apply(
         lambda row: {
@@ -299,8 +304,10 @@ def match_geonames(places: DataFrame, geonames: DataFrame) -> DataFrame:
         )
         wanted = {_normalize_name(alias), primary}
         candidates = geo[
-            (geo["admin1 code"] == place.state)
-            & geo["_names"].map(lambda names: not names.isdisjoint(wanted))
+            (geo[ADMIN1_CODE_COLUMN] == place.state)
+            & geo["_names"].map(
+                lambda names, wanted=wanted: not names.isdisjoint(wanted)
+            )
         ].copy()
         if candidates.empty:
             raise ValueError(f"no GeoNames match for {place.census_geoid} {place.city}")
@@ -363,9 +370,18 @@ def canonical_catalog_bytes(catalog: DataFrame) -> bytes:
     )
 
 
+def resolve_output_path(path: str | Path) -> Path:
+    """Canonicalize an output path and reject anything outside the working tree."""
+    resolved = os.path.realpath(path)
+    base_dir = os.path.realpath(os.getcwd())  # noqa: PTH109
+    if resolved != base_dir and not resolved.startswith(base_dir + os.sep):
+        raise ValueError(f"output path escapes the working directory: {path}")
+    return Path(resolved)
+
+
 def atomic_write(path: str | Path, data: bytes) -> None:
     """Durably replace a file without exposing a partially written catalog."""
-    target = Path(path)
+    target = resolve_output_path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
     try:
@@ -441,11 +457,11 @@ def _read_source(payload: bytes, url: str, *, geonames: bool = False) -> DataFra
             "alternatenames",
             "latitude",
             "longitude",
-            "feature class",
+            FEATURE_CLASS_COLUMN,
             "feature code",
-            "country code",
+            COUNTRY_CODE_COLUMN,
             "cc2",
-            "admin1 code",
+            ADMIN1_CODE_COLUMN,
             "admin2 code",
             "admin3 code",
             "admin4 code",
