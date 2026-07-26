@@ -67,8 +67,9 @@ def test_build_ca_places_filters_nonmunicipal_types(
 
 
 def test_build_ca_places_requires_schema() -> None:
+    source = pd.DataFrame({"CSDuid": []})
     with pytest.raises(ValueError, match="missing column"):
-        cities_na.build_ca_places(pd.DataFrame({"CSDuid": []}))
+        cities_na.build_ca_places(source)
 
 
 def test_attach_terrain_attributes_uses_nearest_place_and_drops_distant() -> None:
@@ -152,10 +153,13 @@ def test_select_cities_fails_when_constraints_cannot_be_filled() -> None:
             "timezone": ["America/New_York"],
         }
     )
+    history = _history()
+
+    def verify(_ids: list[str], _year: int) -> bool:
+        return False
+
     with pytest.raises(ValueError, match="only 0 of 1"):
-        cities_na.select_cities(
-            candidate, _history(), verify=lambda _ids, _year: False, max_cities=1
-        )
+        cities_na.select_cities(candidate, history, verify=verify, max_cities=1)
 
 
 def test_write_catalog_writes_matching_manifest(

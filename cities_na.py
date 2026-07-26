@@ -62,6 +62,13 @@ GEOSUITE_URL = (
 )
 GEONAMES_CITIES_URL = "https://download.geonames.org/export/dump/cities15000.zip"
 ISD_HISTORY_URL = "https://www.ncei.noaa.gov/pub/data/noaa/isd-history.csv"
+DOWNLOAD_HOSTS = frozenset(
+    {
+        "download.geonames.org",
+        "www2.census.gov",
+        "www12.statcan.gc.ca",
+    }
+)
 
 MAX_CITIES = 500
 CANDIDATE_POOL_SIZE = 3000
@@ -243,6 +250,16 @@ _STANDARD_OFFSET_YEAR = 2025
 
 
 def _download(url: str, *, session: requests.Session) -> bytes:
+    parsed = urlparse(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in DOWNLOAD_HOSTS
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.port not in {None, 443}
+    ):
+        message = f"download URL is not an approved HTTPS endpoint: {url}"
+        raise ValueError(message)
     response = session.get(url, timeout=300)
     response.raise_for_status()
     if not response.content:
@@ -265,7 +282,7 @@ def clean_place_name(name: str, census_geoid: str) -> str:
     override = CONSOLIDATED_NAMES.get(census_geoid)
     if override is not None:
         return override
-    cleaned = re.sub(r"\s*\([^)]*\)", "", str(name)).strip()
+    cleaned = re.sub(r"\([^)]*+\)", "", str(name)).strip()
     previous = None
     while previous != cleaned:
         previous = cleaned

@@ -100,7 +100,7 @@ for step in "${STEPS[@]}"; do
       ;;
     validate)
       check_catalog
-      run python3 "${HERE}/validate_na_catalog.py" --root "${OUTPUT_ROOT}"
+      run python3 "${HERE}/validate_na_catalog.py" --root "${HERE}"
       ;;
     load)
       ((CONFIRM_DB)) || { echo "load requires --confirm-db-write" >&2; exit 1; }
