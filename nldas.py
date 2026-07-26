@@ -353,9 +353,13 @@ def resolve_location_indices(
     return iy, ix
 
 
-def load_nldas_city_shard(city_shard_index: int, city_shard_count: int) -> DataFrame:
-    """Return the slice of `cities.csv` assigned to this city shard."""
-    cities_df = pd.read_csv("cities.csv", usecols=["location_id", "lat", "lng"])
+def load_nldas_city_shard(
+    city_shard_index: int,
+    city_shard_count: int,
+    cities_csv: str = "cities.csv",
+) -> DataFrame:
+    """Return the slice of `cities_csv` assigned to this city shard."""
+    cities_df = pd.read_csv(cities_csv, usecols=["location_id", "lat", "lng"])
     cities_df = cities_df.sort_values("location_id").reset_index(drop=True)
 
     shard_size = (len(cities_df) + city_shard_count - 1) // city_shard_count

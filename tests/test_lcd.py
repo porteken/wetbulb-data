@@ -588,6 +588,7 @@ class TestMain:
             city_shard_count=1,
             concurrency=8,
             force=False,
+            cities_csv="cities.csv",
         )
         monkeypatch.setattr(lcd, "_parse_args", lambda: args)
         monkeypatch.setattr(lcd, "load_dotenv", lambda **_k: None)

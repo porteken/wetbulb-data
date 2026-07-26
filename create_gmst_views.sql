@@ -266,4 +266,4 @@ LEFT JOIN public.wetbulb_forecast AS f
 ON f.location_id = s.location_id AND f.year = 2100 AND f.season = s.season
 LEFT JOIN year_2000 AS y
 ON y.location_id = s.location_id AND y.season = s.season
-WHERE s.location_id > = 0 ;
+WHERE s.location_id BETWEEN 0 AND 999 ;

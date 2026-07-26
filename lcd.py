@@ -364,6 +364,7 @@ def _load_pending_shard(
     logger: logging.Logger,
     resolve_fs: Callable[[str], tuple[Any, str]],
     compute_pending_years: Callable[..., list[int]],
+    cities_csv: str = "cities.csv",
 ) -> tuple[DataFrame, list[int], Any, str, str] | None:
     """Load this shard's cities and pending years; `None` if there's nothing to fetch.
 
@@ -375,7 +376,9 @@ def _load_pending_shard(
     """
     wetbulb_root = f"{out_dir}/wetbulb_data_csv"
 
-    shard_df = nldas.load_nldas_city_shard(city_shard_index, city_shard_count)
+    shard_df = nldas.load_nldas_city_shard(
+        city_shard_index, city_shard_count, cities_csv
+    )
     if shard_df.empty:
         logger.info(
             "No cities found for shard %s/%s.",
@@ -477,6 +480,7 @@ def add_common_shard_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--out-dir", type=str, default=".")
     parser.add_argument("--city-shard-index", type=int, default=0)
     parser.add_argument("--city-shard-count", type=int, default=1)
+    parser.add_argument("--cities-csv", type=str, default="cities.csv")
 
 
 def process_lcd(
@@ -488,6 +492,7 @@ def process_lcd(
     concurrency: int,
     *,
     force: bool = False,
+    cities_csv: str = "cities.csv",
 ) -> None:
     """Fetch NOAA LCD station data, compute daily wet-bulb, and save as parquet shards."""
     loaded = _load_pending_shard(
@@ -500,6 +505,7 @@ def process_lcd(
         logger=LOGGER,
         resolve_fs=resolve_filesystem,
         compute_pending_years=pending_years,
+        cities_csv=cities_csv,
     )
     if loaded is None:
         return
@@ -590,6 +596,7 @@ def main() -> None:
             city_shard_count=args.city_shard_count,
             concurrency=args.concurrency,
             force=args.force,
+            cities_csv=args.cities_csv,
         )
     except KeyboardInterrupt:
         exit_code = 130

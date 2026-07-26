@@ -1,0 +1,497 @@
+"""Fill (location_id, date) gaps the EU ISD station pipeline could not produce.
+
+ERA5-Land's counterpart to `gapfill.py` (which fills US ISD gaps from
+NLDAS-2 via Giovanni): station observations still come first -- ISD
+(`isd.py`) stays the primary EU daily wet-bulb source -- but many European
+stations report only 3-hourly SYNOP, which fails the >=20/24-hour daily
+coverage gate in `nldas.compute_daily_wetbulb` more often than US ASOS/AWOS
+does, especially pre-2005 and in Eastern Europe. This module fills those
+holes from the Copernicus Climate Data Store's ERA5-Land hourly
+time-series dataset (`reanalysis-era5-land-timeseries`), a point-based
+product covering 1950-present at ~9 km resolution, which needs a CDS
+account/API key (`cdsapi`, an optional dependency -- see the `era5` extra
+in `pyproject.toml`) and one-time license acceptance for the dataset.
+
+Gap detection reuses `gapfill.py`'s region-agnostic helpers
+(`find_missing_cells`, `_filter_material_gaps`, `_gap_years_by_location`,
+`MIN_MISSING_DAYS_DEFAULT`) unchanged -- a gap is still "days ISD's own
+`wetbulb_batch_*` parquet didn't write", regardless of which continent's
+pipeline wrote it. Fetches use each city's own contiguous gap-year ranges
+(`giovanni.contiguous_year_ranges`) since a multi-decade point time-series
+is a single, cheap CDS request rather than the whole-year hourly-granule
+downloads NLDAS needs.
+
+This is a gap-filler only, not a `pipeline.py --wetbulb-source`: the
+architecture is ISD-primary by design (a 15-city LCD-vs-NLDAS pilot showed
+gridded models concentrate their largest daily-max errors on exactly the
+high-humidity extreme days this dataset cares about -- see `gapfill.py`'s
+module docstring), and a full-city fill is already expressible here via
+`--min-missing-days 1`.
+
+Writes to the same `wetbulb_fill_batch_*` name and `source='era5land'`
+provenance stamp convention as `gapfill.py`'s NLDAS output, so `load.py`'s
+upsert (`_upsert_from_staging`, generalized to treat every entry in
+`SOURCE_RANK_FILL` the same way) can never let an ERA5-Land row shadow or
+overwrite a real ISD station row.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib
+import logging
+import sys
+import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Any, cast
+
+from dotenv import load_dotenv
+from tqdm.auto import tqdm
+
+import giovanni
+import lcd
+import nldas
+from gapfill import (
+    GAPFILL_FILE_PREFIX,
+    MIN_MISSING_DAYS_DEFAULT,
+    _filter_material_gaps,
+    _gap_years_by_location,
+    find_missing_cells,
+)
+from lcd import _KELVIN_OFFSET, _dewpoint_to_specific_humidity
+from partition_io import pending_years, write_pending_year_batches
+from shards import resolve_filesystem
+
+pd = cast("Any", importlib.import_module("pandas"))
+
+type DataFrame = Any
+type CdsClient = Any
+type CityRow = Any
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+LOGGER = logging.getLogger(__name__)
+
+ERA5LAND_DATASET = "reanalysis-era5-land-timeseries"
+ERA5LAND_VARIABLES = ("2m_temperature", "2m_dewpoint_temperature", "surface_pressure")
+ERA5LAND_SOURCE = "era5land"
+ERA5LAND_DEFAULT_CONCURRENCY = 2
+ERA5LAND_MAX_RETRIES = 3
+ERA5LAND_RETRY_DELAY_SECONDS = 30
+
+EU_CITIES_CSV = "cities_eu.csv"
+EU_STATION_MAP_CSV = "cities_eu_isd_stations.csv"
+
+_HOURLY_FRAME_COLUMNS = ("location_id", "time", "Tair", "Qair", "PSurf")
+
+
+def _empty_hourly_frame() -> DataFrame:
+    return pd.DataFrame(columns=list(_HOURLY_FRAME_COLUMNS))
+
+
+def _cds_client() -> CdsClient:
+    cdsapi = importlib.import_module("cdsapi")
+    return cdsapi.Client()
+
+
+def fetch_city_span(
+    client: CdsClient,
+    *,
+    lat: float,
+    lng: float,
+    start_year: int,
+    end_year: int,
+    download_dir: str,
+) -> DataFrame:
+    """Retrieve one city's ERA5-Land hourly point time-series for a year span.
+
+    One request per contiguous year range (see `contiguous_year_ranges`)
+    rather than per year: a 26-year x 3-variable hourly point series is a
+    few MB, well within what the CDS timeseries product is built for, and
+    per-year requests would multiply queue wait time for no benefit.
+    """
+    target = str(
+        Path(download_dir) / f"era5land_{lat}_{lng}_{start_year}_{end_year}.csv"
+    )
+    request = {
+        "variable": list(ERA5LAND_VARIABLES),
+        "location": {"latitude": lat, "longitude": lng},
+        "date": [f"{start_year}-01-01/{end_year}-12-31"],
+        "data_format": "csv",
+    }
+    client.retrieve(ERA5LAND_DATASET, request, target)
+    return pd.read_csv(target)
+
+
+def _hourly_frame_from_era5land(
+    location_id: int,
+    raw: DataFrame,
+    utc_offset_hours: float,
+) -> DataFrame:
+    """Convert one city's raw ERA5-Land CSV rows to `location_id,time,Tair,Qair,PSurf`.
+
+    Column names/units match `nldas.NLDAS_VARIABLES` (Tair in K, Qair in
+    kg/kg, PSurf in Pa) so the result feeds `nldas.compute_daily_wetbulb`
+    directly, using the same dewpoint->specific-humidity conversion
+    (`lcd._dewpoint_to_specific_humidity`) every other source relies on.
+    """
+    if raw.empty:
+        return _empty_hourly_frame()
+
+    time_utc = pd.to_datetime(raw["valid_time"], utc=True).dt.tz_localize(None)
+    tair_k = pd.to_numeric(raw["t2m"], errors="coerce")
+    dewpoint_k = pd.to_numeric(raw["d2m"], errors="coerce")
+    psurf_pa = pd.to_numeric(raw["sp"], errors="coerce")
+    pressure_hpa = psurf_pa / 100.0
+    qair = _dewpoint_to_specific_humidity(dewpoint_k - _KELVIN_OFFSET, pressure_hpa)
+
+    local_time = time_utc + pd.to_timedelta(int(utc_offset_hours), unit="h")
+    return pd.DataFrame(
+        {
+            "location_id": location_id,
+            "time": local_time.to_numpy(),
+            "Tair": tair_k.to_numpy(dtype="float64"),
+            "Qair": qair.to_numpy(dtype="float64"),
+            "PSurf": psurf_pa.to_numpy(dtype="float64"),
+        },
+    ).dropna(subset=["Tair", "Qair", "PSurf"])
+
+
+def _fetch_city_gaps(
+    client: CdsClient,
+    row: CityRow,
+    gap_years: list[int],
+    download_dir: str,
+) -> tuple[DataFrame, bool]:
+    """Fetch every contiguous gap-year range for one city; return (frame, had_gap)."""
+    year_frames: list[DataFrame] = []
+    had_gap = False
+    for start_year, end_year in giovanni.contiguous_year_ranges(gap_years):
+        for attempt in range(1, ERA5LAND_MAX_RETRIES + 1):
+            try:
+                raw = fetch_city_span(
+                    client,
+                    lat=row.lat,
+                    lng=row.lng,
+                    start_year=start_year,
+                    end_year=end_year,
+                    download_dir=download_dir,
+                )
+            except (RuntimeError, ValueError, KeyError, OSError) as exc:
+                if attempt == ERA5LAND_MAX_RETRIES:
+                    LOGGER.warning(
+                        "Giving up on location_id=%d %d-%d after %d attempt(s): %s",
+                        row.location_id,
+                        start_year,
+                        end_year,
+                        attempt,
+                        exc,
+                    )
+                    had_gap = True
+                    break
+                time.sleep(ERA5LAND_RETRY_DELAY_SECONDS * attempt)
+                continue
+            frame = _hourly_frame_from_era5land(
+                row.location_id, raw, row.utc_offset_hours
+            )
+            if not frame.empty:
+                year_frames.append(frame)
+            break
+
+    if not year_frames:
+        return _empty_hourly_frame(), had_gap
+    return pd.concat(year_frames, ignore_index=True), had_gap
+
+
+def _fetch_gaps_batch(
+    rows: list[CityRow],
+    gap_years_by_location: dict[int, list[int]],
+    client: CdsClient,
+    download_dir: str,
+    worker_count: int,
+    city_shard_index: int,
+) -> dict[int, tuple[DataFrame, bool]]:
+    """Fetch each gapped city's ERA5-Land data concurrently, `worker_count` at a time."""
+    results: dict[int, tuple[DataFrame, bool]] = {}
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {
+            executor.submit(
+                _fetch_city_gaps,
+                client,
+                row,
+                gap_years_by_location[row.location_id],
+                download_dir,
+            ): row.location_id
+            for row in rows
+        }
+        for future in tqdm(
+            as_completed(futures),
+            total=len(futures),
+            desc=f"ERA5-Land gap-fill city_shard {city_shard_index}",
+        ):
+            results[futures[future]] = future.result()
+    return results
+
+
+def _fetch_filled_rows(
+    gapped_rows: list[CityRow],
+    gap_years_by_location: dict[int, list[int]],
+    missing_cells: DataFrame,
+    concurrency: int,
+    city_shard_index: int,
+    city_shard_count: int,
+    start_year: int,
+    end_year: int,
+) -> DataFrame | None:
+    """Fetch ERA5-Land data for every gapped city and merge it against `missing_cells`.
+
+    Returns None if any city had a fetch gap (the whole write is skipped so
+    a future run retries them, mirroring `gapfill._fetch_filled_rows`'s
+    identical rationale) or if there was nothing to write.
+    """
+    client = _cds_client()
+    worker_count = max(1, min(concurrency, len(gapped_rows)))
+    with tempfile.TemporaryDirectory() as download_dir:
+        city_results = _fetch_gaps_batch(
+            gapped_rows,
+            gap_years_by_location,
+            client,
+            download_dir,
+            worker_count,
+            city_shard_index,
+        )
+
+    hourly_frames = [df for df, _ in city_results.values()]
+    shard_had_gap = any(gap for _, gap in city_results.values())
+    if not hourly_frames:
+        return None
+    hourly_df = pd.concat(hourly_frames, ignore_index=True)
+    daily_df = nldas.compute_daily_wetbulb(hourly_df)
+    if daily_df.empty:
+        return None
+
+    if shard_had_gap:
+        LOGGER.warning(
+            "city_shard=%d/%d: one or more cities had a CDS fetch gap while "
+            "gap-filling %d-%d; skipping the parquet write for these "
+            "pending year(s) so a future run retries them instead of "
+            "treating incomplete data as done.",
+            city_shard_index,
+            city_shard_count,
+            start_year,
+            end_year,
+        )
+        return None
+
+    daily_df["date"] = pd.to_datetime(daily_df["date"])
+    filled = daily_df.merge(missing_cells, on=["location_id", "date"], how="inner")
+    if filled.empty:
+        LOGGER.info(
+            "city_shard=%d/%d: fetched ERA5-Land data for %d-%d produced no "
+            "rows matching a known gap; nothing to write.",
+            city_shard_index,
+            city_shard_count,
+            start_year,
+            end_year,
+        )
+        return None
+    filled["source"] = ERA5LAND_SOURCE
+    filled["date"] = filled["date"].dt.date
+    return filled
+
+
+def _load_utc_offsets(station_map_csv: str) -> DataFrame:
+    """Load each city's standard UTC offset from the EU ISD station crosswalk."""
+    path = Path(station_map_csv)
+    if not path.exists():
+        return pd.DataFrame(
+            {
+                "location_id": pd.Series(dtype="int64"),
+                "utc_offset_hours": pd.Series(dtype="float64"),
+            },
+        )
+    return pd.read_csv(path, usecols=["location_id", "utc_offset_hours"])
+
+
+def process_era5land_gapfill(
+    start_year: int,
+    end_year: int,
+    out_dir: str,
+    city_shard_index: int,
+    city_shard_count: int,
+    concurrency: int,
+    *,
+    cities_csv: str = EU_CITIES_CSV,
+    station_map_csv: str = EU_STATION_MAP_CSV,
+    location_ids: list[int] | None = None,
+    min_missing_days: int = MIN_MISSING_DAYS_DEFAULT,
+    force: bool = False,
+) -> None:
+    """Fill (location_id, date) cells the ISD pipeline could not produce, via ERA5-Land."""
+    wetbulb_root = f"{out_dir}/wetbulb_data_csv"
+
+    shard_df = nldas.load_nldas_city_shard(
+        city_shard_index, city_shard_count, cities_csv
+    )
+    if location_ids is not None:
+        shard_df = shard_df[shard_df["location_id"].isin(location_ids)]
+    if shard_df.empty:
+        LOGGER.info(
+            "No cities found for shard %s/%s.", city_shard_index, city_shard_count
+        )
+        return
+
+    filesystem, base_path = resolve_filesystem(wetbulb_root)
+    pending_year_list = pending_years(
+        range(start_year, end_year + 1),
+        wetbulb_root,
+        city_shard_index,
+        filesystem,
+        base_path,
+        file_prefix=GAPFILL_FILE_PREFIX,
+        force=force,
+    )
+    if not pending_year_list:
+        LOGGER.info(
+            "city_shard=%d/%d: gap-fill years %d-%d already present.",
+            city_shard_index,
+            city_shard_count,
+            start_year,
+            end_year,
+        )
+        return
+
+    location_id_list = shard_df["location_id"].tolist()
+    all_missing_cells = find_missing_cells(
+        location_id_list, pending_year_list, filesystem, base_path
+    )
+    missing_cells = _filter_material_gaps(all_missing_cells, min_missing_days)
+    if missing_cells.empty:
+        LOGGER.info(
+            "city_shard=%d/%d: no material gaps found in ISD output for "
+            "%d-%d; nothing to fill.",
+            city_shard_index,
+            city_shard_count,
+            start_year,
+            end_year,
+        )
+        return
+
+    gap_years_by_location = _gap_years_by_location(missing_cells)
+    gapped_ids = set(gap_years_by_location)
+    LOGGER.info(
+        "ERA5-Land gap-fill city_shard=%d/%d: %d/%d city(ies) have a gap "
+        "across %d cell(s).",
+        city_shard_index,
+        city_shard_count,
+        len(gapped_ids),
+        len(shard_df),
+        len(missing_cells),
+    )
+
+    offsets = _load_utc_offsets(station_map_csv)
+    shard_df = shard_df.merge(offsets, on="location_id", how="left")
+    shard_df["utc_offset_hours"] = shard_df["utc_offset_hours"].fillna(
+        (shard_df["lng"] / 15.0).round()
+    )
+    gapped_rows = list(shard_df[shard_df["location_id"].isin(gapped_ids)].itertuples())
+
+    filled = _fetch_filled_rows(
+        gapped_rows,
+        gap_years_by_location,
+        missing_cells,
+        concurrency,
+        city_shard_index,
+        city_shard_count,
+        start_year,
+        end_year,
+    )
+    if filled is None:
+        return
+
+    write_pending_year_batches(
+        filled,
+        pending_year_list,
+        wetbulb_root,
+        city_shard_index,
+        filesystem,
+        base_path,
+        file_prefix=GAPFILL_FILE_PREFIX,
+    )
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    lcd.add_common_shard_args(parser)
+    parser.set_defaults(cities_csv=EU_CITIES_CSV)
+    parser.add_argument("--station-map-csv", type=str, default=EU_STATION_MAP_CSV)
+    parser.add_argument("--concurrency", type=int, default=ERA5LAND_DEFAULT_CONCURRENCY)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--location-ids",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Restrict gap-filling to these location_id(s), for a targeted run.",
+    )
+    parser.add_argument(
+        "--min-missing-days",
+        type=int,
+        default=MIN_MISSING_DAYS_DEFAULT,
+        help=(
+            "Only fill a city-year missing at least this many days. Pass 1 "
+            "to fill every gap."
+        ),
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    """Execute the ERA5-Land gap-fill pipeline."""
+    load_dotenv(override=False)
+    exit_code = 0
+    try:
+        args = _parse_args()
+        process_era5land_gapfill(
+            start_year=args.start_year,
+            end_year=args.end_year,
+            out_dir=args.out_dir,
+            city_shard_index=args.city_shard_index,
+            city_shard_count=args.city_shard_count,
+            concurrency=args.concurrency,
+            cities_csv=args.cities_csv,
+            station_map_csv=args.station_map_csv,
+            location_ids=args.location_ids,
+            min_missing_days=args.min_missing_days,
+            force=args.force,
+        )
+    except KeyboardInterrupt:
+        exit_code = 130
+        LOGGER.warning("ERA5-Land gap-fill interrupted by user.")
+    except SystemExit:
+        raise
+    except (
+        RuntimeError,
+        ValueError,
+        KeyError,
+        OSError,
+        ImportError,
+        AttributeError,
+        TypeError,
+        IndexError,
+    ):
+        exit_code = 1
+        LOGGER.exception("ERA5-Land gap-fill failed.")
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+    sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    main()

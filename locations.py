@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
 from importlib import import_module
 from pathlib import Path
@@ -43,22 +44,30 @@ def locations_frame_from_cities_csv(csv_path: str | Path = CITIES_CSV) -> DataFr
     ]
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cities-csv", default=CITIES_CSV)
+    parser.add_argument("--out", default=OUTPUT_FILE)
+    return parser.parse_args()
+
+
 def main() -> None:
-    """Write the database-ready locations.csv file."""
+    """Write the database-ready locations CSV file."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
-    if not Path(CITIES_CSV).exists():
+    args = _parse_args()
+    if args.cities_csv == CITIES_CSV and not Path(CITIES_CSV).exists():
         LOGGER.info("%s not found; generating it first...", CITIES_CSV)
         generate_cities_csv()
-    locations_frame = locations_frame_from_cities_csv()
+    locations_frame = locations_frame_from_cities_csv(args.cities_csv)
     locations_frame.to_csv(
-        OUTPUT_FILE,
+        args.out,
         index=False,
         float_format=f"%.{CITY_COORD_DECIMALS}f",
     )
     LOGGER.info(
         "Successfully saved %d locations to %s",
         len(locations_frame),
-        OUTPUT_FILE,
+        args.out,
     )
 
 

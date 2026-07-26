@@ -691,7 +691,7 @@ season,
 array_agg (year ORDER BY year) AS years,
 array_agg (wetbulb_from_max ORDER BY year) AS wetbulb_values
 FROM yearly_with_required
-WHERE days_present > = required_days
+WHERE days_present >= required_days -- noqa: LT01
 GROUP BY
 location_id,
 season
@@ -703,7 +703,7 @@ array_agg (year ORDER BY year) AS years,
 array_agg (wetbulb_from_avg ORDER BY year) AS wetbulb_values
 FROM yearly_with_required
 WHERE wetbulb_from_avg IS NOT NULL
-AND days_present_avg > = required_days
+AND days_present_avg >= required_days -- noqa: LT01
 GROUP BY
 location_id,
 season
@@ -823,12 +823,12 @@ y.days_present_avg,
 0.95 * CASE
 WHEN y.season = public.wetbulb_annual_season () THEN CASE
 WHEN MOD (y.year, 4) = 0
-AND (MOD (y.year, 100) < > 0 OR MOD (y.year, 400) = 0) THEN 366
+AND (MOD (y.year, 100) <> 0 OR MOD (y.year, 400) = 0) THEN 366 -- noqa: LT01
 ELSE 365
 END
 WHEN y.season = public.wetbulb_winter () THEN CASE
 WHEN MOD (y.year, 4) = 0
-AND (MOD (y.year, 100) < > 0 OR MOD (y.year, 400) = 0) THEN 91
+AND (MOD (y.year, 100) <> 0 OR MOD (y.year, 400) = 0) THEN 91 -- noqa: LT01
 ELSE 90
 END
 WHEN y.season IN (public.wetbulb_spring (), public.wetbulb_summer ()) THEN 92
@@ -842,7 +842,7 @@ season,
 array_agg (year ORDER BY year) AS years,
 array_agg (wetbulb_from_max ORDER BY year) AS wetbulb_values
 FROM yearly_with_required
-WHERE days_present > = required_days
+WHERE days_present >= required_days -- noqa: LT01
 GROUP BY
 location_id,
 season
@@ -854,7 +854,7 @@ array_agg (year ORDER BY year) AS years,
 array_agg (wetbulb_from_avg ORDER BY year) AS wetbulb_values
 FROM yearly_with_required
 WHERE wetbulb_from_avg IS NOT NULL
-AND days_present_avg > = required_days
+AND days_present_avg >= required_days -- noqa: LT01
 GROUP BY
 location_id,
 season
@@ -1026,7 +1026,7 @@ AND y2k.season = s.season
 LEFT JOIN year_2000_value_avg AS y2k_avg ON y2k_avg.location_id = s.location_id
 AND y2k_avg.season = s.season
 WHERE
-s.location_id > = 0 ;
+s.location_id BETWEEN 0 AND 999 ;
 
 RESET statement_timeout ;
 RESET lock_timeout ;

@@ -45,7 +45,7 @@ TABLE_UNIQUE_KEYS: dict[str, tuple[str, ...]] = {
 }
 TABLE_SOURCE_COLUMNS: dict[str, str] = {"wetbulb": "source"}
 SOURCE_RANK_PRIMARY = "isd"
-SOURCE_RANK_FILL = "nldas"
+SOURCE_RANK_FILL: tuple[str, ...] = ("nldas", "era5land")
 
 
 def _consume_line_comment(sql_text: str, index: int) -> int:
@@ -590,8 +590,10 @@ def _upsert_from_staging(
     it's present in `column_names`, a legacy file staged a NULL there (it
     predates the column) and is treated as `SOURCE_RANK_PRIMARY` via
     COALESCE; both the in-batch DISTINCT ON tiebreak and the ON CONFLICT
-    update are ranked so `SOURCE_RANK_FILL` rows can never shadow or
-    overwrite a `SOURCE_RANK_PRIMARY` row.
+    update rank every `SOURCE_RANK_FILL` entry as equally subordinate to
+    `SOURCE_RANK_PRIMARY` (rather than sorting the raw source strings
+    alphabetically, which would let `'era5land'` shadow `'isd'` in-batch),
+    so no fill row can ever shadow or overwrite a primary row.
     """
     source_column = TABLE_SOURCE_COLUMNS.get(table_name)
     has_source = source_column is not None and source_column in column_names
@@ -629,8 +631,8 @@ def _upsert_from_staging(
         conflict_action = sql.SQL("DO NOTHING")
     elif has_source:
         conflict_action = sql.SQL(
-            "DO UPDATE SET {updates} WHERE NOT ({table}.{col} = {isd} "
-            "AND EXCLUDED.{col} = {nldas})",
+            "DO UPDATE SET {updates} WHERE NOT ({table}.{col} = {primary} "
+            "AND EXCLUDED.{col} IN ({fill_sources}))",
         ).format(
             updates=sql.SQL(", ").join(
                 sql.SQL("{col} = EXCLUDED.{col}").format(col=sql.Identifier(col))
@@ -638,8 +640,10 @@ def _upsert_from_staging(
             ),
             table=sql.Identifier(table_name),
             col=sql.Identifier(cast("str", source_column)),
-            isd=sql.Literal(SOURCE_RANK_PRIMARY),
-            nldas=sql.Literal(SOURCE_RANK_FILL),
+            primary=sql.Literal(SOURCE_RANK_PRIMARY),
+            fill_sources=sql.SQL(", ").join(
+                sql.Literal(source) for source in SOURCE_RANK_FILL
+            ),
         )
     else:
         conflict_action = sql.SQL("DO UPDATE SET {}").format(
@@ -651,10 +655,13 @@ def _upsert_from_staging(
 
     order_sql = keys_sql
     if has_source:
-        order_sql = sql.SQL("{keys}, COALESCE({col}, {default})").format(
+        order_sql = sql.SQL(
+            "{keys}, CASE WHEN COALESCE({col}, {primary}) = {primary} "
+            "THEN 0 ELSE 1 END",
+        ).format(
             keys=keys_sql,
             col=sql.Identifier(cast("str", source_column)),
-            default=sql.Literal(SOURCE_RANK_PRIMARY),
+            primary=sql.Literal(SOURCE_RANK_PRIMARY),
         )
 
     upsert_statement = sql.SQL(
@@ -1033,7 +1040,12 @@ def main() -> None:
         if not args.skip_drop_views and not args.skip_create_views:
             execute_sql_files_atomically(
                 conn,
-                ("drop_views.sql", "create_views.sql", "create_gmst_views.sql"),
+                (
+                    "drop_views.sql",
+                    "create_views.sql",
+                    "create_gmst_views.sql",
+                    "create_eu_views.sql",
+                ),
             )
         elif not args.skip_drop_views:
             execute_sql_file(conn, "drop_views.sql")

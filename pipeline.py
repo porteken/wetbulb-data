@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import re
 import subprocess
 import sys
 from datetime import UTC, datetime
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
+LOGGER = logging.getLogger(__name__)
+
+EU_CITIES_CSV = "cities_eu.csv"
+EU_STATION_MAP_CSV = "cities_eu_isd_stations.csv"
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -23,6 +30,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["isd", "lcd", "giovanni", "nldas"],
         default="isd",
     )
+    parser.add_argument("--region", choices=["us", "eu"], default="us")
     parser.add_argument("--out-dir", default=".")
     parser.add_argument("--city-shard-count", type=int, default=1)
     parser.add_argument("--concurrency", type=int, default=4)
@@ -56,8 +64,17 @@ def _validated_source(value: str) -> str:
     return value
 
 
+def _validated_region(value: str) -> str:
+    """Return one of the fixed region names."""
+    if not re.fullmatch(r"us|eu", value):
+        msg = "--region must be 'us' or 'eu'"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
 def _command(
     wetbulb_source: str,
+    region: str,
     out_dir: str,
     city_shard_count: int,
     concurrency: int,
@@ -67,7 +84,7 @@ def _command(
     year: int,
 ) -> list[str]:
     if wetbulb_source in {"isd", "lcd", "giovanni"}:
-        return [
+        command = [
             sys.executable,
             f"{wetbulb_source}.py",
             "--start-year",
@@ -81,6 +98,16 @@ def _command(
             "--out-dir",
             out_dir,
         ]
+        if region == "eu":
+            command.extend(
+                [
+                    "--cities-csv",
+                    EU_CITIES_CSV,
+                    "--station-map-csv",
+                    EU_STATION_MAP_CSV,
+                ],
+            )
+        return command
 
     command = [
         sys.executable,
@@ -106,6 +133,16 @@ def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
     out_dir = _validated_output_directory(args.out_dir)
     wetbulb_source = _validated_source(args.wetbulb_source)
+    region = _validated_region(args.region)
+    if region == "eu" and wetbulb_source != "isd":
+        msg = "--region eu only supports --wetbulb-source isd"
+        raise argparse.ArgumentTypeError(msg)
+    if region == "eu" and out_dir == ".":
+        LOGGER.warning(
+            "--region eu with the default --out-dir would share parquet "
+            "partition filenames with any US run; pass a distinct --out-dir "
+            "(e.g. 'eu').",
+        )
     city_shard_count = _validated_positive_integer(
         args.city_shard_count, "--city-shard-count"
     )
@@ -126,6 +163,7 @@ def main(argv: list[str] | None = None) -> None:
         subprocess.run(
             _command(
                 wetbulb_source,
+                region,
                 out_dir,
                 city_shard_count,
                 concurrency,

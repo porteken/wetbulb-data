@@ -255,7 +255,12 @@ class TestFetchStationSeries:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         def fake_fetch_station_year(
-            candidate_ids: list[str], year: int, *, lon: Any, session: Any
+            candidate_ids: list[str],
+            year: int,
+            *,
+            lon: Any,
+            utc_offset_hours: Any = None,
+            session: Any,
         ) -> tuple[pd.DataFrame, bool]:
             if year == 2021:
                 return isd._empty_hourly_frame(), True
@@ -340,7 +345,12 @@ class TestLoadStationMap:
         with caplog.at_level("WARNING"):
             result = isd._load_station_map()
         assert result.empty
-        assert list(result.columns) == ["location_id", "isd_ids", "lon"]
+        assert list(result.columns) == [
+            "location_id",
+            "isd_ids",
+            "lon",
+            "utc_offset_hours",
+        ]
         assert any("not found" in m for m in caplog.messages)
 
     def test_loads_existing_file(
@@ -355,6 +365,19 @@ class TestLoadStationMap:
         result = isd._load_station_map()
         assert list(result["location_id"]) == [0]
         assert list(result["isd_ids"]) == ["72503014732|72505399999"]
+        assert result["utc_offset_hours"].isna().all()
+
+    def test_loads_utc_offset_hours_when_present(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "cities_eu_isd_stations.csv"
+        path.write_text(
+            "location_id,usaf,wban,isd_ids,lon,dist_km,elev_m,utc_offset_hours\n"
+            "1000,03772,99999,0377299999,-0.4614,5.0,25.0,0\n"
+        )
+        monkeypatch.setattr(isd, "STATION_MAP_PATH", str(path))
+        result = isd._load_station_map()
+        assert list(result["utc_offset_hours"]) == [0.0]
 
 
 class TestFetchStationsBatch:
@@ -362,7 +385,11 @@ class TestFetchStationsBatch:
         calls: list[list[str]] = []
 
         def fake_series(
-            _session: Any, candidate_ids: list[str], _years: Any, _lon: Any
+            _session: Any,
+            candidate_ids: list[str],
+            _years: Any,
+            _lon: Any,
+            _utc_offset_hours: Any = None,
         ) -> tuple[pd.DataFrame, set[int]]:
             calls.append(candidate_ids)
             return pd.DataFrame({"time": [pd.Timestamp("2020-01-01")]}), set()
@@ -371,6 +398,7 @@ class TestFetchStationsBatch:
         results = isd._fetch_stations_batch(
             ["AAA|BBB", "CCC"],
             {"AAA|BBB": -74.0, "CCC": -75.0},
+            {"AAA|BBB": None, "CCC": None},
             [2020],
             cast("Any", None),
             worker_count=2,
@@ -386,12 +414,21 @@ class TestProcessIsd:
         return pd.DataFrame({"location_id": [1], "lat": [40.0], "lng": [-74.0]})
 
     @staticmethod
-    def _station_map_one_station() -> pd.DataFrame:
-        return pd.DataFrame({"location_id": [1], "isd_ids": ["AAA"], "lon": [-74.0]})
+    def _station_map_one_station(*_args: Any) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "location_id": [1],
+                "isd_ids": ["AAA"],
+                "lon": [-74.0],
+                "utc_offset_hours": [None],
+            }
+        )
 
     @staticmethod
-    def _empty_station_map() -> pd.DataFrame:
-        return pd.DataFrame(columns=pd.Index(["location_id", "isd_ids", "lon"]))
+    def _empty_station_map(*_args: Any) -> pd.DataFrame:
+        return pd.DataFrame(
+            columns=pd.Index(["location_id", "isd_ids", "lon", "utc_offset_hours"])
+        )
 
     def test_no_cities_returns_early(
         self,
@@ -528,11 +565,12 @@ class TestProcessIsd:
         monkeypatch.setattr(
             isd,
             "_load_station_map",
-            lambda: pd.DataFrame(
+            lambda *_args: pd.DataFrame(
                 {
                     "location_id": [1, 2],
                     "isd_ids": ["SHARED", "SHARED"],
                     "lon": [-74.0, -74.0],
+                    "utc_offset_hours": [None, None],
                 }
             ),
         )
@@ -542,6 +580,7 @@ class TestProcessIsd:
         def fake_batch(
             station_keys: list[str],
             _lon_by_key: Any,
+            _offset_by_key: Any,
             _years: Any,
             _session: Any,
             _workers: int,
@@ -692,6 +731,8 @@ class TestMain:
             city_shard_count=1,
             concurrency=8,
             force=False,
+            cities_csv="cities.csv",
+            station_map_csv="cities_isd_stations.csv",
         )
         monkeypatch.setattr(isd, "_parse_args", lambda: args)
         monkeypatch.setattr(isd, "load_dotenv", lambda **_k: None)
