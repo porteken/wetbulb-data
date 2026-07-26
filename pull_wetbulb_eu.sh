@@ -100,26 +100,17 @@ run_sharded() {
 }
 
 step_cities() {
-  log "[cities] building the EU city list"
+  log "[cities] jointly selecting EU cities, unique ERA5-Land cells, and unique ISD stations"
   run "${PY[@]}" cities_eu.py
   run "${PY[@]}" locations.py \
     --cities-csv "${EU_CITIES_CSV}" --out "${EU_LOCATIONS_CSV}"
-  log "[cities] wrote ${EU_CITIES_CSV} and ${EU_LOCATIONS_CSV}"
+  log "[cities] wrote ${EU_CITIES_CSV}, ${EU_STATION_MAP_CSV}, and ${EU_LOCATIONS_CSV}"
 }
 
 step_crosswalk() {
   require_file "${EU_CITIES_CSV}" cities
-  log "[crosswalk] resolving one ISD station per city (probing NCEI)"
-  # shellcheck disable=SC2310
-  if ! run "${PY[@]}" make_isd_station_map_eu.py \
-    --cities-csv "${EU_CITIES_CSV}" \
-    --out "${EU_STATION_MAP_CSV}" \
-    --start-year "${EU_CROSSWALK_START_YEAR}" \
-    --end-year "${EU_END_YEAR}"; then
-    log "[crosswalk] some cities have no verified station (see warnings above);" \
-      "they will be covered entirely by ERA5-Land"
-  fi
-  require_file "${EU_STATION_MAP_CSV}" crosswalk
+  require_file "${EU_STATION_MAP_CSV}" cities
+  log "[crosswalk] unique station map was produced atomically with city selection"
 }
 
 step_trial() {

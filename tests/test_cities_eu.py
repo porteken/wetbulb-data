@@ -13,6 +13,7 @@ from cities_eu import (
     EU_LOCATION_ID_OFFSET,
     filter_europe,
     process_cities_eu,
+    select_cities_eu,
     standard_utc_offset_hours,
 )
 
@@ -197,6 +198,73 @@ class TestProcessCitiesEu:
         assert result.iloc[0]["utc_offset_hours"] == 1
 
 
+class TestSelectCitiesEu:
+    @staticmethod
+    def _history() -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "USAF": "111111",
+                    "WBAN": "11111",
+                    "LAT_NUM": 48.85,
+                    "LON_NUM": 2.35,
+                    "ELEV_NUM": 10.0,
+                    "BEGIN": "19800101",
+                    "END": "20251231",
+                },
+                {
+                    "USAF": "222222",
+                    "WBAN": "22222",
+                    "LAT_NUM": 48.95,
+                    "LON_NUM": 2.45,
+                    "ELEV_NUM": 10.0,
+                    "BEGIN": "19800101",
+                    "END": "20251231",
+                },
+            ]
+        )
+
+    def test_claims_unique_grid_points_and_stations(self) -> None:
+        candidates = pd.DataFrame(
+            [
+                _row("Largest", "FR", 48.820, 2.320, population=300_000),
+                _row("Same cell", "FR", 48.821, 2.321, population=200_000),
+                _row("Next", "FR", 48.950, 2.450, population=100_000),
+            ]
+        )
+        cities, stations = select_cities_eu(
+            candidates,
+            {"FR": "France"},
+            self._history(),
+            verify=lambda _ids, _year: True,
+            max_cities=2,
+        )
+        assert list(cities["city"]) == ["Largest", "Next"]
+        assert not stations[["usaf", "wban"]].duplicated().any()
+        cells = {
+            (round(row.lat / cities_eu.GRID_DEG), round(row.lng / cities_eu.GRID_DEG))
+            for row in cities.itertuples()
+        }
+        assert len(cells) == 2
+
+    def test_skips_city_when_only_station_is_already_claimed(self) -> None:
+        candidates = pd.DataFrame(
+            [
+                _row("Largest", "FR", 48.850, 2.350, population=300_000),
+                _row("Competing", "FR", 48.900, 2.400, population=200_000),
+            ]
+        )
+        one_station = self._history().head(1)
+        with pytest.raises(ValueError, match="only 1 of 2"):
+            select_cities_eu(
+                candidates,
+                {"FR": "France"},
+                one_station,
+                verify=lambda _ids, _year: True,
+                max_cities=2,
+            )
+
+
 class TestMain:
     def test_main_saves_csv(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -205,11 +273,28 @@ class TestMain:
         monkeypatch.setattr(cities_eu, "load_geonames_cities", lambda: df)
         monkeypatch.setattr(cities_eu, "filter_europe", lambda d: d)
         monkeypatch.setattr(cities_eu, "load_country_names", lambda: {"FR": "France"})
-        monkeypatch.setattr(cities_eu, "process_cities_eu", lambda d, _names: d)
+        monkeypatch.setattr(
+            cities_eu, "fetch_isd_history", lambda **_kwargs: pd.DataFrame()
+        )
+        monkeypatch.setattr(cities_eu, "prepare_eu_history", lambda history: history)
+        stations = pd.DataFrame(
+            {
+                "location_id": [1000],
+                "usaf": ["111111"],
+                "wban": ["11111"],
+            }
+        )
+        monkeypatch.setattr(
+            cities_eu,
+            "select_cities_eu",
+            lambda *_args, **_kwargs: (df, stations),
+        )
 
         output_file = tmp_path / "cities_eu.csv"
+        station_file = tmp_path / "cities_eu_isd_stations.csv"
         monkeypatch.chdir(tmp_path)
 
         cities_eu.main()
 
         assert output_file.exists()
+        assert station_file.exists()

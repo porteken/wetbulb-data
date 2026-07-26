@@ -250,7 +250,7 @@ def _fetch_filled_rows(
     shard_had_gap = any(gap for _, gap in city_results.values())
     if not hourly_frames:
         return None
-    hourly_df = pd.concat(hourly_frames, ignore_index=True)
+    hourly_df = lcd.concat_frames(hourly_frames)
     if "utc_offset_hours" in gapped_rows.columns and not hourly_df.empty:
         hourly_df = hourly_df.merge(
             gapped_rows[["location_id", "utc_offset_hours"]],
@@ -418,8 +418,12 @@ def process_gapfill(
 
     cell_map = giovanni.load_cell_map()
     shard_df = shard_df.merge(cell_map, on="location_id", how="left")
-    shard_df["fetch_lat"] = shard_df["cell_lat"].fillna(shard_df["lat"])
-    shard_df["fetch_lon"] = shard_df["cell_lon"].fillna(shard_df["lng"])
+    shard_df["fetch_lat"] = shard_df["cell_lat"].where(
+        shard_df["cell_lat"].notna(), shard_df["lat"]
+    )
+    shard_df["fetch_lon"] = shard_df["cell_lon"].where(
+        shard_df["cell_lon"].notna(), shard_df["lng"]
+    )
     gapped_rows = shard_df[shard_df["location_id"].isin(gapped_ids)]
 
     filled = _fetch_filled_rows(

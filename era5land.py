@@ -156,7 +156,7 @@ def _fetch_city_gaps(
 
     if not year_frames:
         return _empty_hourly_frame(), had_gap
-    return pd.concat(year_frames, ignore_index=True), had_gap
+    return lcd.concat_frames(year_frames), had_gap
 
 
 def _fetch_gaps_batch(
@@ -216,7 +216,7 @@ def _fetch_filled_rows(
     shard_had_gap = any(gap for _, gap in city_results.values())
     if not hourly_frames:
         return None
-    hourly_df = pd.concat(hourly_frames, ignore_index=True)
+    hourly_df = lcd.concat_frames(hourly_frames)
     daily_df = nldas.compute_daily_wetbulb(hourly_df)
     if daily_df.empty:
         return None

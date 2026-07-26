@@ -1,6 +1,7 @@
 *.csv
 !cities_na.csv
 !cities_na_isd_stations.csv
+na/
 backup/
 *.parquet
 .ruff_cache/

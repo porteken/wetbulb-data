@@ -27,6 +27,7 @@ from lcd import (
     _station_to_hourly,
     _write_daily_shard,
     add_common_shard_args,
+    concat_frames,
 )
 from partition_io import pending_years, write_pending_year_batches
 from shards import resolve_filesystem
@@ -273,7 +274,7 @@ def _fetch_station_series(
             year_frames.append(frame)
     if not year_frames:
         return _empty_hourly_frame(), gapped_years
-    return pd.concat(year_frames, ignore_index=True), gapped_years
+    return concat_frames(year_frames), gapped_years
 
 
 def _load_station_map(path: str | None = None) -> DataFrame:

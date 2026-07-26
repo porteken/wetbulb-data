@@ -68,6 +68,17 @@ def _empty_hourly_frame() -> DataFrame:
     return pd.DataFrame(columns=list(_HOURLY_FRAME_COLUMNS))
 
 
+def concat_frames(frames: list[DataFrame]) -> DataFrame:
+    """Concatenate while explicitly excluding empty/all-NA dtype inputs."""
+    columns = list(
+        dict.fromkeys(column for frame in frames for column in frame.columns)
+    )
+    relevant = [frame.dropna(axis=1, how="all") for frame in frames if not frame.empty]
+    if not relevant:
+        return pd.DataFrame(columns=columns)
+    return pd.concat(relevant, ignore_index=True).reindex(columns=columns)
+
+
 def _get_with_retries(
     session: requests.Session,
     url: str,
@@ -223,7 +234,7 @@ def _fetch_station_series(
             year_frames.append(frame)
     if not year_frames:
         return _empty_hourly_frame(), gapped_years
-    return pd.concat(year_frames, ignore_index=True), gapped_years
+    return concat_frames(year_frames), gapped_years
 
 
 def _station_to_hourly(location_id: int, station_df: DataFrame) -> DataFrame:
@@ -363,7 +374,7 @@ def _write_daily_shard(
 ) -> None:
     """Aggregate hourly rows to daily wet-bulb and write pending years."""
     hourly_df = (
-        pd.concat(hourly_frames, ignore_index=True)
+        concat_frames(hourly_frames)
         if hourly_frames
         else pd.DataFrame(columns=["location_id", "time", "Tair", "Qair", "PSurf"])
     )

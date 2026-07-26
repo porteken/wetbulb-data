@@ -63,7 +63,12 @@ def _candidate_ids_for_wban(
         history["USAF"].isin(real["USAF"]) & (history["WBAN"] == PLACEHOLDER_WBAN)
     ].sort_values("END", ascending=False)
     placeholder = rows[rows["USAF"] == PLACEHOLDER_USAF]
-    ordered = pd.concat([real, usaf_placeholder_wban, placeholder])
+    nonempty_groups = [
+        group for group in (real, usaf_placeholder_wban, placeholder) if not group.empty
+    ]
+    ordered = (
+        nonempty_groups[0] if len(nonempty_groups) == 1 else pd.concat(nonempty_groups)
+    )
 
     seen: set[str] = set()
     ids: list[str] = []
