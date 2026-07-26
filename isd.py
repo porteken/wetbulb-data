@@ -166,7 +166,9 @@ def _parse_isd_response(
     )
     hourly["station_pressure_hpa"] = station_pressure_value.where(~station_pressure_bad)
 
-    hourly["time_utc"] = pd.to_datetime(hourly["DATE"], errors="coerce")
+    hourly["time_utc"] = pd.to_datetime(
+        hourly["DATE"], format="ISO8601", errors="coerce"
+    )
     hourly = hourly.dropna(subset=["time_utc", "tair_c", "dewpoint_c"])
     if hourly.empty:
         return _empty_hourly_frame()

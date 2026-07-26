@@ -100,8 +100,38 @@ def build_station_map_eu(
     end_year: int = nldas.NLDAS_END_YEAR,
 ) -> DataFrame:
     """Return a DataFrame of location_id, usaf, wban, isd_ids, ... per EU city."""
+    return build_station_map_region(
+        cities_csv,
+        min_lat=EUROPE_HISTORY_MIN_LAT,
+        max_lat=EUROPE_HISTORY_MAX_LAT,
+        min_lon=EUROPE_HISTORY_MIN_LON,
+        max_lon=EUROPE_HISTORY_MAX_LON,
+        session=session,
+        start_year=start_year,
+        end_year=end_year,
+    )
+
+
+def build_station_map_region(
+    cities_csv: str,
+    *,
+    min_lat: float,
+    max_lat: float,
+    min_lon: float,
+    max_lon: float,
+    session: requests.Session | None = None,
+    start_year: int,
+    end_year: int,
+) -> DataFrame:
+    """Return a global-ISD station map for cities inside a regional bounding box."""
     http = session or requests.Session()
-    history = _prepare_history(fetch_isd_history(session=http))
+    history = prepare_history(
+        fetch_isd_history(session=http),
+        min_lat=min_lat,
+        max_lat=max_lat,
+        min_lon=min_lon,
+        max_lon=max_lon,
+    )
     cities = pd.read_csv(
         cities_csv,
         usecols=["location_id", "lat", "lng", "dem_m", "utc_offset_hours"],
