@@ -104,3 +104,34 @@ def test_us_region_is_unaffected(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     pipeline.main(["--years", "2025", "--wetbulb-source", "isd"])
     assert "--cities-csv" not in calls[0]
+
+
+def test_ca_region_uses_eccc_crosswalk(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        pipeline.subprocess, "run", lambda command, **_kwargs: calls.append(command)
+    )
+    pipeline.main(
+        [
+            "--years",
+            "2025",
+            "--wetbulb-source",
+            "eccc",
+            "--region",
+            "ca",
+            "--out-dir",
+            "ca",
+        ]
+    )
+    assert calls[0][1] == "eccc.py"
+    assert calls[0][-4:] == [
+        "--cities-csv",
+        pipeline.CA_CITIES_CSV,
+        "--station-map-csv",
+        pipeline.CA_STATION_MAP_CSV,
+    ]
+
+
+def test_ca_region_rejects_non_eccc_source() -> None:
+    with pytest.raises(argparse.ArgumentTypeError, match="--region ca"):
+        pipeline.main(["--wetbulb-source", "isd", "--region", "ca"])

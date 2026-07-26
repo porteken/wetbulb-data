@@ -17,7 +17,7 @@ date date NOT NULL,
 wetbulb real NOT NULL,
 wetbulb_avg real,
 source text NOT NULL DEFAULT 'isd',
-CONSTRAINT wetbulb_source_check CHECK (source IN ('isd', 'nldas', 'lcd', 'giovanni', 'era5land'))
+CONSTRAINT wetbulb_source_check CHECK (source IN ('isd', 'eccc', 'nldas', 'lcd', 'giovanni', 'era5land'))
 ) ;
 
 CREATE UNIQUE INDEX IF NOT EXISTS wetbulb_location_date_uidx

@@ -3,6 +3,8 @@ backup/
 !cities_nldas_cells.csv
 !cities_lcd_stations.csv
 !cities_isd_stations.csv
+!cities_ca.csv
+!cities_ca_eccc_stations.csv
 *.parquet
 .ruff_cache/
 raw_*/

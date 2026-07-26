@@ -1,0 +1,101 @@
+location_id,city,state,lat,lng
+500,Toronto,ON,43.722,-79.468
+501,Montréal,QC,45.525,-73.697
+502,Vancouver,BC,49.240,-122.942
+503,Calgary,AB,51.036,-114.081
+504,Edmonton,AB,53.539,-113.501
+505,Ottawa - Gatineau,ON-QC,45.395,-75.711
+506,Winnipeg,MB,49.883,-97.145
+507,Québec,QC,46.805,-71.275
+508,Hamilton,ON,43.263,-79.866
+509,Kitchener,ON,43.430,-80.461
+510,London,ON,42.981,-81.264
+511,Victoria,BC,48.496,-123.428
+512,Halifax,NS,44.688,-63.607
+513,Oshawa,ON,43.902,-78.875
+514,Windsor,ON,42.287,-82.928
+515,Saskatoon,SK,52.129,-106.660
+516,St. Catharines - Niagara Falls,ON,43.139,-79.179
+517,Regina,SK,50.453,-104.613
+518,St. John's,NL,47.555,-52.834
+519,Kelowna,BC,49.849,-119.538
+520,Barrie,ON,44.374,-79.666
+521,Sherbrooke,QC,45.372,-71.925
+522,Guelph,ON,43.537,-80.238
+523,Kanata,ON,45.285,-75.904
+524,Abbotsford,BC,49.043,-122.308
+525,Trois-Rivières,QC,46.351,-72.581
+526,Kingston,ON,44.243,-76.540
+527,Milton,ON,43.526,-79.880
+528,Moncton,NB,46.095,-64.777
+529,White Rock,BC,49.041,-122.816
+530,Nanaimo,BC,49.184,-123.984
+531,Brantford,ON,43.146,-80.276
+532,Chicoutimi - Jonquière,QC,48.422,-71.131
+533,Saint-Jérôme,QC,45.763,-74.062
+534,Red Deer,AB,52.270,-113.800
+535,Thunder Bay,ON,48.407,-89.278
+536,Lethbridge,AB,49.717,-112.835
+537,Kamloops,BC,50.687,-120.305
+538,Sudbury,ON,46.499,-80.976
+539,Saint-Jean-sur-Richelieu,QC,45.326,-73.275
+540,Peterborough,ON,44.303,-78.324
+541,Chilliwack,BC,49.145,-121.949
+542,Châteauguay,QC,45.335,-73.811
+543,Belleville,ON,44.113,-77.530
+544,Sarnia,ON,43.024,-82.282
+545,Airdrie,AB,51.292,-114.014
+546,Drummondville,QC,45.868,-72.452
+547,Welland - Pelham,ON,43.002,-79.281
+548,Fort McMurray,AB,56.726,-111.380
+549,Prince George,BC,53.912,-122.776
+550,Sault Ste. Marie,ON,46.533,-84.330
+551,Fredericton,NB,45.947,-66.626
+552,Saint John,NB,45.287,-66.100
+553,Medicine Hat,AB,50.031,-110.679
+554,Grande Prairie,AB,55.173,-118.774
+555,Granby,QC,45.403,-72.717
+556,Bowmanville - Newcastle,ON,43.910,-78.660
+557,Beloeil,QC,45.563,-73.200
+558,Charlottetown,PE,46.249,-63.127
+559,Vernon,BC,50.243,-119.321
+560,North Bay,ON,46.307,-79.433
+561,Saint-Hyacinthe,QC,45.626,-72.955
+562,Brandon,MB,49.840,-99.964
+563,Joliette,QC,46.042,-73.458
+564,Courtenay,BC,49.688,-124.929
+565,Cornwall,ON,45.039,-74.756
+566,Victoriaville,QC,46.060,-71.954
+567,Woodstock,ON,43.142,-80.753
+568,St. Thomas,ON,42.765,-81.192
+569,Chatham,ON,42.401,-82.189
+570,Georgetown,ON,43.648,-79.915
+571,Salaberry-de-Valleyfield,QC,45.271,-74.104
+572,Spruce Grove,AB,53.554,-113.902
+573,Shawinigan,QC,46.552,-72.740
+574,Rimouski,QC,48.445,-68.548
+575,Bradford,ON,44.113,-79.577
+576,Campbell River,BC,49.995,-125.233
+577,Penticton,BC,49.493,-119.612
+578,Prince Albert,SK,53.180,-105.764
+579,Stouffville,ON,43.969,-79.264
+580,Sorel,QC,46.020,-73.138
+581,Mission,BC,49.144,-122.292
+582,Leamington,ON,42.035,-82.679
+583,Orangeville,ON,43.931,-80.099
+584,Leduc,AB,53.267,-113.546
+585,Orillia,ON,44.598,-79.396
+586,Stratford,ON,43.372,-80.976
+587,Moose Jaw,SK,50.394,-105.543
+588,Cochrane,AB,51.207,-114.467
+589,Lloydminster,AB-SK,53.280,-109.998
+590,Cape Breton - Sydney,NS,46.130,-60.197
+591,Okotoks,AB,50.726,-113.978
+592,Innisfil,ON,44.317,-79.538
+593,Timmins,ON,48.479,-81.335
+594,Saint-Georges,QC,46.118,-70.676
+595,Parksville,BC,49.321,-124.321
+596,Keswick - Elmhurst Beach,ON,44.230,-79.477
+597,Fort Saskatchewan,AB,53.711,-113.218
+598,Bolton,ON,43.892,-79.734
+599,Midland,ON,44.755,-79.897

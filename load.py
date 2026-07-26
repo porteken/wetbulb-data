@@ -44,7 +44,8 @@ TABLE_UNIQUE_KEYS: dict[str, tuple[str, ...]] = {
     "forecast_interval_calibration": ("metric",),
 }
 TABLE_SOURCE_COLUMNS: dict[str, str] = {"wetbulb": "source"}
-SOURCE_RANK_PRIMARY = "isd"
+SOURCE_DEFAULT_PRIMARY = "isd"
+SOURCE_RANK_PRIMARY: tuple[str, ...] = ("isd", "eccc")
 SOURCE_RANK_FILL: tuple[str, ...] = ("nldas", "era5land")
 
 
@@ -603,7 +604,7 @@ def _upsert_from_staging(
         select_columns_sql = sql.SQL(", ").join(
             sql.SQL("COALESCE({col}, {default}) AS {col}").format(
                 col=sql.Identifier(col),
-                default=sql.Literal(SOURCE_RANK_PRIMARY),
+                default=sql.Literal(SOURCE_DEFAULT_PRIMARY),
             )
             if col == source_column
             else sql.Identifier(col)
@@ -631,7 +632,7 @@ def _upsert_from_staging(
         conflict_action = sql.SQL("DO NOTHING")
     elif has_source:
         conflict_action = sql.SQL(
-            "DO UPDATE SET {updates} WHERE NOT ({table}.{col} = {primary} "
+            "DO UPDATE SET {updates} WHERE NOT ({table}.{col} IN ({primary}) "
             "AND EXCLUDED.{col} IN ({fill_sources}))",
         ).format(
             updates=sql.SQL(", ").join(
@@ -640,7 +641,9 @@ def _upsert_from_staging(
             ),
             table=sql.Identifier(table_name),
             col=sql.Identifier(cast("str", source_column)),
-            primary=sql.Literal(SOURCE_RANK_PRIMARY),
+            primary=sql.SQL(", ").join(
+                sql.Literal(source) for source in SOURCE_RANK_PRIMARY
+            ),
             fill_sources=sql.SQL(", ").join(
                 sql.Literal(source) for source in SOURCE_RANK_FILL
             ),
@@ -656,12 +659,15 @@ def _upsert_from_staging(
     order_sql = keys_sql
     if has_source:
         order_sql = sql.SQL(
-            "{keys}, CASE WHEN COALESCE({col}, {primary}) = {primary} "
+            "{keys}, CASE WHEN COALESCE({col}, {default}) IN ({primary}) "
             "THEN 0 ELSE 1 END",
         ).format(
             keys=keys_sql,
             col=sql.Identifier(cast("str", source_column)),
-            primary=sql.Literal(SOURCE_RANK_PRIMARY),
+            default=sql.Literal(SOURCE_DEFAULT_PRIMARY),
+            primary=sql.SQL(", ").join(
+                sql.Literal(source) for source in SOURCE_RANK_PRIMARY
+            ),
         )
 
     upsert_statement = sql.SQL(
