@@ -1,39 +1,4 @@
-"""Fill (location_id, date) gaps the EU ISD station pipeline could not produce.
-
-ERA5-Land's counterpart to `gapfill.py` (which fills US ISD gaps from
-NLDAS-2 via Giovanni): station observations still come first -- ISD
-(`isd.py`) stays the primary EU daily wet-bulb source -- but many European
-stations report only 3-hourly SYNOP, which fails the >=20/24-hour daily
-coverage gate in `nldas.compute_daily_wetbulb` more often than US ASOS/AWOS
-does, especially pre-2005 and in Eastern Europe. This module fills those
-holes from the Copernicus Climate Data Store's ERA5-Land hourly
-time-series dataset (`reanalysis-era5-land-timeseries`), a point-based
-product covering 1950-present at ~9 km resolution, which needs a CDS
-account/API key (`cdsapi`, an optional dependency -- see the `era5` extra
-in `pyproject.toml`) and one-time license acceptance for the dataset.
-
-Gap detection reuses `gapfill.py`'s region-agnostic helpers
-(`find_missing_cells`, `_filter_material_gaps`, `_gap_years_by_location`,
-`MIN_MISSING_DAYS_DEFAULT`) unchanged -- a gap is still "days ISD's own
-`wetbulb_batch_*` parquet didn't write", regardless of which continent's
-pipeline wrote it. Fetches use each city's own contiguous gap-year ranges
-(`giovanni.contiguous_year_ranges`) since a multi-decade point time-series
-is a single, cheap CDS request rather than the whole-year hourly-granule
-downloads NLDAS needs.
-
-This is a gap-filler only, not a `pipeline.py --wetbulb-source`: the
-architecture is ISD-primary by design (a 15-city LCD-vs-NLDAS pilot showed
-gridded models concentrate their largest daily-max errors on exactly the
-high-humidity extreme days this dataset cares about -- see `gapfill.py`'s
-module docstring), and a full-city fill is already expressible here via
-`--min-missing-days 1`.
-
-Writes to the same `wetbulb_fill_batch_*` name and `source='era5land'`
-provenance stamp convention as `gapfill.py`'s NLDAS output, so `load.py`'s
-upsert (`_upsert_from_staging`, generalized to treat every entry in
-`SOURCE_RANK_FILL` the same way) can never let an ERA5-Land row shadow or
-overwrite a real ISD station row.
-"""
+"""Fill (location_id, date) gaps the EU ISD station pipeline could not produce."""
 
 from __future__ import annotations
 
@@ -106,13 +71,7 @@ def fetch_city_span(
     end_year: int,
     download_dir: str,
 ) -> DataFrame:
-    """Retrieve one city's ERA5-Land hourly point time-series for a year span.
-
-    One request per contiguous year range (see `contiguous_year_ranges`)
-    rather than per year: a 26-year x 3-variable hourly point series is a
-    few MB, well within what the CDS timeseries product is built for, and
-    per-year requests would multiply queue wait time for no benefit.
-    """
+    """Retrieve one city's ERA5-Land hourly point time-series for a year span."""
     target = str(
         Path(download_dir) / f"era5land_{lat}_{lng}_{start_year}_{end_year}.csv"
     )
@@ -131,13 +90,7 @@ def _hourly_frame_from_era5land(
     raw: DataFrame,
     utc_offset_hours: float,
 ) -> DataFrame:
-    """Convert one city's raw ERA5-Land CSV rows to `location_id,time,Tair,Qair,PSurf`.
-
-    Column names/units match `nldas.NLDAS_VARIABLES` (Tair in K, Qair in
-    kg/kg, PSurf in Pa) so the result feeds `nldas.compute_daily_wetbulb`
-    directly, using the same dewpoint->specific-humidity conversion
-    (`lcd._dewpoint_to_specific_humidity`) every other source relies on.
-    """
+    """Convert one city's raw ERA5-Land CSV rows to `location_id,time,Tair,Qair,PSurf`."""
     if raw.empty:
         return _empty_hourly_frame()
 
@@ -246,12 +199,7 @@ def _fetch_filled_rows(
     start_year: int,
     end_year: int,
 ) -> DataFrame | None:
-    """Fetch ERA5-Land data for every gapped city and merge it against `missing_cells`.
-
-    Returns None if any city had a fetch gap (the whole write is skipped so
-    a future run retries them, mirroring `gapfill._fetch_filled_rows`'s
-    identical rationale) or if there was nothing to write.
-    """
+    """Fetch ERA5-Land data for every gapped city and merge it against `missing_cells`."""
     client = _cds_client()
     worker_count = max(1, min(concurrency, len(gapped_rows)))
     with tempfile.TemporaryDirectory() as download_dir:

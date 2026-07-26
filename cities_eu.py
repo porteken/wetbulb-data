@@ -1,29 +1,4 @@
-"""Prepare EU city data for the wetbulb pipeline (mirrors `cities.py` for the US).
-
-Sourced from GeoNames' `cities15000` dump (populated places with population
->15,000 or an administrative seat) plus `countryInfo.txt` for English country
-names, rather than the US pipeline's Plotly CSV -- GeoNames is the one source
-that carries population, coordinates, *and* an IANA timezone per city, which
-the crosswalk builder (`make_isd_station_map_eu.py`) and the ISD worker
-(`isd.py`) both need for local-day aggregation.
-
-Scope is the EU-27 member states plus the United Kingdom and Switzerland,
-as an ISO-3166 country allowlist (`EU_COUNTRY_CODES`). Non-EU European
-states (Norway, Iceland, the Balkans, Ukraine, Russia, Turkey) and the
-European microstates are deliberately out of scope.
-
-A bounding box is applied on top of the allowlist purely to drop the
-Atlantic island territories that carry a mainland country code: `min_lat`
-excludes the Canaries (ES, ~28N) and Madeira (PT, ~32.7N), and `min_lng`
-excludes the Azores (PT, all west of 25W). Overseas departments have their
-own ISO codes (RE, MQ, GP, GF, YT) and are already excluded by the
-allowlist. Cyprus is kept: it is an EU member, and `min_lat=34` clears its
-southernmost city (Limassol, 34.7N) while the Canaries stay below the cut.
-
-Like `cities.py`, this module writes a committed, pinned CSV
-(`cities_eu.csv`) rather than reading GeoNames live at pipeline run time --
-GeoNames' dump updates daily and is not a stable pin.
-"""
+"""Prepare EU city data for the wetbulb pipeline (mirrors `cities.py` for the US)."""
 
 from __future__ import annotations
 
@@ -89,7 +64,6 @@ EU_COUNTRY_CODES = frozenset(
         "SE",
         "SI",
         "SK",
-        # United Kingdom and Switzerland
         "GB",
         "CH",
     },

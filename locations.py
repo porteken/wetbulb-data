@@ -32,12 +32,7 @@ def build_locations_frame(url: str = CITIES_SOURCE_URL) -> DataFrame:
 
 
 def locations_frame_from_cities_csv(csv_path: str | Path = CITIES_CSV) -> DataFrame:
-    """Derive the locations frame from an existing cities.csv.
-
-    Deriving from the same file the compute workers read guarantees the
-    locations table can never disagree with the location_ids embedded in the
-    wet-bulb data.
-    """
+    """Derive the locations frame from an existing cities.csv."""
     city_frame = pd.read_csv(csv_path)
     return city_frame.rename(columns={"location_id": "id"})[
         ["id", "city", "state", "lat", "lng"]

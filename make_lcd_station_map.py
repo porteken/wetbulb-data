@@ -1,38 +1,4 @@
-"""Generate `cities_lcd_stations.csv`: each city's nearest usable LCD station.
-
-Builds the city -> LCD station crosswalk that `lcd.py` reads to fetch NOAA
-LCD v2 wet-bulb station data, used as the default wetbulb pipeline source:
-
-1. Fetch IEM's per-state ASOS network metadata (includes each station's
-   `ncei91` field, the exact station id LCD v2 bulk filenames use), keeping
-   only stations that are still active and have a known archive start date.
-2. For each city in `cities.csv`, rank the `LCD_MAX_CANDIDATES_PER_CITY`
-   nearest stations by great-circle distance and pick one whose LCD bulk
-   files actually contain hourly-cadence observations
-   (`HOURLY_REPORT_TYPES` in `lcd.py`), in two tiers:
-
-   - **Tier 1** (preferred): the station's archive covers the full
-     `start_year`-`end_year` pipeline window; verified by probing both
-     endpoints.
-   - **Tier 2** (fallback, only tried once every candidate fails tier 1):
-     any candidate regardless of archive start, verified by probing its
-     first full archive year and `end_year`. These stations have fewer
-     years of history -- the missing early years simply produce no daily
-     wet-bulb rows for that city, same as any other station gap.
-
-   Existence alone is not enough to verify a candidate: some IEM-listed
-   ASOS stations (e.g. Buckley SFB near Denver, `USW00023062`) have an LCD
-   file that exists for every year but contains only daily/monthly summary
-   rows (`SOD`/`SOM`), no hourly METAR at all -- verified empirically when
-   a first pilot run silently produced zero daily wet-bulb rows for
-   Denver. Checked with a ranged GET over the first ~200 KB (not a full
-   download, and not HEAD/LIST -- see module docstring in `lcd.py` for
-   why), which is enough bytes to observe a month+ of hourly rows if the
-   station reports them at all near the start of the probed year.
-
-Network calls: ~49 IEM geojson requests (one per CONUS state, throttled to
-1/sec) plus up to a couple dozen ~200 KB ranged GETs per city against NCEI.
-"""
+"""Generate `cities_lcd_stations.csv`: each city's nearest usable LCD station."""
 
 from __future__ import annotations
 
@@ -152,12 +118,7 @@ def fetch_asos_stations(
     *,
     session: requests.Session | None = None,
 ) -> list[dict[str, Any]]:
-    """Return active CONUS ASOS stations with a known LCD (`ncei91`) id and archive start date.
-
-    No `archive_begin` cutoff is applied here -- candidates with a short
-    archive are still returned so a city can fall back to one in tier 2 if
-    every full-window candidate fails verification.
-    """
+    """Return active CONUS ASOS stations with a known LCD (`ncei91`) id and archive start date."""
     http = session or requests.Session()
     stations: list[dict[str, Any]] = []
     for state in states:
@@ -198,13 +159,7 @@ def _lcd_hourly_data_present(
     *,
     session: requests.Session,
 ) -> bool:
-    """Return whether a station's LCD file exists and actually contains hourly rows.
-
-    A 200/206 response alone isn't sufficient: some stations (e.g. Buckley
-    SFB near Denver) publish an LCD file every year that contains only
-    daily/monthly summaries and zero hourly METAR, which would otherwise
-    silently produce zero daily wet-bulb rows downstream.
-    """
+    """Return whether a station's LCD file exists and actually contains hourly rows."""
     url = LCD_URL_TEMPLATE.format(year=year, station_id=station_id)
     try:
         response = session.get(
@@ -221,13 +176,7 @@ def _lcd_hourly_data_present(
 
 
 def _first_full_archive_year(archive_begin: str, start_year: int) -> int:
-    """Return the first full year to probe for a tier-2 (short-archive) candidate.
-
-    Probing the partial first calendar year of a station's archive risks a
-    false negative if hourly reporting ramped up partway through it, so
-    tier 2 probes the year after `archive_begin` instead (still clamped to
-    `start_year` if the archive already covers it).
-    """
+    """Return the first full year to probe for a tier-2 (short-archive) candidate."""
     first_archive_year = int(archive_begin[:4])
     return max(start_year, first_archive_year + 1)
 

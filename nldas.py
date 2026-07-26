@@ -1,13 +1,4 @@
-"""Download NLDAS-2 hourly forcing data and compute daily wet-bulb temperature.
-
-Fetches `NLDAS_FORA0125_H` v2.0 hourly netCDF granules directly over HTTPS
-from NASA GES DISC (deterministic URLs, no CMR search needed), extracts the
-nearest 0.125-degree grid cell for each city, and computes wet-bulb
-temperature with the Davies-Jones (2008) method (see `wetbulb.py`). Output
-parquet lands in the same `wetbulb_data_csv/year=YYYY/wetbulb_batch_*`
-tree consumed by `load.py`
-and the pipeline's S3 sync/resume logic need no changes.
-"""
+"""Download NLDAS-2 hourly forcing data and compute daily wet-bulb temperature."""
 
 from __future__ import annotations
 
@@ -99,13 +90,7 @@ NLDAS_END_YEAR = _arco_style_end_year()
 
 
 class EarthdataSession(requests.Session):
-    """`requests.Session` that keeps Basic Auth across the URS redirect chain.
-
-    NASA Earthdata Login redirects an unauthenticated request to
-    urs.earthdata.nasa.gov and back to the data host; `requests` strips the
-    Authorization header on any redirect that changes host, which breaks
-    that round trip. This is the standard NASA-documented workaround.
-    """
+    """`requests.Session` that keeps Basic Auth across the URS redirect chain."""
 
     def __init__(self, username: str, password: str) -> None:
         """Store Basic Auth credentials to reapply across URS redirects."""
@@ -191,14 +176,7 @@ def _resolve_valid_indices(
     fill_threshold: float = NLDAS_FILL_THRESHOLD,
     max_radius: int = NLDAS_LAND_SEARCH_RADIUS,
 ) -> tuple[ArrayLike, ArrayLike]:
-    """Snap any location whose nearest cell is fill/water to the nearest land cell.
-
-    `reference_grid` is a 2D (lat, lon) field (e.g. Tair) from one granule,
-    used only to detect fill vs. land cells; the NLDAS-2 land mask is static
-    across the archive so one granule is representative for the whole run.
-    Locations with no valid cell within `max_radius` get index -1 (sentinel
-    for "no data"), which downstream extraction turns into NaN.
-    """
+    """Snap any location whose nearest cell is fill/water to the nearest land cell."""
     resolved_iy = np.array(iy, dtype="int64", copy=True)
     resolved_ix = np.array(ix, dtype="int64", copy=True)
     n_lat, n_lon = reference_grid.shape
@@ -444,8 +422,6 @@ def compute_daily_wetbulb(hourly_df: DataFrame) -> DataFrame:
     if df.empty:
         return pd.DataFrame(columns=output_columns)
 
-    # `wetbulb_davies_jones` returns a bare float for length-1 input, which
-    # would make the `invalid` mask below a 0-d scalar.
     tw = np.atleast_1d(
         np.asarray(
             wetbulb_davies_jones(

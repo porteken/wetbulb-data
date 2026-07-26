@@ -1,24 +1,4 @@
 #!/usr/bin/env bash
-# Orchestrate the EU (EU-27 + UK + Switzerland) daily wet-bulb pull.
-#
-# Steps run in order and are individually resumable, because the backfill
-# alone takes 6-12h:
-#
-#   cities     cities_eu.csv + locations_eu.csv          (~1 min, network)
-#   crosswalk  cities_eu_isd_stations.csv                (~minutes, network)
-#   trial      a few sample years, to eyeball coverage   (~minutes)
-#   backfill   full ISD station backfill                 (6-12h)
-#   gapfill    ERA5-Land fill for missing city-days      (hours, CDS queue)
-#   load       locations + wetbulb into Postgres         (DB write)
-#   views      rebuild views and refresh matviews        (DB write)
-#
-# With no arguments the data steps run (cities crosswalk backfill gapfill);
-# the DB steps are opt-in because they mutate a live database. Name steps
-# explicitly to run a subset, e.g. `./pull_wetbulb_eu.sh gapfill load`.
-#
-# Deliberately drives isd.py/era5land.py directly rather than pipeline.py:
-# pipeline.py forwards --city-shard-count but never --city-shard-index, so
-# a sharded run through it would silently process only shard 0.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,7 +34,7 @@ ASSUME_YES=0
 read -ra PY <<<"${PYTHON_RUN}"
 read -ra TRIAL_YEARS <<<"${EU_TRIAL_YEARS}"
 
-log() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+log() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S' || true)" "$*" >&2; }
 die() {
   log "ERROR: $*"
   exit 1
@@ -66,39 +46,6 @@ run() {
     return 0
   fi
   "$@"
-}
-
-usage() {
-  cat <<EOF
-Usage: ${0##*/} [options] [step ...]
-
-Steps: ${ALL_STEPS[*]}
-       all   -> ${ALL_STEPS[*]}
-       (none) -> ${DEFAULT_STEPS[*]}
-
-Options:
-  -n, --dry-run   Print the commands that would run, then exit.
-  -y, --yes       Skip the confirmation prompt on DB-mutating steps.
-  -h, --help      Show this help.
-
-Key environment overrides (current value shown):
-  EU_OUT_DIR=${EU_OUT_DIR}                 parquet root; must differ from the US tree
-  EU_START_YEAR=${EU_START_YEAR}              backfill start (set 1991 for the extension)
-  EU_END_YEAR=${EU_END_YEAR}
-  EU_CITY_SHARDS=${EU_CITY_SHARDS}                parallel local ISD processes
-  EU_ISD_CONCURRENCY=${EU_ISD_CONCURRENCY}            threads per ISD process
-  EU_CDS_CONCURRENCY=${EU_CDS_CONCURRENCY}            concurrent CDS requests (keep low)
-  EU_MIN_MISSING_DAYS=${EU_MIN_MISSING_DAYS}          gap-fill threshold; 1 fills everything
-  EU_TRIAL_YEARS='${EU_TRIAL_YEARS}'
-
-Examples:
-  ${0##*/}                          # cities -> crosswalk -> backfill -> gapfill
-  ${0##*/} --dry-run all            # show every command without running
-  ${0##*/} trial                    # sample years only, before committing
-  EU_CITY_SHARDS=4 ${0##*/} backfill
-  EU_START_YEAR=1991 EU_END_YEAR=1999 ${0##*/} backfill gapfill
-  ${0##*/} load views               # after a completed backfill
-EOF
 }
 
 confirm_db_step() {
@@ -116,8 +63,6 @@ confirm_db_step() {
 require_file() {
   local path=$1 step=$2
   [[ -f ${path} ]] && return 0
-  # Under --dry-run the earlier steps never actually produced their outputs,
-  # so a missing input is expected rather than fatal.
   ((DRY_RUN)) && {
     log "  [dry-run] would require ${path} (from the '${step}' step)"
     return 0
@@ -125,7 +70,6 @@ require_file() {
   die "${path} not found -- run the '${step}' step first"
 }
 
-# Run one command per city shard, in parallel, failing if any shard fails.
 run_sharded() {
   local script=$1
   shift
@@ -166,8 +110,7 @@ step_cities() {
 step_crosswalk() {
   require_file "${EU_CITIES_CSV}" cities
   log "[crosswalk] resolving one ISD station per city (probing NCEI)"
-  # Exits non-zero when some city has no verified station; those cities are
-  # still written with an empty isd_ids and fall through to ERA5-Land.
+  # shellcheck disable=SC2310
   if ! run "${PY[@]}" make_isd_station_map_eu.py \
     --cities-csv "${EU_CITIES_CSV}" \
     --out "${EU_STATION_MAP_CSV}" \
@@ -218,9 +161,6 @@ step_gapfill() {
     : "${CDSAPI_KEY:?CDSAPI_KEY must be set (see .env)}"
   fi
 
-  # Deliberately single-process: gap detection scans every wetbulb_batch_*
-  # file in each year partition regardless of how the backfill was sharded,
-  # and CDS enforces low per-user concurrency.
   log "[gapfill] ERA5-Land ${EU_START_YEAR}-${EU_END_YEAR}," \
     "min-missing-days=${EU_MIN_MISSING_DAYS}, ${EU_CDS_CONCURRENCY} concurrent CDS request(s)"
   run "${PY[@]}" era5land.py \
@@ -254,8 +194,6 @@ finally:
     conn.close()
 "
 
-  # --skip-drop-views is load-bearing: without it load.py truncates
-  # locations, which would delete the US cities.
   log "[load] appending EU rows to locations"
   run "${PY[@]}" load.py \
     --locations-csv "${EU_LOCATIONS_CSV}" \

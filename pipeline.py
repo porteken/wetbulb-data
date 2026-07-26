@@ -202,8 +202,6 @@ def main(argv: list[str] | None = None) -> None:
     years = [_validated_positive_integer(year, "--years") for year in args.years]
     for year in years:
         for city_shard_index in shard_indices:
-            # Keep command parsing disabled: every value is passed as a distinct
-            # argument to a fixed Python entry point, never interpreted by a shell.
             subprocess.run(
                 _command(
                     wetbulb_source,

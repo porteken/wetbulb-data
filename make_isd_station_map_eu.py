@@ -1,34 +1,4 @@
-"""Generate `cities_eu_isd_stations.csv`: each EU city's ISD station candidate.
-
-Unlike `make_isd_station_map.py` (which reuses the already-verified US LCD
-station assignment because IEM ASOS -- the source `make_lcd_station_map.py`
-matches against -- is US-only), there is no equivalent verified assignment
-to start from for Europe. Instead this module selects directly from NCEI's
-global `isd-history.csv` inventory: for each city, rank every station within
-`MAX_STATION_DISTANCE_KM` and `MAX_ELEV_DELTA_M` by (coverage bucket,
-distance), then probe candidates with a ranged GET (reusing
-`make_isd_station_map._isd_hourly_data_present`) until one verifies at both
-`start_year` and `end_year`.
-
-Defaulting `--start-year` to 1991 (rather than the 2000 the initial EU
-backfill starts at) means a station is only chosen if it likely also covers
-the pipeline's eventual 1991 extension, so that extension needs no
-re-crosswalk.
-
-Only one physical station is kept per city (unlike the US crosswalk's
-WBAN-history fallthrough, which spans USAF-id transitions for a *single*
-known-correct physical station): chaining two different physical stations
-here could silently produce an inconsistent record, whereas a year that
-station can't cover becomes an ERA5-Land gap-fill instead (`era5land.py`),
-keeping provenance clean. The three-candidate-id fallthrough
-(`candidate_ids_for_station`) mirrors `make_isd_station_map.py`'s
-USAF+WBAN / USAF+placeholder-WBAN / placeholder-USAF+WBAN order so `isd.py`
-can try past NCEI's own placeholder-filing quirks for this one station.
-
-Network calls: one `isd-history.csv` download plus up to a few small ranged
-GETs per candidate id per probed year (start_year and end_year), per ranked
-candidate station, per city.
-"""
+"""Generate `cities_eu_isd_stations.csv`: each EU city's ISD station candidate."""
 
 from __future__ import annotations
 
@@ -122,14 +92,7 @@ def rank_station_rows(
 
 
 def candidate_ids_for_station(usaf: str, wban: str) -> list[str]:
-    """Return the ordered id fallthrough for one physical station.
-
-    Order: the station's real USAF+WBAN id, then USAF paired with the
-    `99999` WBAN placeholder (some station-years are filed that way
-    instead), then the `999999` USAF placeholder paired with the real WBAN,
-    last. Placeholder-only combinations aren't real stations and are
-    skipped.
-    """
+    """Return the ordered id fallthrough for one physical station."""
     ids: list[str] = []
     if usaf != PLACEHOLDER_USAF and wban != PLACEHOLDER_WBAN:
         ids.append(usaf + wban)

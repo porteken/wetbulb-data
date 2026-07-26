@@ -275,12 +275,7 @@ class TestFetchVariableSeries:
     def test_http_failure_gives_up_without_halving(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """An exhausted HTTP failure must not recurse into smaller ranges.
-
-        Halving on a server-side failure just resubmits the same total
-        demand as more requests, which is what turned one slow window into
-        a sustained outage during a real backfill (2026-07).
-        """
+        """An exhausted HTTP failure must not recurse into smaller ranges."""
         calls: list[tuple[str, str]] = []
 
         def fake_get(
@@ -331,13 +326,7 @@ class TestFetchVariableSeries:
     def test_range_too_large_always_halves_until_it_fits(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """HTTP 413 is a deterministic "split it" signal, unlike a 5xx.
-
-        A live backfill (2026-07) hit this for Qair at the full 26-year
-        range even though the server wasn't overloaded, so this must keep
-        halving (unlike the exhausted-HTTP-failure case above) until a
-        chunk small enough to succeed is found.
-        """
+        """HTTP 413 is a deterministic "split it" signal, unlike a 5xx."""
         requested_ranges: list[tuple[int, int]] = []
 
         def fake_get(
@@ -535,11 +524,7 @@ def test_module_reuses_nldas_helpers() -> None:
 
 class TestGetTimeseriesCsvExhaustion:
     def test_401_exhausts_retries_and_returns_none(self) -> None:
-        """A 401 always retries (no max-attempt check).
-
-        The loop falling through without ever returning must still yield
-        None (not hang).
-        """
+        """A 401 always retries (no max-attempt check)."""
         responses = [_FakeResponse(401) for _ in range(giovanni.GIOVANNI_MAX_RETRIES)]
         session = _FakeSession(responses)
         token_manager = _StubTokenManager()

@@ -1,50 +1,4 @@
-"""Generate `cities_isd_stations.csv`: each city's ordered ISD station-id candidates.
-
-Builds the city -> ISD Global Hourly station crosswalk that `isd.py` reads to
-fetch NOAA's quality-controlled hourly station observations, the default
-wetbulb pipeline source (replacing the unfiltered NOAA LCD v2 product -- see
-`lcd.py`'s module docstring: LCD contains rare but confirmed
-physically-impossible dry-bulb and dew-point spikes, e.g. a single 154 C
-dry-bulb hour at a Santa Rosa, CA station in Nov 2007, that ISD's
-per-element quality-control flags remove).
-
-Reuses the already-verified city -> station assignment in
-`cities_lcd_stations.csv` (each city's nearest station with a confirmed
-hourly observation record) rather than re-running distance-based matching:
-ISD and LCD are both derived from the same underlying station network, so
-the LCD map's `lcd_id` (`USW00#####`) already identifies the right WBAN
-(its last 5 digits). What's new here is finding the ISD file id(s) for that
-WBAN, because ISD keys files by `USAF+WBAN` and a single WBAN can span
-multiple USAF ids across its history as equipment or the reporting network
-changed.
-
-NCEI's `isd-history.csv` inventory maps WBAN -> USAF id(s) with claimed
-BEGIN/END coverage dates, but those dates are unreliable, and the mapping
-is messier than a simple WBAN -> USAF history in two ways verified
-empirically here:
-
-1. Some stations' pre-2005 data lives under an *older* USAF id whose own
-   inventory row claims it ended years earlier (Flagstaff, AZ's year-2000
-   data is served under USAF 723755, not the id whose inventory row claims
-   BEGIN=2005).
-2. NCEI also filed some station-years under the *same USAF id paired with
-   the WBAN placeholder `99999`* instead of the station's real WBAN
-   (Orlando, FL's entire year-2000 file -- ~300 rows of real hourly data --
-   lives at `72205399999`, not any USAF+12841 id; this pattern alone
-   accounted for the large majority of cities that failed verification on
-   the first (WBAN-history-only) version of this script).
-
-Rather than trust the dates, each city gets an *ordered list* of candidate
-ids: every USAF paired with the station's real WBAN (most recent `END`
-first), then those same USAF ids paired with the `99999` WBAN placeholder,
-then the `999999` USAF placeholder paired with the real WBAN, last.
-`isd.py` tries them in order per station-year, falling through past a 404
--- see `fetch_station_year` in `isd.py`.
-
-Network calls: one `isd-history.csv` download plus up to a few small ranged
-GETs per candidate id per probed year (start_year and end_year) against
-NCEI.
-"""
+"""Generate `cities_isd_stations.csv`: each city's ordered ISD station-id candidates."""
 
 from __future__ import annotations
 
@@ -100,15 +54,7 @@ def _candidate_ids_for_wban(
     history: DataFrame,
     wban: str,
 ) -> tuple[list[str], float | None]:
-    """Return (ordered USAF+WBAN candidate ids, longitude) for one WBAN.
-
-    Order: each real USAF paired with the station's real WBAN (most recent
-    `END` first), then those same USAF ids paired with the `99999` WBAN
-    placeholder (some station-years are filed that way instead -- see
-    module docstring), then the `999999` USAF placeholder paired with the
-    real WBAN, last. This is a fallthrough order for `isd.py` to try per
-    station-year, not a coverage guarantee.
-    """
+    """Return (ordered USAF+WBAN candidate ids, longitude) for one WBAN."""
     rows = history[history["WBAN"] == wban]
     if rows.empty:
         return [], None
@@ -157,8 +103,6 @@ def _isd_hourly_data_present(
                 raise RuntimeError(msg) from exc
             time.sleep(0.25 * (2 ** (attempt - 1)))
         except IndexError:
-            # Minimal fake sessions used by compatibility tests have only one
-            # queued response; real requests.Session never raises IndexError.
             return False
     if response is None:
         message = "ISD probe retry loop completed without a response"
@@ -169,12 +113,7 @@ def _isd_hourly_data_present(
 
 
 def rank_physical_stations(candidates: DataFrame) -> DataFrame:
-    """Filter and deterministically rank direct physical-station candidates.
-
-    Expected columns are ``station_id``, ``dist_km``, ``elev_diff_m``,
-    ``full_coverage`` and ``recent_coverage``.  Identifier-history rows for a
-    station should be collapsed by the caller before ranking.
-    """
+    """Filter and deterministically rank direct physical-station candidates."""
     required = {
         "station_id",
         "dist_km",

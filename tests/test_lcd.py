@@ -355,10 +355,7 @@ class TestProcessLcd:
         tmp_path: Any,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """A gap in one year only blocks that year's write, not the whole shard.
-
-        This is the key semantic difference from giovanni's whole-shard skip.
-        """
+        """A gap in one year only blocks that year's write, not the whole shard."""
         monkeypatch.setattr(
             lcd.nldas, "load_nldas_city_shard", lambda *_a: self._shard_df()
         )

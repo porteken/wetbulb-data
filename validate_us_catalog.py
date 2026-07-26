@@ -55,8 +55,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=".")
     parser.parse_args()
-    # Catalog inputs remain committed at repository root; --root identifies the
-    # output whose hash has already been checked by pull_wetbulb.sh.
     validate_catalog(Path(__file__).parent)
 
 

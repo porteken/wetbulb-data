@@ -1,65 +1,4 @@
-"""Fetch NOAA ISD Global Hourly station observations and compute daily wet-bulb temperature.
-
-Default wetbulb pipeline source (`pipeline.py --wetbulb-source isd`),
-replacing NOAA LCD v2 (`lcd.py`, now a fallback) because LCD is an
-*unfiltered* product: confirmed corrupt readings (a single 154 C dry-bulb
-hour reported by a Santa Rosa, CA station in Nov 2007, several other
-out-of-range dry-bulb spikes, and two *in-range* dew-point spikes that no
-plausibility filter could catch) flowed straight into computed daily-max
-wetbulb. ISD Global Hourly is the QC'd parent dataset LCD is itself derived
-from -- every temperature/dewpoint/pressure element carries a
-per-observation quality code, and all spot-checked LCD corruption cases
-were independently verified absent from the corresponding ISD file (see
-`make_isd_station_map.py`'s module docstring).
-
-Downloads per-station-year CSVs from NCEI's ISD Global Hourly bulk archive
-(`https://www.ncei.noaa.gov/data/global-hourly/access/{year}/{station_id}.csv`)
--- plain HTTPS, no auth, no rate limit observed, same operational profile
-as LCD. Station ids are `USAF+WBAN` and, unlike LCD's single id per
-station, each city maps to an *ordered list* of candidate ids (see
-`make_isd_station_map.py`) because NCEI's own inventory both misdates
-USAF-id transitions and sometimes files a station-year under the same USAF
-paired with a `99999` WBAN placeholder. `fetch_station_year` tries each
-candidate in order and falls through past a 404.
-
-QC semantics: each relevant ISD element is a comma-packed
-`"value,quality_code"` pair (`TMP`, `DEW`, `SLP`), or a compound field split
-further (`MA1`: altimeter value+quality, station pressure value+quality). A
-value is treated as missing when the raw value itself is a NOAA sentinel
-(9999/99999) *or* when its quality code is in the reject set `{2,3,6,7}`
-(NCEI's "suspect"/"erroneous" outcomes, both the standard and
-from-an-NCEI-source variants) -- see `_parse_isd_field`.
-
-ISD timestamps are UTC; LCD's (and this pipeline's daily-aggregation
-convention) were station local standard time. This module approximates
-local standard time by shifting each station's UTC timestamps by
-`round(longitude / 15)` hours, so day boundaries -- and therefore daily
-max/avg values -- stay consistent with the currently loaded dataset rather
-than introducing a second, independent shift. When the station crosswalk
-carries a `utc_offset_hours` column (as `cities_eu_isd_stations.csv` does --
-each EU city's actual IANA-timezone standard offset, not a longitude
-approximation), that value is used instead; US crosswalks lack the column,
-so US behavior is unchanged.
-
-Gap semantics mirror `lcd.py`'s exactly: each station-year fetch outcome is
-one of (a) data present -> included, (b) every candidate id 404s for that
-year -> a permanent, legitimate absence (not a gap; the year is still
-written, with that city simply missing from it), or (c) retries exhausted
-on a non-404 response -> a gap for that specific year only (excluded from
-the parquet write so `--resume-local` retries just it). A transient failure
-on one candidate does not fall through to the next candidate id -- a
-different physical station-year id could otherwise produce a partial,
-inconsistent year -- so retry exhaustion on the first non-404-capable
-candidate ends the attempt for that station-year.
-
-Reuses `wetbulb.wetbulb_davies_jones` (via `nldas.compute_daily_wetbulb`)
-for daily aggregation (>=20/24 hourly values, daily max + mean, 0.1 C
-rounding) and `lcd.py`'s dewpoint->specific-humidity conversion plus
-pressure-derivation fallback chain, so results stay numerically comparable
-to the LCD-derived rows this source replaces. `lcd.py`/`giovanni.py`/
-`nldas.py` remain selectable fallbacks (`pipeline.py --wetbulb-source
-lcd`/`giovanni`/`granules`).
-"""
+"""Fetch NOAA ISD Global Hourly station observations and compute daily wet-bulb temperature."""
 
 from __future__ import annotations
 
@@ -130,28 +69,14 @@ def _empty_hourly_frame() -> DataFrame:
 
 
 def _column_or_missing(df: DataFrame, name: str) -> DataFrame:
-    """Return `df[name]`, or an all-missing string Series if the column is absent.
-
-    NCEI's ISD CSV writer omits a column entirely (not just blank cells)
-    when a station-year file has no non-null values for it, so a fixed
-    `usecols` read can raise -- verified empirically on a station-year
-    whose only report types were daily/monthly summaries with no `MA1`
-    pressure element at all.
-    """
+    """Return `df[name]`, or an all-missing string Series if the column is absent."""
     if name in df.columns:
         return df[name]
     return pd.Series([None] * len(df), index=df.index, dtype="object")
 
 
 def _parse_isd_field(raw: DataFrame, *, missing: str) -> DataFrame:
-    """Split a comma-packed `"value,quality_code"` ISD element into a scaled float.
-
-    Returns NaN wherever the raw value equals NOAA's missing-data sentinel
-    or the quality code is in `_ISD_REJECT_QC_CODES`. ISD packs these
-    elements at 10x their physical unit (tenths of C or hPa). The sentinel
-    comparison is numeric (not string) because TMP/DEW sentinels carry a
-    sign prefix (`"+9999"`) that a literal string match would miss.
-    """
+    """Split a comma-packed `"value,quality_code"` ISD element into a scaled float."""
     parts = raw.str.split(",")
     value_str = parts.str[0]
     qc = parts.str[1]
@@ -200,14 +125,7 @@ def _parse_isd_response(
     lon: float | None,
     utc_offset_hours: float | None = None,
 ) -> DataFrame:
-    """Parse one candidate id's ISD station-year CSV into the hourly frame.
-
-    Returns an empty frame (not an error) when the file has zero rows of a
-    report type in `HOURLY_REPORT_TYPES` -- some station-years exist but
-    carry only daily/monthly summaries, the same "file exists but has no
-    hourly data" case `lcd.py`/`make_isd_station_map.py` guard against for
-    LCD. The caller falls through to the next candidate id in that case.
-    """
+    """Parse one candidate id's ISD station-year CSV into the hourly frame."""
     raw = pd.read_csv(io.StringIO(response_text), dtype=str, low_memory=False)
     raw["REPORT_TYPE"] = _column_or_missing(raw, "REPORT_TYPE").str.strip()
     hourly = raw[raw["REPORT_TYPE"].isin(HOURLY_REPORT_TYPES)].copy()
@@ -302,17 +220,7 @@ def fetch_station_year(
     utc_offset_hours: float | None = None,
     session: requests.Session | None = None,
 ) -> tuple[DataFrame, bool]:
-    """Return (hourly dry-bulb/dewpoint/pressure frame, gap) for one station-year.
-
-    Tries each id in `candidate_ids` in order. A 404 or a response that
-    parses to zero hourly rows (see `_parse_isd_response`) falls through to
-    the next candidate. `gap` is True only when retries were exhausted on a
-    non-404 response for whichever candidate hit that failure (a transient
-    failure ends the attempt for this station-year rather than falling
-    through to a different physical id); if every candidate either 404s or
-    has no hourly data, that's a legitimate permanent absence and returns
-    `(empty_frame, False)`.
-    """
+    """Return (hourly dry-bulb/dewpoint/pressure frame, gap) for one station-year."""
     http = session or requests.Session()
     for station_id in candidate_ids:
         url = ISD_URL_TEMPLATE.format(year=year, station_id=station_id)
@@ -369,16 +277,7 @@ def _fetch_station_series(
 
 
 def _load_station_map(path: str | None = None) -> DataFrame:
-    """Load the city -> ISD candidate-id crosswalk, if available.
-
-    `cities_isd_stations.csv` (generated by `make_isd_station_map.py`) maps
-    each city to its `|`-separated ordered ISD station-id candidate list.
-    EU crosswalks (`cities_eu_isd_stations.csv`, from
-    `make_isd_station_map_eu.py`) additionally carry a `utc_offset_hours`
-    column; it's read as all-NaN when absent, matching US crosswalks.
-    `path` defaults to the `STATION_MAP_PATH` global read at call time
-    (rather than bound as a parameter default) so tests can monkeypatch it.
-    """
+    """Load the city -> ISD candidate-id crosswalk, if available."""
     map_path = Path(path if path is not None else STATION_MAP_PATH)
     if not map_path.exists():
         if not _STATION_MAP_WARNED[0]:

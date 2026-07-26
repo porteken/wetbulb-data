@@ -1,40 +1,4 @@
-"""Fill (location_id, date) gaps the ISD station pipeline could not produce.
-
-ISD (`isd.py`) stays the primary daily wet-bulb source: real station
-observations beat a gridded model on the extreme-value days this dataset
-exists for (a 15-city LCD-vs-NLDAS pilot showed NLDAS's p95 daily-max error
-is ~4.4 C -- an 8 F swing -- concentrated on exactly the high-humidity days
-this dataset cares about). But some station-years are thin: the 20/24-hour
-daily coverage gate in `nldas.compute_daily_wetbulb` drops a day whenever
-the assigned station didn't report enough hours, which happens for ~77
-cities in 2000-2010 (pre-ASOS/AWOS automation, no better station existed
-then either) and a handful of cities more recently.
-
-This module detects those holes by diffing each pending year's calendar
-against the `wetbulb_batch_*` parquet ISD already wrote, keeps only the
-city-years whose gap is material (>= `--min-missing-days`; see
-`MIN_MISSING_DAYS_DEFAULT` -- without that floor the near-universal 1-3
-missing days per station-year degenerate the fetch set into a full
-multi-decade backfill), and fetches those years from NLDAS-2 via the
-Giovanni API (reusing
-`giovanni.py`'s fetch/retry machinery and its NLDAS_FORA0125_H_2_0
-variables, so fill values are numerically consistent with the rest of the
-pipeline), and writes the result to a *separate* `wetbulb_fill_batch_*`
-parquet file with `source='nldas'` stamped on every row. Gap-fill rows never
-share a batch-0 file with ISD's own `wetbulb_batch_*` output, so resume
-tracking (`partition_io.pending_years`) stays independent per source and a
-later ISD re-run can never be shadowed by a stale fill file.
-
-ISD-produced rows always win when both exist for the same cell -- enforced
-here by only ever writing rows that inner-join against a detected gap, and
-again at load time (`load.py`'s upsert prefers `source='isd'`; see its
-`_upsert_from_staging`).
-
-Falls back to `nldas.py`'s raw hourly-granule downloads
-(`pipeline.py --wetbulb-source granules --months ...`) if the Giovanni API
-ever regresses; that path is slower (whole-year hourly downloads instead of
-one multi-year point request) but requires no dependency on this module.
-"""
+"""Fill (location_id, date) gaps the ISD station pipeline could not produce."""
 
 from __future__ import annotations
 
@@ -129,14 +93,7 @@ def find_missing_cells(
     filesystem: Filesystem,
     base_path: str,
 ) -> DataFrame:
-    """Return every (location_id, date) cell in `years` the ISD pipeline hasn't written.
-
-    Builds the full calendar for `location_ids` x `years` and diffs it
-    against whatever `wetbulb_batch_*` parquet already exists under each
-    `year=YYYY` partition -- never against this module's own
-    `wetbulb_fill_batch_*` output, so a gap is always defined relative to
-    ISD, not to a previous gap-fill run.
-    """
+    """Return every (location_id, date) cell in `years` the ISD pipeline hasn't written."""
     if not location_ids or not years:
         return _empty_cells_frame()
 
@@ -176,12 +133,7 @@ def _gap_years_by_location(missing_cells: DataFrame) -> dict[int, list[int]]:
 
 
 def _filter_material_gaps(missing_cells: DataFrame, min_missing_days: int) -> DataFrame:
-    """Keep only cells in (city, year) pairs missing >= `min_missing_days` days.
-
-    See `MIN_MISSING_DAYS_DEFAULT` for why small gaps aren't worth filling.
-    A kept city-year keeps ALL of its missing cells (including the handful of
-    scattered days), since the fetch covers the whole year anyway.
-    """
+    """Keep only cells in (city, year) pairs missing >= `min_missing_days` days."""
     if missing_cells.empty or min_missing_days <= 1:
         return missing_cells
     cells = missing_cells.assign(year=missing_cells["date"].dt.year)
@@ -199,13 +151,7 @@ def _fetch_gapfill_batch(
     worker_count: int,
     city_shard_index: int,
 ) -> dict[int, tuple[DataFrame, bool]]:
-    """Fetch each gapped city's own contiguous gap-year ranges concurrently.
-
-    Unlike `giovanni._fetch_cities_batch` (every city in a shard fetches the
-    same pending years), each city here has its own gap-year set, so
-    `contiguous_year_ranges` is computed per row rather than once for the
-    whole batch.
-    """
+    """Fetch each gapped city's own contiguous gap-year ranges concurrently."""
     results: dict[int, tuple[DataFrame, bool]] = {}
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = {
@@ -284,12 +230,7 @@ def _fetch_filled_rows(
     start_year: int,
     end_year: int,
 ) -> DataFrame | None:
-    """Fetch NLDAS-2 data for every gapped city and merge it against `missing_cells`.
-
-    Returns None if any city had a fetch gap (the whole write is skipped so
-    a future run retries them, mirroring `giovanni.process_giovanni`'s
-    identical rationale) or if there was nothing to write.
-    """
+    """Fetch NLDAS-2 data for every gapped city and merge it against `missing_cells`."""
     token_manager = giovanni.TokenManager.from_env()
     session = requests.Session()
     worker_count = max(1, min(concurrency, len(gapped_rows)))
@@ -363,11 +304,7 @@ def resolve_gapfill_targets(
     force: bool,
     logger: logging.Logger,
 ) -> tuple[DataFrame, Any, str, list[int], DataFrame, DataFrame] | None:
-    """Narrow a shard to its pending years and gap cells; `None` if there's no work.
-
-    Shared by `process_gapfill` and `era5land.process_era5land_gapfill`, which
-    diverge only in how they report the cells filtered out as immaterial.
-    """
+    """Narrow a shard to its pending years and gap cells; `None` if there's no work."""
     if location_ids is not None:
         shard_df = shard_df[shard_df["location_id"].isin(location_ids)]
     if shard_df.empty:

@@ -1,15 +1,4 @@
-"""Compare LCD-station-derived daily wet-bulb against the existing NLDAS-derived rows.
-
-Prototype tooling for the NWS-station feasibility investigation. Reads the
-CSV produced by `lcd.py` (daily wet-bulb computed from NOAA LCD v2 station
-observations) and joins it against the existing `public.wetbulb` rows in
-Postgres (computed from NLDAS-2 via `giovanni.py`) for the same
-`(location_id, date)` pairs, then reports bias/MAE/percentile agreement
-overall, per city, and per decade (to surface any drift from
-station-network changes/completeness over the 2000-2025 record).
-
-Read-only: only ever SELECTs from `public.wetbulb` / `public.locations`.
-"""
+"""Compare LCD-station-derived daily wet-bulb against the existing NLDAS-derived rows."""
 
 from __future__ import annotations
 

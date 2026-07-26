@@ -110,21 +110,7 @@ def wetbulb_davies_jones(
     qair: object = 0.01,
     psurf_pa: object = 101325.0,
 ) -> object:
-    """Compute wet-bulb temperature (deg C) from 2m air temperature (K), specific humidity (kg/kg), and surface pressure (Pa).
-
-    Follows the pseudoadiabatic equivalent-potential-temperature approach of
-    Davies-Jones (2008): equivalent potential temperature is conserved along
-    a pseudoadiabat, so the wet-bulb temperature Tw at pressure p is the
-    temperature at which a saturated parcel at p has the same equivalent
-    potential temperature as the actual (unsaturated) parcel. Bolton (1980)
-    supplies the saturation vapor pressure, LCL temperature, and equivalent
-    potential temperature formulas; the resulting single-variable equation is
-    solved by bisection (bracketed between dewpoint and air temperature,
-    where the target is guaranteed to lie) rather than reproducing
-    Davies-Jones's fast empirical polynomial fit, since bisection converges
-    to the same physical solution to well under 0.01 K without depending on
-    unverified fit coefficients.
-    """
+    """Compute wet-bulb temperature (deg C) from 2m air temperature (K), specific humidity (kg/kg), and surface pressure (Pa)."""
     (temp_k, q, pressure_pa), is_scalar = _broadcast_inputs(
         [tair_k, qair, psurf_pa],
     )

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$HERE"
+cd "${HERE}"
 CATALOG_VERSION="census-2025"
 OUTPUT_ROOT="${WETBULB_US_ROOT:-us/${CATALOG_VERSION}}"
 STEPS=()
@@ -43,26 +43,26 @@ done
 if ((${#STEPS[@]} == 0)); then
   STEPS=(backfill gapfill validate)
 fi
-[[ "$SHARD_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "invalid shard count" >&2; exit 2; }
+[[ "${SHARD_COUNT}" =~ ^[1-9][0-9]*$ ]] || { echo "invalid shard count" >&2; exit 2; }
 
 MANIFEST="${HERE}/cities.catalog.json"
-mkdir -p "$OUTPUT_ROOT"
+mkdir -p "${OUTPUT_ROOT}"
 check_catalog() {
-  [[ -f "$MANIFEST" ]] || { echo "missing committed $MANIFEST" >&2; exit 1; }
+  [[ -f "${MANIFEST}" ]] || { echo "missing committed ${MANIFEST}" >&2; exit 1; }
   local expected recorded
-  expected="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["catalog_sha256"])' "$MANIFEST")"
+  expected="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["catalog_sha256"])' "${MANIFEST}")"
   recorded="${OUTPUT_ROOT}/catalog.sha256"
-  if [[ -f "$recorded" ]] && [[ "$(<"$recorded")" != "$expected" ]]; then
-    echo "catalog hash mismatch in $OUTPUT_ROOT; refusing to mix shards" >&2
+  if [[ -f "${recorded}" ]] && [[ "$(<"${recorded}")" != "${expected}" ]]; then
+    echo "catalog hash mismatch in ${OUTPUT_ROOT}; refusing to mix shards" >&2
     exit 1
   fi
   if ((!DRY_RUN)); then
-    printf '%s\n' "$expected" >"$recorded"
+    printf '%s\n' "${expected}" >"${recorded}"
   fi
 }
 
 for step in "${STEPS[@]}"; do
-  case "$step" in
+  case "${step}" in
     cities)
       run python3 "${HERE}/cities.py"
       ;;
@@ -74,15 +74,17 @@ for step in "${STEPS[@]}"; do
       ;;
     trial)
       check_catalog
-      run python3 "${HERE}/pipeline.py" --years "$END_YEAR" --city-shard-count 1 \
-        --city-shard-index 0 --out-dir "$OUTPUT_ROOT"
+      run python3 "${HERE}/pipeline.py" --years "${END_YEAR}" --city-shard-count 1 \
+        --city-shard-index 0 --out-dir "${OUTPUT_ROOT}"
       ;;
     backfill)
       check_catalog
       for ((shard=0; shard<SHARD_COUNT; shard++)); do
-        run python3 "${HERE}/pipeline.py" --years $(seq "$START_YEAR" "$END_YEAR") \
-          --city-shard-count "$SHARD_COUNT" --city-shard-index "$shard" \
-          --out-dir "$OUTPUT_ROOT"
+        # shellcheck disable=SC2312  # word splitting here is intentional: turns
+        # the year range into separate --years arguments.
+        run python3 "${HERE}/pipeline.py" --years $(seq "${START_YEAR}" "${END_YEAR}") \
+          --city-shard-count "${SHARD_COUNT}" --city-shard-index "${shard}" \
+          --out-dir "${OUTPUT_ROOT}"
       done
       ;;
     gapfill)
@@ -92,14 +94,14 @@ for step in "${STEPS[@]}"; do
         exit 1
       }
       for ((shard=0; shard<SHARD_COUNT; shard++)); do
-        run python3 "${HERE}/gapfill.py" --start-year "$START_YEAR" \
-          --end-year "$END_YEAR" --city-shard-count "$SHARD_COUNT" \
-          --city-shard-index "$shard" --out-dir "$OUTPUT_ROOT"
+        run python3 "${HERE}/gapfill.py" --start-year "${START_YEAR}" \
+          --end-year "${END_YEAR}" --city-shard-count "${SHARD_COUNT}" \
+          --city-shard-index "${shard}" --out-dir "${OUTPUT_ROOT}"
       done
       ;;
     validate)
       check_catalog
-      run python3 "${HERE}/validate_us_catalog.py" --root "$OUTPUT_ROOT"
+      run python3 "${HERE}/validate_us_catalog.py" --root "${OUTPUT_ROOT}"
       ;;
     load)
       ((CONFIRM_DB)) || { echo "load requires --confirm-db-write" >&2; exit 1; }
@@ -111,7 +113,7 @@ for step in "${STEPS[@]}"; do
       run python3 "${HERE}/refresh_views.py"
       ;;
     *)
-      echo "unknown step: $step" >&2
+      echo "unknown step: ${step}" >&2
       exit 2
       ;;
   esac

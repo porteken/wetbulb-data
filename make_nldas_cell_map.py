@@ -1,14 +1,4 @@
-"""Generate `cities_nldas_cells.csv`: each city's land-snapped NLDAS-2 cell.
-
-Run this once (and re-run only if `cities.csv` changes materially) to
-pre-compute the same land-adjusted grid cell that `nldas.py`'s granule path
-resolves per run via `_resolve_valid_indices`. `giovanni.py` reads the
-output so it asks the Giovanni Time Series API for that exact cell instead
-of the nearest raw-coordinate cell, which may be water for coastal cities.
-
-Requires the `nldas` optional dependency group (`h5netcdf`, `xarray`) since
-it downloads one real NLDAS-2 granule to read the static land mask.
-"""
+"""Generate `cities_nldas_cells.csv`: each city's land-snapped NLDAS-2 cell."""
 
 from __future__ import annotations
 

@@ -1,12 +1,4 @@
-"""Disposable-PostgreSQL integration tests for `load._upsert_from_staging` precedence.
-
-Verifies the generalization from a single `SOURCE_RANK_FILL` string to a
-tuple (`("nldas", "era5land")`, see `load.py`): a fill-source row can never
-shadow an existing primary (`isd`) row via ON CONFLICT, a fill row lands
-cleanly into an empty cell, a primary row can still overwrite an existing
-fill row, and in-batch DISTINCT ON dedup picks the primary row regardless of
-alphabetical ordering between fill-source names.
-"""
+"""Disposable-PostgreSQL integration tests for `load._upsert_from_staging` precedence."""
 
 from __future__ import annotations
 

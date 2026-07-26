@@ -1,9 +1,4 @@
-"""Rolling-origin ship gate for climate-informed wet-bulb forecasts.
-
-The operational model extrapolates GMST with information available at each
-origin.  An observed-future-GMST run is emitted separately as an oracle
-diagnostic and never participates in the ship decision.
-"""
+"""Rolling-origin ship gate for climate-informed wet-bulb forecasts."""
 
 from __future__ import annotations
 
@@ -148,7 +143,6 @@ def _gmst_extrapolation(
         message = "GMST extrapolation requires three observations"
         raise ValueError(message)
     predicted = fit.intercept_mean + fit.slope * (target_year - fit.predictor_mean)
-    # Prediction variance of a centered linear extrapolation.
     sxx = float(np.square(years - fit.predictor_mean).sum())
     variance = fit.residual_variance * (
         1 + 1 / fit.n + (target_year - fit.predictor_mean) ** 2 / sxx
@@ -292,12 +286,7 @@ def _forecast_cases(
 
 
 def calibrate_intervals(cases: pd.DataFrame) -> pd.DataFrame:
-    """Calibrate margins from errors observable before each gate origin.
-
-    Each exact ISD station group contributes at most one score for an
-    origin/target/metric combination. This keeps duplicated city mappings from
-    dominating the empirical 80th percentile.
-    """
+    """Calibrate margins from errors observable before each gate origin."""
     calibrated = cases.copy()
     calibrated["raw_margin"] = (calibrated["upper"] - calibrated["lower"]) / 2.0
     calibrated["standardized_error"] = (

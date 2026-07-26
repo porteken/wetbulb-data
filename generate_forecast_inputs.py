@@ -26,9 +26,6 @@ BASELINE_END_YEAR = 1900
 ANCHOR_START_YEAR = 2015
 ANCHOR_END_YEAR = 2025
 
-# AR6 WGI Table SPM.1 best estimates and very-likely ranges. The year keys are
-# midpoint approximations for the assessed 20-year periods 2021-2040,
-# 2041-2060, and 2081-2100, respectively.
 AR6_TABLE_SPM1 = {
     "ssp126": {
         2030: (1.5, 1.2, 1.8),
@@ -120,8 +117,6 @@ def build_scenarios(observations: pd.DataFrame) -> pd.DataFrame:
                 "anomaly": _interpolate(points_by_field["anomaly"], year),
                 "anomaly_lo": _interpolate(points_by_field["anomaly_lo"], year),
                 "anomaly_hi": _interpolate(points_by_field["anomaly_hi"], year),
-                # This represents annual GMST variability, not the AR6
-                # assessed range retained in anomaly_lo/anomaly_hi.
                 "sigma_g": annual_variability,
             }
             for year in range(2026, 2101)

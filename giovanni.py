@@ -1,24 +1,4 @@
-"""Fetch NLDAS-2 point time series from the Giovanni Time Series API.
-
-Also computes daily wet-bulb temperature from the fetched series.
-
-This is the successor to `nldas.py`'s per-hour granule downloads. NASA GES
-DISC retired the old "Data Rods" point-time-series service and replaced it
-with the Giovanni Time Series Service
-(`https://api.giovanni.earthdata.nasa.gov/timeseries`), which returns a full
-multi-year hourly series for one point/variable in a single request. A live
-probe against this endpoint (2026-07) confirmed a 25-year hourly Tair series
-for one point returns in ~11s, so the whole 2000-2024 backfill needs only
-`len(cities) * 3` requests (~1,500) instead of ~219,000 hourly granule
-downloads. Output parquet lands in the same `wetbulb_data_csv/year=YYYY/
-wetbulb_batch_*` tree that `nldas.py` writes, so `load.py`/`load_wetbulb.py`
-and the pipeline's S3 sync/resume logic need no changes.
-
-`nldas.py` is kept as a fallback (`pipeline.py --wetbulb-source granules`)
-in case this newer API regresses; this module intentionally reuses its
-daily wet-bulb computation, city sharding, and fill-value handling so the
-two paths stay numerically consistent.
-"""
+"""Fetch NLDAS-2 point time series from the Giovanni Time Series API."""
 
 from __future__ import annotations
 
@@ -164,15 +144,7 @@ def _sleep_with_backoff(attempt: int, *, retry_after: str | None = None) -> None
 
 
 class _RangeTooLargeError(RuntimeError):
-    """Giovanni rejected the request as too large (HTTP 413).
-
-    Unlike a 5xx/429 (server overloaded, retry the same request later), 413
-    means this exact request will never succeed no matter how many times
-    it's retried -- the caller needs to split the date range into smaller
-    pieces instead. A live backfill (2026-07) showed Qair responses hitting
-    this limit at the full 26-year range while Tair/PSurf did not, so the
-    threshold is response-size-dependent, not a fixed year count.
-    """
+    """Giovanni rejected the request as too large (HTTP 413)."""
 
 
 class _ResponseOutcome(Enum):
@@ -191,13 +163,7 @@ def _classify_response(
     lon: float,
     time_range: str,
 ) -> _ResponseOutcome | None:
-    """Decide what to do with a non-exception Giovanni response.
-
-    Returns None if `response` is a success the caller should return as-is,
-    RETRY if the caller should retry immediately, or GIVE_UP if the caller
-    should return None. Raises `_RangeTooLargeError` on HTTP 413 (see that
-    class's docstring).
-    """
+    """Decide what to do with a non-exception Giovanni response."""
     if response.status_code == requests.codes.unauthorized:
         token_manager.refresh()
         return _ResponseOutcome.RETRY
@@ -250,10 +216,7 @@ def _get_timeseries_csv(
     start_iso: str,
     end_iso: str,
 ) -> str | None:
-    """Fetch one variable's time series as raw CSV text, or None on failure.
-
-    Raises `_RangeTooLargeError` on HTTP 413 (see that class's docstring).
-    """
+    """Fetch one variable's time series as raw CSV text, or None on failure."""
     params = {
         "data": var_id,
         "location": f"[{lat},{lon}]",
@@ -338,24 +301,7 @@ def _fetch_variable_series(
     start_year: int,
     end_year: int,
 ) -> tuple[DataFrame, bool]:
-    """Fetch one variable over [start_year, end_year].
-
-    Returns (df, had_gap). Three failure modes are handled differently:
-
-    - HTTP 413 (`_RangeTooLargeError`): a deterministic "this exact request
-      will never fit" signal (seen live for Qair at the full 26-year range
-      while Tair/PSurf fit fine), so this always halves and retries the
-      smaller pieces.
-    - Any other HTTP/network failure (`_get_timeseries_csv` returns None
-      after exhausting its own retries with backoff): the server is
-      already struggling, so this gives up on the whole requested range at
-      once instead of halving into more requests -- halving here just
-      resubmits the same total demand as more requests, which turned one
-      slow window into a ~50-minute outage during a real backfill
-      (2026-07).
-    - A malformed/unparseable response body: ambiguous cause, so this
-      halves as a diagnostic fallback (existing behavior).
-    """
+    """Fetch one variable over [start_year, end_year]."""
     start_iso = f"{start_year}-01-01T00:00:00"
     end_iso = f"{end_year + 1}-01-01T00:00:00"
     try:
@@ -426,11 +372,7 @@ def fetch_city_hourly(
     start_year: int,
     end_year: int,
 ) -> tuple[DataFrame, bool]:
-    """Fetch Tair/Qair/PSurf for one point and join them into an hourly frame.
-
-    Returns (df, had_gap); had_gap is True if any variable in [start_year,
-    end_year] could not be fetched (see `_fetch_variable_series`).
-    """
+    """Fetch Tair/Qair/PSurf for one point and join them into an hourly frame."""
     series: dict[str, DataFrame] = {}
     had_gap = False
     for canonical, var_id in GIOVANNI_VARIABLE_IDS.items():
@@ -497,13 +439,7 @@ def contiguous_year_ranges(years: list[int]) -> list[tuple[int, int]]:
 
 
 def load_cell_map() -> DataFrame:
-    """Load pre-snapped land-cell centers for cities, if available.
-
-    `cities_nldas_cells.csv` (generated by `make_nldas_cell_map.py`) maps
-    each city to the same land-adjusted NLDAS grid cell that `nldas.py`'s
-    `_resolve_valid_indices` would pick, so Giovanni is asked for the same
-    cell instead of the nearest raw-coordinate cell, which may be water.
-    """
+    """Load pre-snapped land-cell centers for cities, if available."""
     path = Path(CELL_MAP_PATH)
     if not path.exists():
         if not _CELL_MAP_WARNED[0]:

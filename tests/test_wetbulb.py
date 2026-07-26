@@ -145,12 +145,7 @@ class TestWetbulbDaviesJones:
         assert arr[0] < arr[1] < arr[2]
 
     def test_lower_pressure_increases_wetbulb_depression(self) -> None:
-        """Lower pressure means a larger wet-bulb depression at fixed T/RH.
-
-        Evaporative cooling is more efficient at lower surface pressure, so
-        the depression (T - Tw) should be larger than at sea level for the
-        same temperature and relative humidity.
-        """
+        """Lower pressure means a larger wet-bulb depression at fixed T/RH."""
         q_sea_level = _specific_humidity_from_rh(25.0, 50.0, _SEA_LEVEL_PA)
         denver_pa = 85000.0
         q_denver = _specific_humidity_from_rh(25.0, 50.0, denver_pa)

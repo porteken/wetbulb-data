@@ -93,8 +93,6 @@ def normalize_population_centres(frame: DataFrame) -> DataFrame:
             "-".join(sorted({primary, other})) if pd.notna(other) else primary
             for primary, other in zip(frame["state"], secondary, strict=True)
         ]
-    # Ottawa-Gatineau is represented once per provincial part in GeoSuite.
-    # Collapse any such rows into one urban entity and expose both provinces.
     grouped_rows: list[dict[str, Any]] = []
     valid = frame.dropna(subset=["city", "population", "lat", "lng", "state"]).copy()
     if "city_id" not in valid:

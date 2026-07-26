@@ -1,10 +1,4 @@
-"""Build the pinned Census-2025 catalog of the 500 largest CONUS places.
-
-Normal production jobs consume the committed ``cities.csv``.  Running this
-module is an explicit catalog migration: the three source files are downloaded,
-validated, matched, and written atomically together with a reproducibility
-manifest.
-"""
+"""Build the pinned Census-2025 catalog of the 500 largest CONUS places."""
 # ruff: noqa: ANN401, EM101, EM102, PLC0415, PTH105, TRY003
 
 from __future__ import annotations
@@ -40,8 +34,6 @@ INCORPORATED_PLACE_SUMLEV = 162
 EXCLUDED_STATE_FIPS = {"02", "15"}
 DC_STATE_FIPS = "11"
 
-# Census changes the final filename when a vintage is released.  Keeping the
-# URLs in the manifest makes such a change a reviewed catalog migration.
 CENSUS_SOURCE_URL = (
     "https://www2.census.gov/programs-surveys/popest/datasets/2020-2025/"
     "cities/totals/sub-est2025.csv"
@@ -51,7 +43,7 @@ GAZETTEER_SOURCE_URL = (
     "2025_Gaz_place_national.zip"
 )
 GEONAMES_SOURCE_URL = "https://download.geonames.org/export/dump/US.zip"
-CITIES_SOURCE_URL = CENSUS_SOURCE_URL  # compatibility for locations.py
+CITIES_SOURCE_URL = CENSUS_SOURCE_URL
 
 FEATURE_CLASS_COLUMN = "feature class"
 COUNTRY_CODE_COLUMN = "country code"
@@ -215,8 +207,6 @@ def select_top_places(estimates: DataFrame, gazetteer: DataFrame) -> DataFrame:
         (work[sumlev_col] == INCORPORATED_PLACE_SUMLEV)
         & ~work[state_col].isin(EXCLUDED_STATE_FIPS)
     ].copy()
-    # Some Census city files classify D.C. separately. Add its place row
-    # explicitly when present rather than relying on SUMLEV filtering.
     dc = estimates.copy()
     dc[state_col] = dc[state_col].astype(str).str.zfill(2)
     dc[place_col] = dc[place_col].astype(str).str.zfill(5)
@@ -352,7 +342,6 @@ def match_geonames(places: DataFrame, geonames: DataFrame) -> DataFrame:
 def _standard_utc_offset(timezone_name: str) -> float:
     from zoneinfo import ZoneInfo
 
-    # January is standard time for all supported CONUS zones.
     offset = datetime(CENSUS_VINTAGE, 1, 15, tzinfo=ZoneInfo(timezone_name)).utcoffset()
     if offset is None:
         raise ValueError(f"timezone has no UTC offset: {timezone_name}")

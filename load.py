@@ -154,12 +154,7 @@ def _iter_sql_statements(sql_text: str) -> Iterator[str]:
 
 
 def execute_sql_file(conn: Connection[Any], file_path: str | Path) -> None:
-    """Execute a raw SQL file atomically in a single transaction.
-
-    Running inside one transaction keeps SET LOCAL timeouts in the SQL files
-    scoped to the file itself instead of leaking into later COPY/DELETE
-    statements on the same connection.
-    """
+    """Execute a raw SQL file atomically in a single transaction."""
     path = Path(file_path)
     if not path.exists():
         LOGGER.warning("SQL file %s not found. Skipping.", file_path)
@@ -180,12 +175,7 @@ def execute_sql_file(conn: Connection[Any], file_path: str | Path) -> None:
 def execute_sql_files_atomically(
     conn: Connection[Any], file_paths: tuple[str | Path, ...]
 ) -> None:
-    """Execute several SQL files in one transaction.
-
-    View replacement is deliberately all-or-nothing: a failed creation leaves
-    the previous materialized-view contract in place rather than exposing a
-    partially dropped schema to the application.
-    """
+    """Execute several SQL files in one transaction."""
     statements_by_file: list[tuple[Path, list[str]]] = []
     for file_path in file_paths:
         path = Path(file_path)
@@ -452,14 +442,7 @@ def _select_partition_shard_paths(
 
 
 def _union_copy_column_names(table_name: str, file_paths: list[Path]) -> list[str]:
-    """Return the first-seen-ordered union of columns across `file_paths`.
-
-    A wetbulb load can mix legacy 4-column ISD files (no `source` column)
-    with newer 5-column ISD/gap-fill files; the staging table must include
-    every column any file might supply so each file's own COPY (which uses
-    only that file's own columns, see `_copy_parquet_file_in_batches`)
-    succeeds against it.
-    """
+    """Return the first-seen-ordered union of columns across `file_paths`."""
     seen: dict[str, None] = {}
     for file_path in file_paths:
         for column_name in _file_copy_column_names(table_name, file_path):
@@ -488,12 +471,7 @@ def _copy_parquet_file_in_batches(
     batch_size: int,
     destination: str | None = None,
 ) -> int:
-    """Stream a parquet file into a table with a single COPY statement.
-
-    Record batches are serialized with pyarrow's native CSV writer, avoiding
-    the parquet -> pandas -> to_csv round trip. `destination` lets callers
-    COPY into a staging table while normalizing columns for `table_name`.
-    """
+    """Stream a parquet file into a table with a single COPY statement."""
     parquet_file = pq.ParquetFile(str(parquet_path))
     column_names = _normalize_copy_column_names(
         table_name,
@@ -545,12 +523,7 @@ def _copy_csv_file_in_batches(
 
 
 def _validated_load_path(path: Path, *, base_dir: Path | None = None) -> Path:
-    """Resolve `path` and reject it if it escapes `base_dir` (defaults to CWD).
-
-    CLI arguments may be supplied by an agent acting on untrusted input, so
-    file paths derived from them must not be allowed to traverse outside the
-    directory the tool was invoked from before being opened.
-    """
+    """Resolve `path` and reject it if it escapes `base_dir` (defaults to CWD)."""
     base = (base_dir or Path.cwd()).resolve()
     resolved = path.resolve()
     if resolved != base and base not in resolved.parents:
@@ -585,17 +558,7 @@ def _upsert_from_staging(
     column_names: list[str],
     key_columns: tuple[str, ...],
 ) -> int:
-    """Upsert staged rows into the destination table; return affected rows.
-
-    When `table_name` has a provenance column (`TABLE_SOURCE_COLUMNS`) and
-    it's present in `column_names`, a legacy file staged a NULL there (it
-    predates the column) and is treated as `SOURCE_RANK_PRIMARY` via
-    COALESCE; both the in-batch DISTINCT ON tiebreak and the ON CONFLICT
-    update rank every `SOURCE_RANK_FILL` entry as equally subordinate to
-    `SOURCE_RANK_PRIMARY` (rather than sorting the raw source strings
-    alphabetically, which would let `'era5land'` shadow `'isd'` in-batch),
-    so no fill row can ever shadow or overwrite a primary row.
-    """
+    """Upsert staged rows into the destination table; return affected rows."""
     source_column = TABLE_SOURCE_COLUMNS.get(table_name)
     has_source = source_column is not None and source_column in column_names
 
@@ -722,12 +685,7 @@ def bulk_insert_csv_files(
     batch_size: int,
     truncate: bool,
 ) -> None:
-    """Load one or more parquet (or CSV) files into a destination table.
-
-    Rows are COPYed into a temp staging table and upserted with ON CONFLICT
-    inside a single transaction, so a load is atomic and re-running it never
-    creates duplicate (location_id, date) rows.
-    """
+    """Load one or more parquet (or CSV) files into a destination table."""
     if not csv_paths:
         LOGGER.warning("No data inputs found for %s. Skipping.", table_name)
         return
@@ -859,14 +817,7 @@ def _discover_batch_parquet_paths(
 
 
 def _discover_wetbulb_csv_paths(args: argparse.Namespace) -> list[Path]:
-    """Return wetbulb input paths: ISD/LCD/Giovanni batches plus any NLDAS gap-fill batches.
-
-    Gap-fill output (`gapfill.py`) lands in the same `wetbulb_data_csv` tree
-    under a `wetbulb_fill_batch_*.parquet` name so its resume tracking stays
-    independent from the primary pipeline's (see `partition_io.pending_years`
-    `file_prefix`). Skipped when `--prefer-wetbulb-csv` short-circuits to a
-    single direct CSV file, which predates gap-fill and has no counterpart.
-    """
+    """Return wetbulb input paths: ISD/LCD/Giovanni batches plus any NLDAS gap-fill batches."""
     batch_paths = _discover_batch_parquet_paths(
         args,
         direct_csv=args.wetbulb_csv,
@@ -919,12 +870,7 @@ def _load_table_files(
     truncate: bool,
     workers: int,
 ) -> None:
-    """Load files into a table, fanning out across connections when possible.
-
-    Upserts on disjoint files touch disjoint (location_id, date) ranges, so
-    parallel workers do not contend. Truncating loads keep the truncate and
-    the load in one transaction and therefore stay single-connection.
-    """
+    """Load files into a table, fanning out across connections when possible."""
     effective_workers = max(1, min(workers, len(csv_paths)))
     if truncate or effective_workers == 1:
         bulk_insert_csv_files(

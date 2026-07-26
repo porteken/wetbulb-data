@@ -1,9 +1,4 @@
-"""Shared parquet partition write/resume helpers for pipeline workers.
-
-Used by wet-bulb data producers so batch
-outputs land in the same `year=YYYY/{prefix}_batch_NNNN_SS.parquet` tree
-regardless of which worker produced them.
-"""
+"""Shared parquet partition write/resume helpers for pipeline workers."""
 
 from __future__ import annotations
 

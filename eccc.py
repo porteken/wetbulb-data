@@ -1,11 +1,4 @@
-"""Fetch ECCC hourly observations and compute Canadian daily wet-bulb.
-
-The worker consumes ``cities_ca.csv`` and ``cities_ca_eccc_stations.csv``.
-ECCC's historical files publish local-standard timestamps; they are kept as
-such so every archived day has a stable 24-hour boundary.  Temperature,
-dew-point and station pressure quality flags are honoured before the shared
-pressure-aware Davies-Jones calculation is applied.
-"""
+"""Fetch ECCC hourly observations and compute Canadian daily wet-bulb."""
 
 from __future__ import annotations
 
@@ -62,8 +55,6 @@ _ALIASES = {
     "Sea Level Press (kPa)": "sea_level_pressure_kpa",
     "Elevation (m)": "elevation_m",
 }
-# M = missing.  ECCC also uses single-letter estimates; those remain valid
-# observations, while clearly erroneous/rejected values are discarded.
 _REJECT_FLAGS = frozenset({"M", "X"})
 _OUTPUT_COLUMNS = ("time", "tair_c", "dewpoint_c", "pressure_hpa")
 

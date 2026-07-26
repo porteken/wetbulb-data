@@ -1,11 +1,4 @@
-"""Disposable-PostgreSQL integration test for the US/EU rankings-view split.
-
-Verifies `wetbulb_city_rankings_view` (filtered to `location_id BETWEEN 0
-AND 999`) and the new `wetbulb_eu_city_rankings_view` (`location_id >=
-1000`) partition cleanly: a US location never appears in the EU view and
-vice versa, and both views still carry the full column contract the app
-depends on.
-"""
+"""Disposable-PostgreSQL integration test for the US/EU rankings-view split."""
 
 from __future__ import annotations
 

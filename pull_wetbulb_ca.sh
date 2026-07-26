@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# Pull and optionally load the top-100 Canadian ECCC wet-bulb dataset.
-#
-# With no step arguments this generates inputs and performs the resumable
-# 2000-2025 ECCC pull. Database writes are explicit:
-#
-#   ./pull_wetbulb_ca.sh --yes load views
-#
-# ERA5-Land gap filling is also explicit because it requires CDS credentials:
-#
-#   ./pull_wetbulb_ca.sh gapfill
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,6 +6,7 @@ cd "${HERE}"
 
 if [[ -f .env ]]; then
   set -a
+  # shellcheck disable=SC1091
   . .env
   set +a
 fi
@@ -39,7 +30,7 @@ ASSUME_YES=0
 
 read -ra PY <<<"${PYTHON_RUN}"
 
-log() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+log() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S' || true)" "$*" >&2; }
 die() {
   log "ERROR: $*"
   exit 1
@@ -51,38 +42,6 @@ run() {
     return 0
   fi
   "$@"
-}
-
-usage() {
-  cat <<EOF
-Usage: ${0##*/} [options] [step ...]
-
-Steps: ${ALL_STEPS[*]}
-       all    -> ${ALL_STEPS[*]}
-       (none) -> ${DEFAULT_STEPS[*]}
-
-Options:
-  -n, --dry-run   Print commands without running them.
-  -y, --yes       Skip confirmation for database-writing steps.
-  -h, --help      Show this help.
-
-Environment overrides:
-  CA_OUT_DIR=${CA_OUT_DIR}
-  CA_START_YEAR=${CA_START_YEAR}
-  CA_END_YEAR=${CA_END_YEAR}
-  CA_CITY_SHARDS=${CA_CITY_SHARDS}
-  CA_ECCC_CONCURRENCY=${CA_ECCC_CONCURRENCY}
-  CA_CDS_CONCURRENCY=${CA_CDS_CONCURRENCY}
-  CA_MIN_MISSING_DAYS=${CA_MIN_MISSING_DAYS}
-  PYTHON_RUN='${PYTHON_RUN}'
-
-Examples:
-  ${0##*/}                         # generate inputs and pull ECCC data
-  ${0##*/} --dry-run all           # show the complete workflow
-  CA_CITY_SHARDS=4 ${0##*/} pull
-  ${0##*/} gapfill                 # requires CDSAPI_URL and CDSAPI_KEY
-  ${0##*/} --yes load views        # append Canada to Postgres
-EOF
 }
 
 confirm_db_step() {
@@ -207,7 +166,6 @@ finally:
     conn.close()
 "
 
-  # Append-only is essential: Canada must not truncate existing US locations.
   log "[load] appending Canadian locations"
   run "${PY[@]}" load.py \
     --locations-csv "${CA_LOCATIONS_CSV}" \

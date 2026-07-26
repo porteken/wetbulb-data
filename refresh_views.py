@@ -1,9 +1,4 @@
-"""Refresh materialized views in dependency order without dropping them.
-
-Used by the yearly append pipeline so the web application keeps serving view
-data while new rows are loaded; only the refresh itself takes locks, and
-REFRESH ... CONCURRENTLY avoids blocking readers entirely.
-"""
+"""Refresh materialized views in dependency order without dropping them."""
 
 from __future__ import annotations
 
@@ -78,12 +73,7 @@ def _has_unique_index(conn: Connection[Any], matview_name: str) -> bool:
 
 
 def refresh_materialized_views(conn: Connection[Any]) -> list[str]:
-    """Refresh every public matview in dependency order; return the order.
-
-    CONCURRENTLY is used whenever the matview supports it (populated and has
-    a unique index) so readers are never blocked. Requires an autocommit
-    connection: REFRESH ... CONCURRENTLY cannot run inside a transaction.
-    """
+    """Refresh every public matview in dependency order; return the order."""
     matviews = _discover_matviews(conn)
     if not matviews:
         LOGGER.warning("No materialized views found in schema public.")
