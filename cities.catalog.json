@@ -1,0 +1,20 @@
+{
+  "catalog_sha256": "29aee88687cf500c625677d69c50bf8a8a3fc0ce30394f552bcac7f9b0654365",
+  "catalog_version": "census-2025",
+  "census_vintage": 2025,
+  "generated_at": "2026-07-26T16:57:42.831760+00:00",
+  "sources": {
+    "census_estimates": {
+      "sha256": "e3508f5201465913476d4ddf91740f191f7977c9f2614a2a7e30b5fd22027934",
+      "url": "https://www2.census.gov/programs-surveys/popest/datasets/2020-2025/cities/totals/sub-est2025.csv"
+    },
+    "census_gazetteer": {
+      "sha256": "49644173a453469d9bd77fb7a493b027f87567e209edaf2078aac7543ac2ee29",
+      "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2025_Gazetteer/2025_Gaz_place_national.zip"
+    },
+    "geonames": {
+      "sha256": "e8938cea5ce974e8ca69f2726fc8d88253565a79b055dc2f84f6e987670d768d",
+      "url": "https://download.geonames.org/export/dump/US.zip"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 *.csv
+!cities.csv
 backup/
 !cities_nldas_cells.csv
 !cities_lcd_stations.csv

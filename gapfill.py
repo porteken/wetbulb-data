@@ -309,6 +309,13 @@ def _fetch_filled_rows(
     if not hourly_frames:
         return None
     hourly_df = pd.concat(hourly_frames, ignore_index=True)
+    if "utc_offset_hours" in gapped_rows.columns and not hourly_df.empty:
+        hourly_df = hourly_df.merge(
+            gapped_rows[["location_id", "utc_offset_hours"]],
+            on="location_id",
+            how="left",
+            validate="many_to_one",
+        )
     daily_df = nldas.compute_daily_wetbulb(hourly_df)
     if daily_df.empty:
         return None

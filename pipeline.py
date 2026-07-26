@@ -35,6 +35,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--region", choices=["us", "eu", "ca"], default="us")
     parser.add_argument("--out-dir", default=".")
     parser.add_argument("--city-shard-count", type=int, default=1)
+    parser.add_argument(
+        "--city-shard-index",
+        type=int,
+        help=(
+            "Run only this zero-based city shard. When omitted, pipeline.py "
+            "runs every index in --city-shard-count."
+        ),
+    )
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--download-workers", type=int, default=12)
     parser.add_argument("--batch-hours", type=int, default=720)
@@ -79,6 +87,7 @@ def _command(
     region: str,
     out_dir: str,
     city_shard_count: int,
+    city_shard_index: int,
     concurrency: int,
     download_workers: int,
     batch_hours: int,
@@ -100,6 +109,8 @@ def _command(
             "--out-dir",
             out_dir,
         ]
+        if city_shard_count > 1:
+            command[8:8] = ["--city-shard-index", str(city_shard_index)]
         if region == "eu":
             command.extend(
                 [
@@ -134,6 +145,8 @@ def _command(
         "--out-dir",
         out_dir,
     ]
+    if city_shard_count > 1:
+        command[6:6] = ["--city-shard-index", str(city_shard_index)]
     if months:
         command.extend(["--months", *(str(month) for month in months)])
     return command
@@ -166,6 +179,16 @@ def main(argv: list[str] | None = None) -> None:
     city_shard_count = _validated_positive_integer(
         args.city_shard_count, "--city-shard-count"
     )
+    if args.city_shard_index is not None and not (
+        0 <= args.city_shard_index < city_shard_count
+    ):
+        msg = "--city-shard-index must be between 0 and --city-shard-count - 1"
+        raise argparse.ArgumentTypeError(msg)
+    shard_indices = (
+        [args.city_shard_index]
+        if args.city_shard_index is not None
+        else list(range(city_shard_count))
+    )
     concurrency = _validated_positive_integer(args.concurrency, "--concurrency")
     download_workers = _validated_positive_integer(
         args.download_workers, "--download-workers"
@@ -178,23 +201,25 @@ def main(argv: list[str] | None = None) -> None:
     )
     years = [_validated_positive_integer(year, "--years") for year in args.years]
     for year in years:
-        # Keep command parsing disabled: every value is passed as a distinct
-        # argument to a fixed Python entry point, never interpreted by a shell.
-        subprocess.run(
-            _command(
-                wetbulb_source,
-                region,
-                out_dir,
-                city_shard_count,
-                concurrency,
-                download_workers,
-                batch_hours,
-                months,
-                year,
-            ),
-            check=True,
-            shell=False,
-        )
+        for city_shard_index in shard_indices:
+            # Keep command parsing disabled: every value is passed as a distinct
+            # argument to a fixed Python entry point, never interpreted by a shell.
+            subprocess.run(
+                _command(
+                    wetbulb_source,
+                    region,
+                    out_dir,
+                    city_shard_count,
+                    city_shard_index,
+                    concurrency,
+                    download_workers,
+                    batch_hours,
+                    months,
+                    year,
+                ),
+                check=True,
+                shell=False,
+            )
 
 
 if __name__ == "__main__":

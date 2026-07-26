@@ -438,7 +438,7 @@ def _process_time_batch(
 
 
 def compute_daily_wetbulb(hourly_df: DataFrame) -> DataFrame:
-    """Aggregate hourly Tair/Qair/PSurf into daily max/avg wet-bulb temperature."""
+    """Aggregate by fixed local-standard day when an offset column is present."""
     output_columns = ["location_id", "date", "wetbulb", "wetbulb_avg"]
     df = hourly_df.dropna(subset=list(NLDAS_VARIABLES)).copy()
     if df.empty:
@@ -469,7 +469,11 @@ def compute_daily_wetbulb(hourly_df: DataFrame) -> DataFrame:
     if df.empty:
         return pd.DataFrame(columns=output_columns)
 
-    df["date"] = pd.to_datetime(df["time"]).dt.date
+    timestamps = pd.to_datetime(df["time"])
+    if "utc_offset_hours" in df.columns:
+        offsets = pd.to_numeric(df["utc_offset_hours"], errors="raise")
+        timestamps = timestamps + pd.to_timedelta(offsets, unit="h")
+    df["date"] = timestamps.dt.date
     daily = df.groupby(["location_id", "date"], as_index=False).agg(
         wetbulb=("tw", "max"),
         wetbulb_avg=("tw", "mean"),
@@ -550,6 +554,13 @@ def process_nldas(
 
     for batch_index, hours in tqdm(pending_batches, desc=f"NLDAS->wetbulb {year}"):
         hourly_df = _process_time_batch(shard_df, iy, ix, hours, download_workers)
+        if "utc_offset_hours" in shard_df.columns and not hourly_df.empty:
+            hourly_df = hourly_df.merge(
+                shard_df[["location_id", "utc_offset_hours"]],
+                on="location_id",
+                how="left",
+                validate="many_to_one",
+            )
         daily_df = compute_daily_wetbulb(hourly_df)
         if daily_df.empty:
             continue

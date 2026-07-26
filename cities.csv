@@ -1,0 +1,501 @@
+location_id,census_geoid,city,state,population,lat,lng,dem_m,timezone,utc_offset_hours
+0,3651000,New York city,NY,8584629,40.7143,-74.0060,57,America/New_York,-5.0000
+1,0644000,Los Angeles city,CA,3869089,34.0522,-118.2437,96,America/Los_Angeles,-8.0000
+2,1714000,Chicago city,IL,2731585,41.8500,-87.6500,180,America/Chicago,-6.0000
+3,4835000,Houston city,TX,2397315,29.7633,-95.3633,30,America/Chicago,-6.0000
+4,0455000,Phoenix city,AZ,1665481,33.4484,-112.0740,366,America/Phoenix,-7.0000
+5,4260000,Philadelphia city,PA,1574281,39.9524,-75.1636,8,America/New_York,-5.0000
+6,4865000,San Antonio city,TX,1548422,29.4241,-98.4936,202,America/Chicago,-6.0000
+7,0666000,San Diego city,CA,1406106,32.7157,-117.1647,20,America/Los_Angeles,-8.0000
+8,4819000,Dallas city,TX,1329491,32.7831,-96.8067,139,America/Chicago,-6.0000
+9,4827000,Fort Worth city,TX,1028117,32.7254,-97.3208,203,America/Chicago,-6.0000
+10,1235000,Jacksonville city,FL,1017689,30.3322,-81.6556,12,America/New_York,-5.0000
+11,4805000,Austin city,TX,1002632,30.2672,-97.7431,165,America/Chicago,-6.0000
+12,0668000,San Jose city,CA,989814,37.3394,-121.8950,23,America/Los_Angeles,-8.0000
+13,3712000,Charlotte city,NC,964784,35.2271,-80.8431,272,America/New_York,-5.0000
+14,3918000,Columbus city,OH,938396,39.9612,-82.9988,242,America/New_York,-5.0000
+15,1836003,Indianapolis city (balance),IN,901116,39.7684,-86.1580,248,America/Indiana/Indianapolis,-5.0000
+16,0667000,San Francisco city,CA,826079,37.7749,-122.4194,28,America/Los_Angeles,-8.0000
+17,5363000,Seattle city,WA,784777,47.6062,-122.3321,56,America/Los_Angeles,-8.0000
+18,0820000,Denver city,CO,740613,39.7392,-104.9847,1636,America/Denver,-7.0000
+19,4752006,Nashville-Davidson metropolitan government (balance),TN,721074,36.1659,-86.7844,171,America/Chicago,-6.0000
+20,4055000,Oklahoma City city,OK,719849,35.4676,-97.5164,395,America/Chicago,-6.0000
+21,1150000,Washington city,DC,693645,38.9001,-77.0164,17,America/New_York,-5.0000
+22,4824000,El Paso city,TX,683012,31.7587,-106.4869,1137,America/Denver,-7.0000
+23,3240000,Las Vegas city,NV,679817,36.1750,-115.1372,613,America/Los_Angeles,-8.0000
+24,2507000,Boston city,MA,672973,42.3584,-71.0598,38,America/New_York,-5.0000
+25,2622000,Detroit city,MI,649095,42.3314,-83.0458,192,America/Detroit,-5.0000
+26,2148006,Louisville/Jefferson County metro government (balance),KY,641962,38.2542,-85.7594,143,America/Kentucky/Louisville,-5.0000
+27,4159000,Portland city,OR,635109,45.5234,-122.6762,15,America/Los_Angeles,-8.0000
+28,4748000,Memphis city,TN,609647,35.1495,-90.0490,84,America/Chicago,-6.0000
+29,2404000,Baltimore city,MD,569997,39.2904,-76.6122,35,America/New_York,-5.0000
+30,5553000,Milwaukee city,WI,562407,43.0389,-87.9065,203,America/Chicago,-6.0000
+31,3502000,Albuquerque city,NM,556588,35.0845,-106.6511,1513,America/Denver,-7.0000
+32,0627000,Fresno city,CA,555549,36.7477,-119.7724,99,America/Los_Angeles,-8.0000
+33,0477000,Tucson city,AZ,548371,32.2217,-110.9265,757,America/Phoenix,-7.0000
+34,0664000,Sacramento city,CA,536449,38.5816,-121.4944,14,America/Los_Angeles,-8.0000
+35,1304000,Atlanta city,GA,529110,33.7490,-84.3880,336,America/New_York,-5.0000
+36,2938000,Kansas City city,MO,521220,39.0997,-94.5786,290,America/Chicago,-6.0000
+37,0446000,Mesa city,AZ,513656,33.4223,-111.8226,380,America/Phoenix,-7.0000
+38,3755000,Raleigh city,NC,506306,35.7721,-78.6386,99,America/New_York,-5.0000
+39,0816000,Colorado Springs city,CO,494743,38.8339,-104.8214,1838,America/Denver,-7.0000
+40,1245000,Miami city,FL,489812,25.7743,-80.1937,25,America/New_York,-5.0000
+41,3137000,Omaha city,NE,488797,41.2563,-95.9404,315,America/Chicago,-6.0000
+42,5182000,Virginia Beach city,VA,453737,36.8529,-75.9780,4,America/New_York,-5.0000
+43,0643000,Long Beach city,CA,450469,33.7670,-118.1892,24,America/Los_Angeles,-8.0000
+44,0653000,Oakland city,CA,440838,37.8044,-122.2708,24,America/Los_Angeles,-8.0000
+45,2743000,Minneapolis city,MN,430324,44.9800,-93.2638,262,America/Chicago,-6.0000
+46,0603526,Bakersfield city,CA,422165,35.3733,-119.0187,130,America/Los_Angeles,-8.0000
+47,4075000,Tulsa city,OK,416209,36.1540,-95.9928,226,America/Chicago,-6.0000
+48,1271000,Tampa city,FL,413554,27.9475,-82.4584,41,America/New_York,-5.0000
+49,0804000,Aurora city,CO,410053,39.7294,-104.8319,1651,America/Denver,-7.0000
+50,4804000,Arlington city,TX,402134,32.7357,-97.1081,190,America/Chicago,-6.0000
+51,2079000,Wichita city,KS,400987,37.6922,-97.3375,402,America/Chicago,-6.0000
+52,3916000,Cleveland city,OH,363608,41.4995,-81.6954,204,America/New_York,-5.0000
+53,2255000,New Orleans city,LA,362154,29.9546,-90.0751,18,America/Chicago,-6.0000
+54,3231900,Henderson city,NV,353289,36.0397,-114.9819,572,America/Los_Angeles,-8.0000
+55,0602000,Anaheim city,CA,341008,33.8353,-117.9145,55,America/Los_Angeles,-8.0000
+56,1253000,Orlando city,FL,333888,28.5383,-81.3792,54,America/New_York,-5.0000
+57,2146027,Lexington-Fayette urban county,KY,329751,38.0498,-84.4586,304,America/New_York,-5.0000
+58,0675000,Stockton city,CA,324597,37.9577,-121.2908,6,America/Los_Angeles,-8.0000
+59,3451000,Newark city,NJ,323808,40.7357,-74.1724,22,America/New_York,-5.0000
+60,0662000,Riverside city,CA,323057,33.9534,-117.3962,257,America/Los_Angeles,-8.0000
+61,0636770,Irvine city,CA,318764,33.6758,-117.7598,61,America/Los_Angeles,-8.0000
+62,4817000,Corpus Christi city,TX,317247,27.8006,-97.3964,8,America/Chicago,-6.0000
+63,0669000,Santa Ana city,CA,315586,33.7456,-117.8678,39,America/Los_Angeles,-8.0000
+64,3915000,Cincinnati city,OH,314367,39.1271,-84.5144,267,America/New_York,-5.0000
+65,3728000,Greensboro city,NC,308667,36.0726,-79.7920,260,America/New_York,-5.0000
+66,4261000,Pittsburgh city,PA,307632,40.4406,-79.9959,239,America/New_York,-5.0000
+67,2758000,St. Paul city,MN,306684,44.9444,-93.0933,242,America/Chicago,-6.0000
+68,3719000,Durham city,NC,305561,35.9940,-78.8986,121,America/New_York,-5.0000
+69,3436000,Jersey City city,NJ,302013,40.7282,-74.0776,11,America/New_York,-5.0000
+70,3128000,Lincoln city,NE,301522,40.8000,-96.6670,366,America/Chicago,-6.0000
+71,3251800,North Las Vegas city,NV,296653,36.1989,-115.1175,570,America/Los_Angeles,-8.0000
+72,4858016,Plano city,TX,293028,33.0198,-96.6989,207,America/Chicago,-6.0000
+73,0427400,Gilbert town,AZ,287285,33.3528,-111.7890,377,America/Phoenix,-7.0000
+74,5548000,Madison city,WI,286233,43.0730,-89.4012,272,America/Chicago,-6.0000
+75,3260600,Reno city,NV,283621,39.5296,-119.8138,1380,America/Los_Angeles,-8.0000
+76,0412000,Chandler city,AZ,278748,33.3062,-111.8412,368,America/Phoenix,-7.0000
+77,2965000,St. Louis city,MO,278144,38.6273,-90.1979,149,America/Chicago,-6.0000
+78,0613392,Chula Vista city,CA,275533,32.6400,-117.0842,21,America/Los_Angeles,-8.0000
+79,1825000,Fort Wayne city,IN,275203,41.1306,-85.1289,250,America/Indiana/Indianapolis,-5.0000
+80,3611000,Buffalo city,NY,274613,42.8865,-78.8784,191,America/New_York,-5.0000
+81,4845000,Lubbock city,TX,273071,33.5779,-101.8552,979,America/Chicago,-6.0000
+82,4841464,Laredo city,TX,269515,27.5064,-99.5075,132,America/Chicago,-6.0000
+83,1258715,Port St. Lucie city,FL,268062,27.2939,-80.3503,8,America/New_York,-5.0000
+84,1263000,St. Petersburg city,FL,264033,27.7709,-82.6793,16,America/New_York,-5.0000
+85,3977000,Toledo city,OH,263423,41.6639,-83.5552,189,America/New_York,-5.0000
+86,0427820,Glendale city,AZ,260572,33.5386,-112.1860,350,America/Phoenix,-7.0000
+87,3775000,Winston-Salem city,NC,257271,36.0999,-80.2442,283,America/New_York,-5.0000
+88,4837000,Irving city,TX,257076,32.8140,-96.9489,151,America/Chicago,-6.0000
+89,5116000,Chesapeake city,VA,255332,36.8190,-76.2749,9,America/New_York,-5.0000
+90,4829000,Garland city,TX,249625,32.9126,-96.6389,174,America/Chicago,-6.0000
+91,0465000,Scottsdale city,AZ,243006,33.5092,-111.8990,382,America/Phoenix,-7.0000
+92,1608830,Boise City city,ID,238429,43.6135,-116.2034,834,America/Boise,-7.0000
+93,5167000,Richmond city,VA,237257,37.5538,-77.4603,68,America/New_York,-5.0000
+94,4827684,Frisco city,TX,236955,33.1507,-96.8236,216,America/Chicago,-6.0000
+95,1210275,Cape Coral city,FL,236264,26.5628,-81.9495,6,America/New_York,-5.0000
+96,4845744,McKinney city,TX,236001,33.1976,-96.6153,197,America/Chicago,-6.0000
+97,0137000,Huntsville city,AL,233627,34.7304,-86.5859,200,America/Chicago,-6.0000
+98,5157000,Norfolk city,VA,231013,36.8468,-76.2852,15,America/New_York,-5.0000
+99,1230000,Hialeah city,FL,230968,25.8576,-80.2781,8,America/New_York,-5.0000
+100,5367000,Spokane city,WA,230783,47.6597,-117.4291,530,America/Los_Angeles,-8.0000
+101,5370000,Tacoma city,WA,229816,47.2529,-122.4443,74,America/Los_Angeles,-8.0000
+102,0669088,Santa Clarita city,CA,228430,34.3917,-118.5426,368,America/Los_Angeles,-8.0000
+103,0626000,Fremont city,CA,226442,37.5483,-121.9886,18,America/Los_Angeles,-8.0000
+104,2205000,Baton Rouge city,LA,222795,30.4433,-91.1875,20,America/Chicago,-6.0000
+105,0665000,San Bernardino city,CA,222044,34.1083,-117.2898,324,America/Los_Angeles,-8.0000
+106,0624680,Fontana city,CA,221223,34.0922,-117.4350,378,America/Los_Angeles,-8.0000
+107,0648354,Modesto city,CA,219652,37.6391,-120.9969,29,America/Los_Angeles,-8.0000
+108,4967000,Salt Lake City city,UT,218428,40.7608,-111.8910,1311,America/Denver,-7.0000
+109,0649270,Moreno Valley city,CA,214263,33.9375,-117.2306,499,America/Los_Angeles,-8.0000
+110,2582000,Worcester city,MA,213862,42.2626,-71.8023,164,America/New_York,-5.0000
+111,4659020,Sioux Falls city,SD,213748,43.5437,-96.7280,433,America/Chicago,-6.0000
+112,3684000,Yonkers city,NY,212603,40.9304,-73.8979,30,America/New_York,-5.0000
+113,1921000,Des Moines city,IA,212086,41.6005,-93.6091,264,America/Chicago,-6.0000
+114,4830464,Grand Prairie city,TX,209434,32.7460,-96.9978,162,America/Chicago,-6.0000
+115,3722920,Fayetteville city,NC,209120,35.0527,-78.8784,33,America/New_York,-5.0000
+116,0541000,Little Rock city,AR,206427,34.7465,-92.2896,105,America/Chicago,-6.0000
+117,3663000,Rochester city,NY,206108,43.1548,-77.6156,156,America/New_York,-5.0000
+118,4803000,Amarillo city,TX,205130,35.2220,-101.8313,1124,America/Chicago,-6.0000
+119,1270600,Tallahassee city,FL,204902,30.4383,-84.2807,71,America/New_York,-5.0000
+120,2053775,Overland Park city,KS,203677,38.9822,-94.6708,335,America/Chicago,-6.0000
+121,1319000,Columbus city,GA,202171,32.4610,-84.9877,75,America/New_York,-5.0000
+122,4740000,Knoxville city,TN,202021,35.9606,-83.9207,277,America/New_York,-5.0000
+123,1304204,Augusta-Richmond County consolidated government (balance),GA,201999,33.4710,-81.9748,44,America/New_York,-5.0000
+124,2634000,Grand Rapids city,MI,201183,42.9634,-85.6681,205,America/Detroit,-5.0000
+125,0454050,Peoria city,AZ,200881,33.5806,-112.2374,347,America/Phoenix,-7.0000
+126,0150000,Mobile city,AL,200824,30.6944,-88.0430,12,America/Chicago,-6.0000
+127,5374060,Vancouver city,WA,199698,45.6387,-122.6615,57,America/Los_Angeles,-8.0000
+128,0654652,Oxnard city,CA,199651,34.1975,-119.1770,19,America/Los_Angeles,-8.0000
+129,0107000,Birmingham city,AL,195893,33.5207,-86.8025,187,America/Chicago,-6.0000
+130,4459000,Providence city,RI,195310,41.8240,-71.4128,-17,America/New_York,-5.0000
+131,0151000,Montgomery city,AL,195300,32.3668,-86.3000,76,America/Chicago,-6.0000
+132,4714000,Chattanooga city,TN,194144,35.0456,-85.3097,208,America/New_York,-5.0000
+133,4810768,Brownsville city,TX,192957,25.9018,-97.4975,17,America/Chicago,-6.0000
+134,0636000,Huntington Beach city,CA,191451,33.6603,-117.9992,16,America/Los_Angeles,-8.0000
+135,0473000,Tempe city,AZ,190571,33.4148,-111.9093,360,America/Phoenix,-7.0000
+136,3901000,Akron city,OH,189691,41.0814,-81.5190,295,America/New_York,-5.0000
+137,4715160,Clarksville city,TN,188829,36.5298,-87.3594,145,America/Chicago,-6.0000
+138,1224000,Fort Lauderdale city,FL,188677,26.1223,-80.1434,20,America/New_York,-5.0000
+139,0630000,Glendale city,CA,187160,34.1425,-118.2551,161,America/Los_Angeles,-8.0000
+140,0653896,Ontario city,CA,187013,34.0633,-117.6509,307,America/Los_Angeles,-8.0000
+141,0622020,Elk Grove city,CA,185007,38.4088,-121.3716,17,America/Los_Angeles,-8.0000
+142,3710740,Cary town,NC,183582,35.7915,-78.7811,152,America/New_York,-5.0000
+143,5156000,Newport News city,VA,183230,36.9804,-76.4298,7,America/New_York,-5.0000
+144,4164900,Salem city,OR,181779,44.9429,-123.0351,55,America/Los_Angeles,-8.0000
+145,1703012,Aurora city,IL,181505,41.7606,-88.3201,210,America/Chicago,-6.0000
+146,0670098,Santa Rosa city,CA,179437,38.4405,-122.7144,55,America/Los_Angeles,-8.0000
+147,4123850,Eugene city,OR,178618,44.0521,-123.0868,132,America/Los_Angeles,-8.0000
+148,0659451,Rancho Cucamonga city,CA,177856,34.1064,-117.5931,371,America/Los_Angeles,-8.0000
+149,1255775,Pembroke Pines city,FL,176714,26.0032,-80.2239,10,America/New_York,-5.0000
+150,2270000,Shreveport city,LA,175902,32.5251,-93.7502,50,America/Chicago,-6.0000
+151,0471510,Surprise city,AZ,175304,33.6306,-112.3332,357,America/Phoenix,-7.0000
+152,0827425,Fort Collins city,CO,171500,40.5853,-105.0844,1531,America/Denver,-7.0000
+153,4751560,Murfreesboro city,TN,171178,35.8456,-86.3903,191,America/Chicago,-6.0000
+154,0653322,Oceanside city,CA,170483,33.1959,-117.3795,24,America/Los_Angeles,-8.0000
+155,0629000,Garden Grove city,CA,170455,33.7739,-117.9414,26,America/Los_Angeles,-8.0000
+156,0640130,Lancaster city,CA,170084,34.6980,-118.1367,718,America/Los_Angeles,-8.0000
+157,2970000,Springfield city,MO,169847,37.2153,-93.2982,399,America/Chicago,-6.0000
+158,4819972,Denton city,TX,169431,33.2148,-97.1331,206,America/Chicago,-6.0000
+159,0662938,Roseville city,CA,167302,38.7521,-121.2880,51,America/Los_Angeles,-8.0000
+160,4839148,Killeen city,TX,161883,31.1171,-97.7278,254,America/Chicago,-6.0000
+161,0655156,Palmdale city,CA,161845,34.5794,-118.1165,815,America/Los_Angeles,-8.0000
+162,3457000,Paterson city,NJ,161793,40.9168,-74.1718,35,America/New_York,-5.0000
+163,0616350,Corona city,CA,161734,33.8753,-117.5664,213,America/Los_Angeles,-8.0000
+164,5101000,Alexandria city,VA,160662,38.8048,-77.0469,15,America/New_York,-5.0000
+165,4513330,Charleston city,SC,159423,32.7763,-79.9328,2,America/New_York,-5.0000
+166,0664224,Salinas city,CA,159134,36.6777,-121.6555,17,America/Los_Angeles,-8.0000
+167,2036000,Kansas City city,KS,157805,39.1142,-94.6275,272,America/Chicago,-6.0000
+168,1349008,Macon-Bibb County,GA,157556,32.8407,-83.6324,118,America/New_York,-5.0000
+169,0633000,Hayward city,CA,157113,37.6688,-122.0808,32,America/Los_Angeles,-8.0000
+170,1232000,Hollywood city,FL,157019,26.0112,-80.1495,10,America/New_York,-5.0000
+171,0843000,Lakewood city,CO,156927,39.7047,-105.0814,1682,America/Denver,-7.0000
+172,0677000,Sunnyvale city,CA,156577,37.3688,-122.0364,37,America/Los_Angeles,-8.0000
+173,2567000,Springfield city,MA,154702,42.1015,-72.5898,49,America/New_York,-5.0000
+174,5305210,Bellevue city,WA,154193,47.6104,-122.2007,28,America/Los_Angeles,-8.0000
+175,1751622,Naperville city,IL,153114,41.7859,-88.1473,217,America/Chicago,-6.0000
+176,0908000,Bridgeport city,CT,152273,41.1792,-73.1894,14,America/New_York,-5.0000
+177,1738570,Joliet city,IL,152241,41.5252,-88.0834,167,America/Chicago,-6.0000
+178,4847892,Mesquite city,TX,150693,32.7668,-96.5992,155,America/Chicago,-6.0000
+179,4845384,McAllen city,TX,150640,26.2034,-98.2300,42,America/Chicago,-6.0000
+180,2052575,Olathe city,KS,150025,38.8814,-94.8191,324,America/Chicago,-6.0000
+181,1369000,Savannah city,GA,149440,32.0835,-81.0998,9,America/New_York,-5.0000
+182,1225175,Gainesville city,FL,148671,29.6516,-82.3248,37,America/New_York,-5.0000
+183,4856000,Pasadena city,TX,148539,29.6911,-95.2091,12,America/Chicago,-6.0000
+184,1254000,Palm Bay city,FL,148092,28.0345,-80.5887,10,America/New_York,-5.0000
+185,0658072,Pomona city,CA,147807,34.0553,-117.7523,264,America/Los_Angeles,-8.0000
+186,4876000,Waco city,TX,147788,31.5493,-97.1467,147,America/Chicago,-6.0000
+187,0877290,Thornton city,CO,147766,39.8680,-104.9719,1635,America/Denver,-7.0000
+188,4848072,Midland city,TX,147615,31.9974,-102.0779,862,America/Chicago,-6.0000
+189,1765000,Rockford city,IL,147384,42.2711,-89.0940,224,America/Chicago,-6.0000
+190,4516000,Columbia city,SC,147035,34.0007,-81.0348,97,America/New_York,-5.0000
+191,0682954,Visalia city,CA,146541,36.3302,-119.2921,110,America/Los_Angeles,-8.0000
+192,0622804,Escondido city,CA,146030,33.1192,-117.0864,199,America/Los_Angeles,-8.0000
+193,3673000,Syracuse city,NY,144896,43.0481,-76.1474,129,America/New_York,-5.0000
+194,1652120,Meridian city,ID,142988,43.6121,-116.3915,796,America/Boise,-7.0000
+195,1245975,Miramar city,FL,142570,25.9873,-80.2323,8,America/New_York,-5.0000
+196,3421000,Elizabeth city,NJ,141675,40.6640,-74.2107,7,America/New_York,-5.0000
+197,0682590,Victorville city,CA,141395,34.5361,-117.2912,834,America/Los_Angeles,-8.0000
+198,4863500,Round Rock city,TX,141282,30.5083,-97.6789,226,America/Chicago,-6.0000
+199,2836000,Jackson city,MS,141196,32.2988,-90.1848,100,America/Chicago,-6.0000
+200,0973000,Stamford city,CT,139535,41.0534,-73.5387,16,America/New_York,-5.0000
+201,4842508,Lewisville city,TX,139006,33.0462,-96.9942,161,America/Chicago,-6.0000
+202,1214400,Coral Springs city,FL,138783,26.2712,-80.2706,4,America/New_York,-5.0000
+203,0952000,New Haven city,CT,138774,41.3082,-72.9282,20,America/New_York,-5.0000
+204,0628000,Fullerton city,CA,138675,33.8703,-117.9253,52,America/Los_Angeles,-8.0000
+205,0680000,Torrance city,CA,138391,33.8358,-118.3406,33,America/Los_Angeles,-8.0000
+206,0653980,Orange city,CA,138365,33.7878,-117.8531,61,America/Los_Angeles,-8.0000
+207,1912000,Cedar Rapids city,IA,137935,42.0083,-91.6441,251,America/Chicago,-6.0000
+208,4983470,West Valley City city,UT,137491,40.6916,-112.0010,1316,America/Denver,-7.0000
+209,5135000,Hampton city,VA,137315,37.0299,-76.3452,7,America/New_York,-5.0000
+210,2684000,Warren city,MI,137138,42.4904,-83.0130,196,America/Detroit,-5.0000
+211,3921000,Dayton city,OH,136688,39.7590,-84.1916,237,America/New_York,-5.0000
+212,3825700,Fargo city,ND,136275,46.8772,-96.7898,279,America/Chicago,-6.0000
+213,0656000,Pasadena city,CA,135804,34.1478,-118.1445,272,America/Los_Angeles,-8.0000
+214,5335415,Kent city,WA,134871,47.3809,-122.2348,14,America/Los_Angeles,-8.0000
+215,4813024,Carrollton city,TX,134562,32.9537,-96.8903,163,America/Chicago,-6.0000
+216,2676460,Sterling Heights city,MI,133931,42.5803,-83.0302,190,America/Detroit,-5.0000
+217,0669084,Santa Clara city,CA,133446,37.3541,-121.9552,22,America/Los_Angeles,-8.0000
+218,4801000,Abilene city,TX,131588,32.4487,-99.7331,525,America/Chicago,-6.0000
+219,4052500,Norman city,OK,130943,35.2226,-97.4395,361,America/Chicago,-6.0000
+220,2915670,Columbia city,MO,130851,38.9517,-92.3341,219,America/Chicago,-6.0000
+221,4856348,Pearland city,TX,129930,29.5636,-95.2860,17,America/Chicago,-6.0000
+222,0614218,Clovis city,CA,129347,36.8252,-119.7029,113,America/Los_Angeles,-8.0000
+223,4550875,North Charleston city,SC,129245,32.8546,-79.9748,4,America/New_York,-5.0000
+224,1303440,Athens-Clarke County unified government (balance),GA,128612,33.9609,-83.3779,232,America/New_York,-5.0000
+225,4815976,College Station city,TX,127472,30.6280,-96.3344,107,America/Chicago,-6.0000
+226,1276600,West Palm Beach city,FL,127189,26.7153,-80.0534,21,America/New_York,-5.0000
+227,3774440,Wilmington city,NC,126809,34.2356,-77.9460,8,America/New_York,-5.0000
+228,4202000,Allentown city,PA,126044,40.6084,-75.4902,107,America/New_York,-5.0000
+229,2071000,Topeka city,KS,125795,39.0483,-95.6780,306,America/Chicago,-6.0000
+230,1238250,Lakeland city,FL,125520,28.0395,-81.9498,63,America/New_York,-5.0000
+231,0407940,Buckeye city,AZ,125445,33.3703,-112.5838,264,America/Phoenix,-7.0000
+232,0428380,Goodyear city,AZ,125359,33.4353,-112.3582,294,America/Phoenix,-7.0000
+233,4009050,Broken Arrow city,OK,124991,36.0526,-95.7908,234,America/Chicago,-6.0000
+234,0672016,Simi Valley city,CA,124861,34.2694,-118.7815,236,America/Los_Angeles,-8.0000
+235,2754880,Rochester city,MN,124292,44.0216,-92.4699,314,America/Chicago,-6.0000
+236,2240735,Lafayette city,LA,123311,30.2241,-92.0198,15,America/Chicago,-6.0000
+237,0681666,Vallejo city,CA,123287,38.1041,-122.2566,22,America/Los_Angeles,-8.0000
+238,0616000,Concord city,CA,123261,37.9780,-122.0311,25,America/Los_Angeles,-8.0000
+239,0803455,Arvada city,CO,122901,39.8028,-105.0875,1637,America/Denver,-7.0000
+240,4853388,Odessa city,TX,122707,31.8457,-102.3676,885,America/Chicago,-6.0000
+241,2511000,Cambridge city,MA,122588,42.3751,-71.1056,13,America/New_York,-5.0000
+242,4850820,New Braunfels city,TX,122492,29.7030,-98.1244,194,America/Chicago,-6.0000
+243,0623182,Fairfield city,CA,122489,38.2494,-122.0400,4,America/Los_Angeles,-8.0000
+244,2603000,Ann Arbor city,MI,122233,42.2776,-83.7409,271,America/Detroit,-5.0000
+245,0678582,Thousand Oaks city,CA,122230,34.1706,-118.8376,274,America/Los_Angeles,-8.0000
+246,0937000,Hartford city,CT,121981,41.7637,-72.6851,27,America/New_York,-5.0000
+247,0606000,Berkeley city,CA,121911,37.8716,-122.2728,55,America/Los_Angeles,-8.0000
+248,2935000,Independence city,MO,121675,39.0911,-94.4155,319,America/Chicago,-6.0000
+249,3006550,Billings city,MT,121239,45.7833,-108.5007,954,America/Denver,-7.0000
+250,3731400,High Point city,NC,120571,35.9557,-80.0053,289,America/New_York,-5.0000
+251,1656260,Nampa city,ID,120384,43.5407,-116.5635,767,America/Boise,-7.0000
+252,2537000,Lowell city,MA,119971,42.6334,-71.3162,39,America/New_York,-5.0000
+253,4841980,League City city,TX,119905,29.5074,-95.0949,9,America/Chicago,-6.0000
+254,4816432,Conroe city,TX,119564,30.3119,-95.4560,69,America/Chicago,-6.0000
+255,0602252,Antioch city,CA,118958,38.0049,-121.8058,13,America/Los_Angeles,-8.0000
+256,0646842,Menifee city,CA,118592,33.7284,-117.1464,452,America/Los_Angeles,-8.0000
+257,4861796,Richardson city,TX,118542,32.9482,-96.7297,195,America/Chicago,-6.0000
+258,1258050,Pompano Beach city,FL,117211,26.2379,-80.1248,11,America/New_York,-5.0000
+259,3539380,Las Cruces city,NM,116978,32.3123,-106.7783,1189,America/Denver,-7.0000
+260,3345140,Manchester city,NH,116818,42.9956,-71.4548,81,America/New_York,-5.0000
+261,4982950,West Jordan city,UT,116812,40.6097,-111.9391,1338,America/Denver,-7.0000
+262,0883835,Westminster city,CO,116182,39.8366,-105.0372,1644,America/Denver,-7.0000
+263,1822000,Evansville city,IN,116176,37.9748,-87.5559,118,America/Chicago,-6.0000
+264,0980000,Waterbury city,CT,115771,41.5582,-73.0515,84,America/New_York,-5.0000
+265,1723074,Elgin city,IL,115476,42.0372,-88.2812,229,America/Chicago,-6.0000
+266,0832155,Greeley city,CO,115073,40.4233,-104.7091,1428,America/Denver,-7.0000
+267,0678120,Temecula city,CA,114865,33.4936,-117.1484,308,America/Los_Angeles,-8.0000
+268,0660620,Richmond city,CA,114861,37.9358,-122.3478,12,America/Los_Angeles,-8.0000
+269,3714100,Concord city,NC,114598,35.4089,-80.5816,209,America/New_York,-5.0000
+270,4962470,Provo city,UT,114527,40.2338,-111.6585,1394,America/Denver,-7.0000
+271,3563460,Rio Rancho city,NM,114419,35.2334,-106.6645,1606,America/Denver,-7.0000
+272,1212875,Clearwater city,FL,114364,27.9658,-82.8001,15,America/New_York,-5.0000
+273,0177256,Tuscaloosa city,AL,114316,33.2098,-87.5692,69,America/Chicago,-6.0000
+274,0650076,Murrieta city,CA,114124,33.5539,-117.2139,336,America/Los_Angeles,-8.0000
+275,2646000,Lansing city,MI,113884,42.7325,-84.5555,260,America/Detroit,-5.0000
+276,4874144,Tyler city,TX,113723,32.3513,-95.3011,174,America/Chicago,-6.0000
+277,1245060,Miami Gardens city,FL,113579,25.9420,-80.2456,9,America/New_York,-5.0000
+278,5322640,Everett city,WA,113567,47.9790,-122.2021,22,America/Los_Angeles,-8.0000
+279,4801924,Allen city,TX,113447,33.1032,-96.6706,205,America/Chicago,-6.0000
+280,1772000,Springfield city,IL,112989,39.8017,-89.6437,184,America/Chicago,-6.0000
+281,4807000,Beaumont city,TX,112967,30.0860,-94.1018,12,America/Chicago,-6.0000
+282,1372122,South Fulton city,GA,112820,33.6562,-84.6250,232,America/New_York,-5.0000
+283,0611194,Carlsbad city,CA,112260,33.1581,-117.3506,18,America/Los_Angeles,-8.0000
+284,3268400,Sparks city,NV,111902,39.5349,-119.7527,1348,America/Los_Angeles,-8.0000
+285,4131250,Gresham city,OR,111513,45.4982,-122.4315,96,America/Los_Angeles,-8.0000
+286,0669196,Santa Maria city,CA,111390,34.9530,-120.4357,68,America/Los_Angeles,-8.0000
+287,4134100,Hillsboro city,OR,111126,45.5229,-122.9898,59,America/Los_Angeles,-8.0000
+288,1759000,Peoria city,IL,110920,40.6936,-89.5890,165,America/Chicago,-6.0000
+289,1216475,Davie town,FL,110851,26.0629,-80.2331,11,America/New_York,-5.0000
+290,4822660,Edinburg city,TX,110700,26.3017,-98.1633,35,America/Chicago,-6.0000
+291,0862000,Pueblo city,CO,110404,38.2544,-104.6091,1430,America/Denver,-7.0000
+292,0665042,San Buenaventura (Ventura) city,CA,109914,34.2783,-119.2932,12,America/Los_Angeles,-8.0000
+293,1254200,Palm Coast city,FL,109886,29.5850,-81.2078,7,America/New_York,-5.0000
+294,0616532,Costa Mesa city,CA,108881,33.6411,-117.9187,33,America/Los_Angeles,-8.0000
+295,4965330,St. George city,UT,108713,37.1041,-113.5841,825,America/Denver,-7.0000
+296,0812815,Centennial city,CO,108658,39.5792,-104.8769,1781,America/Denver,-7.0000
+297,0619766,Downey city,CA,108468,33.9400,-118.1326,41,America/Los_Angeles,-8.0000
+298,5367167,Spokane Valley city,WA,108405,47.6732,-117.2394,610,America/Los_Angeles,-8.0000
+299,4870808,Sugar Land city,TX,107726,29.6197,-95.6350,32,America/Chicago,-6.0000
+300,2941348,Lee's Summit city,MO,107514,38.9108,-94.3822,323,America/Chicago,-6.0000
+301,4105800,Bend city,OR,107342,44.0582,-121.3153,1106,America/Los_Angeles,-8.0000
+302,0637692,Jurupa Valley city,CA,107311,33.9968,-117.4834,219,America/Los_Angeles,-8.0000
+303,4829336,Georgetown city,TX,106907,30.6327,-97.6772,235,America/Chicago,-6.0000
+304,5531000,Green Bay city,WI,106675,44.5192,-88.0198,182,America/Chicago,-6.0000
+305,0523290,Fayetteville city,AR,106623,36.0626,-94.1574,436,America/Chicago,-6.0000
+306,0660466,Rialto city,CA,106554,34.1064,-117.3703,386,America/Los_Angeles,-8.0000
+307,2509000,Brockton city,MA,106134,42.0834,-71.0184,37,America/New_York,-5.0000
+308,0807850,Boulder city,CO,105689,40.0150,-105.2706,1630,America/Denver,-7.0000
+309,1810342,Carmel city,IN,105634,39.9784,-86.1180,262,America/Indiana/Indianapolis,-5.0000
+310,2621000,Dearborn city,MI,105611,42.3223,-83.1763,183,America/Detroit,-5.0000
+311,0684200,West Covina city,CA,105301,34.0686,-117.9390,120,America/Los_Angeles,-8.0000
+312,0485540,Yuma city,AZ,105227,32.7253,-114.6244,43,America/Phoenix,-7.0000
+313,0613014,Chico city,CA,105081,39.7285,-121.8375,64,America/Los_Angeles,-8.0000
+314,0622230,El Monte city,CA,105075,34.0686,-118.0276,91,America/Los_Angeles,-8.0000
+315,1368516,Sandy Springs city,GA,105013,33.9243,-84.3785,333,America/New_York,-5.0000
+316,5357745,Renton city,WA,104975,47.4829,-122.2171,13,America/Los_Angeles,-8.0000
+317,1823278,Fishers city,IN,104812,39.9556,-86.0139,250,America/Indiana/Indianapolis,-5.0000
+318,5176432,Suffolk city,VA,104699,36.7284,-76.5850,22,America/New_York,-5.0000
+319,2537490,Lynn city,MA,104236,42.4668,-70.9495,17,America/New_York,-5.0000
+320,0681554,Vacaville city,CA,103850,38.3566,-121.9877,55,America/Los_Angeles,-8.0000
+321,0668252,San Mateo city,CA,103337,37.5630,-122.3255,13,America/Los_Angeles,-8.0000
+322,1871000,South Bend city,IN,103201,41.6834,-86.2500,213,America/Indiana/Indianapolis,-5.0000
+323,2555745,Quincy city,MA,103173,42.2529,-71.0023,17,America/New_York,-5.0000
+324,0608954,Burbank city,CA,102988,34.1808,-118.3090,192,America/Los_Angeles,-8.0000
+325,0633434,Hesperia city,CA,102605,34.4264,-117.3009,967,America/Los_Angeles,-8.0000
+326,4879000,Wichita Falls city,TX,101951,33.9137,-98.4934,296,America/Chicago,-6.0000
+327,0680238,Tracy city,CA,101901,37.7399,-121.4262,17,America/Los_Angeles,-8.0000
+328,2545000,New Bedford city,MA,101834,41.6353,-70.9270,15,America/New_York,-5.0000
+329,0621712,El Cajon city,CA,101755,32.7948,-116.9625,133,America/Los_Angeles,-8.0000
+330,3601000,Albany city,NY,101698,42.6526,-73.7562,50,America/New_York,-5.0000
+331,0636546,Inglewood city,CA,101662,33.9617,-118.3531,44,America/Los_Angeles,-8.0000
+332,1207300,Boca Raton city,FL,101582,26.3587,-80.0831,11,America/New_York,-5.0000
+333,1224125,Fort Myers city,FL,101581,26.6217,-81.8406,9,America/New_York,-5.0000
+334,0617918,Daly City city,CA,101261,37.7058,-122.4619,123,America/Los_Angeles,-8.0000
+335,0404720,Avondale city,AZ,100983,33.4356,-112.3496,295,America/Phoenix,-7.0000
+336,4864472,San Angelo city,TX,100640,31.4638,-100.4370,564,America/Chicago,-6.0000
+337,4023200,Edmond city,OK,100479,35.6528,-97.4781,372,America/Chicago,-6.0000
+338,1919000,Davenport city,IA,100358,41.5236,-90.5776,182,America/Chicago,-6.0000
+339,1217200,Deltona city,FL,100267,28.9005,-81.2637,13,America/New_York,-5.0000
+340,0845970,Longmont city,CO,100109,40.1672,-105.1019,1520,America/Denver,-7.0000
+341,5323515,Federal Way city,WA,99729,47.3223,-122.3126,142,America/Los_Angeles,-8.0000
+342,0646898,Merced city,CA,99724,37.3022,-120.4830,56,America/Los_Angeles,-8.0000
+343,5539225,Kenosha city,WI,99239,42.5847,-87.8212,185,America/Chicago,-6.0000
+344,1257425,Plantation city,FL,99183,26.1342,-80.2318,8,America/New_York,-5.0000
+345,5168000,Roanoke city,VA,99111,37.2710,-79.9414,296,America/New_York,-5.0000
+346,1269700,Sunrise city,FL,98846,26.1340,-80.1131,8,America/New_York,-5.0000
+347,4872176,Temple city,TX,98412,31.0982,-97.3428,223,America/Chicago,-6.0000
+348,0682996,Vista city,CA,98274,33.2000,-117.2425,102,America/Los_Angeles,-8.0000
+349,4105350,Beaverton city,OR,97842,45.4871,-122.8037,55,America/Los_Angeles,-8.0000
+350,5380010,Yakima city,WA,97458,46.6021,-120.5059,325,America/Los_Angeles,-8.0000
+351,5335940,Kirkland city,WA,97410,47.6815,-122.2087,52,America/Los_Angeles,-8.0000
+352,0652526,Norwalk city,CA,97104,33.9022,-118.0817,29,America/Los_Angeles,-8.0000
+353,0613210,Chino city,CA,96957,34.0122,-117.6889,222,America/Los_Angeles,-8.0000
+354,5164000,Portsmouth city,VA,96777,36.8354,-76.2983,6,America/New_York,-5.0000
+355,0645484,Manteca city,CA,96693,37.7974,-121.2160,14,America/Los_Angeles,-8.0000
+356,1249675,North Port city,FL,96551,27.0442,-82.2359,6,America/New_York,-5.0000
+357,3728080,Greenville city,NC,96443,35.6127,-77.3664,19,America/New_York,-5.0000
+358,5305280,Bellingham city,WA,96395,48.7596,-122.4882,21,America/Los_Angeles,-8.0000
+359,2038900,Lawrence city,KS,96367,38.9717,-95.2352,267,America/Chicago,-6.0000
+360,2954074,O'Fallon city,MO,96101,38.8106,-90.6998,164,America/Chicago,-6.0000
+361,4263624,Reading city,PA,95832,40.3356,-75.9269,83,America/New_York,-5.0000
+362,4548535,Mount Pleasant town,SC,95469,32.7941,-79.8626,9,America/New_York,-5.0000
+363,4944320,Lehi city,UT,95313,40.3916,-111.8508,1397,America/Denver,-7.0000
+364,2523000,Fall River city,MA,95298,41.7487,-71.1205,32,America/New_York,-5.0000
+365,4957300,Orem city,UT,95214,40.2969,-111.6946,1458,America/Denver,-7.0000
+366,0668196,San Marcos city,CA,94908,33.1434,-117.1661,177,America/Los_Angeles,-8.0000
+367,0955990,Norwalk city,CT,94508,41.1176,-73.4079,18,America/New_York,-5.0000
+368,0636448,Indio city,CA,94269,33.7207,-116.2168,-3,America/Los_Angeles,-8.0000
+369,0659920,Redding city,CA,94092,40.5865,-122.3917,172,America/Los_Angeles,-8.0000
+370,0633182,Hemet city,CA,93649,33.7476,-116.9731,487,America/Los_Angeles,-8.0000
+371,0135896,Hoover city,AL,93550,33.4054,-86.8114,185,America/Chicago,-6.0000
+372,3702140,Asheville city,NC,93523,35.6010,-82.5540,650,America/New_York,-5.0000
+373,2649000,Livonia city,MI,92603,42.3684,-83.3527,197,America/Detroit,-5.0000
+374,3350260,Nashua city,NH,92435,42.7654,-71.4676,52,America/New_York,-5.0000
+375,4967440,Sandy city,UT,92386,40.5938,-111.8697,1380,America/Denver,-7.0000
+376,2430325,Frederick city,MD,92059,39.4143,-77.4105,90,America/New_York,-5.0000
+377,4810912,Bryan city,TX,91996,30.6744,-96.3700,116,America/Chicago,-6.0000
+378,0624638,Folsom city,CA,91983,38.6780,-121.1761,66,America/Los_Angeles,-8.0000
+379,4224000,Erie city,PA,91838,42.1292,-80.0851,201,America/New_York,-5.0000
+380,3474000,Trenton city,NJ,91506,40.2170,-74.7429,23,America/New_York,-5.0000
+381,1367284,Roswell city,GA,91505,34.0232,-84.3616,333,America/New_York,-5.0000
+382,1712385,Champaign city,IL,91195,40.1164,-88.2434,228,America/Chicago,-6.0000
+383,4842016,Leander city,TX,91132,30.5788,-97.8531,301,America/Chicago,-6.0000
+384,3413690,Clifton city,NJ,91127,40.8584,-74.1638,56,America/New_York,-5.0000
+385,0524550,Fort Smith city,AR,90855,35.3859,-94.3986,135,America/Chicago,-6.0000
+386,0611530,Carson city,CA,90808,33.8314,-118.2820,16,America/Los_Angeles,-8.0000
+387,2545560,Newton city,MA,90741,42.3370,-71.2092,35,America/New_York,-5.0000
+388,0566080,Springdale city,AR,90685,36.1867,-94.1288,406,America/Chicago,-6.0000
+389,4041850,Lawton city,OK,90503,34.6087,-98.3903,342,America/Chicago,-6.0000
+390,0615044,Compton city,CA,90500,33.8959,-118.2201,23,America/Los_Angeles,-8.0000
+391,0648256,Mission Viejo city,CA,90484,33.6000,-117.6720,127,America/Los_Angeles,-8.0000
+392,4727740,Franklin city,TN,90226,35.9251,-86.8689,201,America/Chicago,-6.0000
+393,0670000,Santa Monica city,CA,90082,34.0195,-118.4914,38,America/Los_Angeles,-8.0000
+394,0673080,South Gate city,CA,90071,33.9547,-118.2120,38,America/Los_Angeles,-8.0000
+395,3570500,Santa Fe city,NM,89837,35.6870,-105.9378,2137,America/Denver,-7.0000
+396,0458150,Queen Creek town,AZ,89770,33.2487,-111.6343,428,America/Phoenix,-7.0000
+397,4955980,Ogden city,UT,89510,41.2230,-111.9738,1315,America/Denver,-7.0000
+398,1216725,Deerfield Beach city,FL,89339,26.3184,-80.0998,9,America/New_York,-5.0000
+399,2534550,Lawrence city,MA,89320,42.7070,-71.1631,20,America/New_York,-5.0000
+400,2706616,Bloomington city,MN,89034,44.8408,-93.2983,251,America/Chicago,-6.0000
+401,0918430,Danbury city,CT,89033,41.3948,-73.4540,126,America/New_York,-5.0000
+402,4848768,Mission city,TX,88992,26.2159,-98.3253,47,America/Chicago,-6.0000
+403,0684550,Westminster city,CA,88966,33.7592,-118.0067,14,America/Los_Angeles,-8.0000
+404,2680700,Troy city,MI,88733,42.6056,-83.1499,231,America/Detroit,-5.0000
+405,1216525,Daytona Beach city,FL,88471,29.2108,-81.0228,6,America/New_York,-5.0000
+406,5335275,Kennewick city,WA,88366,46.2112,-119.1372,126,America/Los_Angeles,-8.0000
+407,2717000,Duluth city,MN,88330,46.7833,-92.1066,216,America/Chicago,-6.0000
+408,1779293,Waukegan city,IL,87940,42.3636,-87.8448,199,America/Chicago,-6.0000
+409,1380508,Warner Robins city,GA,87761,32.6157,-83.6266,132,America/New_York,-5.0000
+410,4970850,South Jordan city,UT,87614,40.5622,-111.9297,1358,America/Denver,-7.0000
+411,0659444,Rancho Cordova city,CA,87554,38.6171,-121.1924,64,America/Los_Angeles,-8.0000
+412,1243975,Melbourne city,FL,87097,28.0853,-80.6664,16,America/New_York,-5.0000
+413,3725580,Gastonia city,NC,87067,35.2621,-81.1873,249,America/New_York,-5.0000
+414,4806128,Baytown city,TX,86561,29.7355,-94.9774,9,America/Chicago,-6.0000
+415,4147000,Medford city,OR,86494,42.3265,-122.8756,422,America/Los_Angeles,-8.0000
+416,0669070,Santa Barbara city,CA,86422,34.4208,-119.6982,16,America/Los_Angeles,-8.0000
+417,1973335,Sioux City city,IA,86356,42.5000,-96.4003,364,America/Chicago,-6.0000
+418,0613588,Citrus Heights city,CA,86348,38.7071,-121.2811,52,America/Los_Angeles,-8.0000
+419,0639496,Lake Forest city,CA,86333,33.6470,-117.6892,150,America/Los_Angeles,-8.0000
+420,5303180,Auburn city,WA,86301,47.3073,-122.2284,25,America/Los_Angeles,-8.0000
+421,1232275,Homestead city,FL,86242,25.4687,-80.4776,6,America/New_York,-5.0000
+422,0668378,San Ramon city,CA,86209,37.7799,-121.9780,146,America/Los_Angeles,-8.0000
+423,3650617,New Rochelle city,NY,85864,40.9115,-73.7823,37,America/New_York,-5.0000
+424,0685292,Whittier city,CA,85815,33.9792,-118.0328,117,America/Los_Angeles,-8.0000
+425,1236950,Kissimmee city,FL,85591,28.3047,-81.4167,23,America/New_York,-5.0000
+426,0649670,Mountain View city,CA,85438,37.3860,-122.0838,34,America/Los_Angeles,-8.0000
+427,0668084,San Leandro city,CA,85353,37.7249,-122.1561,19,America/Los_Angeles,-8.0000
+428,4943660,Layton city,UT,85308,41.0602,-111.9710,1327,America/Denver,-7.0000
+429,0103076,Auburn city,AL,85113,32.6099,-85.4808,220,America/Chicago,-6.0000
+430,4419180,Cranston city,RI,84647,41.7798,-71.4373,-1,America/New_York,-5.0000
+431,4846452,Mansfield city,TX,84444,32.5632,-97.1417,188,America/Chicago,-6.0000
+432,2562535,Somerville city,MA,84211,42.3876,-71.0995,31,America/New_York,-5.0000
+433,4474300,Warwick city,RI,84187,41.7001,-71.4162,-9,America/New_York,-5.0000
+434,0812415,Castle Rock town,CO,83815,39.3722,-104.8561,1903,America/Denver,-7.0000
+435,2707966,Brooklyn Park city,MN,83543,45.0941,-93.3563,263,America/Chicago,-6.0000
+436,0641992,Livermore city,CA,83457,37.6819,-121.7680,150,America/Los_Angeles,-8.0000
+437,1805860,Bloomington city,IN,83307,39.1653,-86.5264,243,America/Indiana/Indianapolis,-5.0000
+438,0535710,Jonesboro city,AR,83296,35.8423,-90.7043,96,America/Chicago,-6.0000
+439,2627440,Farmington Hills city,MI,83291,42.4853,-83.3772,260,America/Detroit,-5.0000
+440,0656700,Perris city,CA,83237,33.7825,-117.2286,445,America/Los_Angeles,-8.0000
+441,4843888,Longview city,TX,83236,32.5007,-94.7405,119,America/Chicago,-6.0000
+442,5353545,Pasco city,WA,82848,46.2396,-119.1006,115,America/Los_Angeles,-8.0000
+443,0632548,Hawthorne city,CA,82741,33.9164,-118.3526,24,America/Los_Angeles,-8.0000
+444,2241155,Lake Charles city,LA,82676,30.2131,-93.2044,6,America/Chicago,-6.0000
+445,5357535,Redmond city,WA,82506,47.6740,-122.1215,15,America/Los_Angeles,-8.0000
+446,1207875,Boynton Beach city,FL,82396,26.5254,-80.0664,11,America/New_York,-5.0000
+447,2686000,Westland city,MI,82333,42.3242,-83.4002,202,America/Detroit,-5.0000
+448,0660102,Redwood City city,CA,82178,37.4852,-122.2364,8,America/Los_Angeles,-8.0000
+449,0651182,Newport Beach city,CA,81977,33.6189,-117.9290,8,America/Los_Angeles,-8.0000
+450,1714351,Cicero town,IL,81858,41.8456,-87.7539,186,America/Chicago,-6.0000
+451,0608786,Buena Park city,CA,81741,33.8675,-117.9981,24,America/Los_Angeles,-8.0000
+452,1217935,Doral city,FL,81634,25.8195,-80.3553,9,America/New_York,-5.0000
+453,1245025,Miami Beach city,FL,81594,25.7906,-80.1300,10,America/New_York,-5.0000
+454,2771428,Woodbury city,MN,81558,44.9239,-92.9594,323,America/Chicago,-6.0000
+455,0846465,Loveland city,CO,81387,40.3978,-105.0750,1522,America/Denver,-7.0000
+456,5147672,Lynchburg city,VA,81347,37.4138,-79.1422,199,America/New_York,-5.0000
+457,4857200,Pharr city,TX,80830,26.1948,-98.1836,38,America/Chicago,-6.0000
+458,1239425,Largo city,FL,80690,27.9098,-82.7884,17,America/New_York,-5.0000
+459,4652980,Rapid City city,SD,80589,44.0805,-103.2310,990,America/Denver,-7.0000
+460,3701520,Apex town,NC,80419,35.7326,-78.8503,153,America/New_York,-5.0000
+461,1342425,Johns Creek city,GA,80401,34.0289,-84.1986,293,America/New_York,-5.0000
+462,0600884,Alhambra city,CA,79820,34.0953,-118.1270,153,America/Los_Angeles,-8.0000
+463,4206088,Bethlehem city,PA,79644,40.6259,-75.3705,111,America/New_York,-5.0000
+464,4826232,Flower Mound town,TX,79540,33.0146,-97.0970,186,America/Chicago,-6.0000
+465,0681344,Upland city,CA,79446,34.0975,-117.6484,380,America/Los_Angeles,-8.0000
+466,2629000,Flint city,MI,79306,43.0125,-83.6875,231,America/Detroit,-5.0000
+467,2735180,Lakeville city,MN,79270,44.6497,-93.2427,296,America/Chicago,-6.0000
+468,0809280,Broomfield city,CO,79174,39.9205,-105.0866,1649,America/Denver,-7.0000
+469,4813552,Cedar Park city,TX,79032,30.5052,-97.8203,278,America/Chicago,-6.0000
+470,2751730,Plymouth city,MN,78942,45.0105,-93.4555,292,America/Chicago,-6.0000
+471,3050200,Missoula city,MT,78903,46.8722,-113.9940,978,America/Denver,-7.0000
+472,1348288,Mableton city,GA,78820,33.8187,-84.5824,300,America/New_York,-5.0000
+473,1706613,Bloomington city,IL,78804,40.4842,-88.9937,246,America/Chicago,-6.0000
+474,0647766,Milpitas city,CA,78596,37.4283,-121.9066,5,America/Los_Angeles,-8.0000
+475,2688940,Wyoming city,MI,78588,42.9134,-85.7053,199,America/Detroit,-5.0000
+476,3961000,Parma city,OH,78581,41.4048,-81.7229,264,America/New_York,-5.0000
+477,2267303,St. George city,LA,78536,30.3621,-91.0673,9,America/Chicago,-6.0000
+478,2108902,Bowling Green city,KY,78505,36.9903,-86.4436,163,America/Chicago,-6.0000
+479,0444410,Maricopa city,AZ,78362,33.0581,-112.0476,356,America/Phoenix,-7.0000
+480,0639892,Lakewood city,CA,78010,33.8536,-118.1340,20,America/Los_Angeles,-8.0000
+481,3807200,Bismarck city,ND,77963,46.8083,-100.7837,520,America/Chicago,-6.0000
+482,5566000,Racine city,WI,77908,42.7261,-87.7828,192,America/Chicago,-6.0000
+483,0680854,Tustin city,CA,77843,33.7458,-117.8262,46,America/Los_Angeles,-8.0000
+484,1902305,Ankeny city,IA,77833,41.7297,-93.6058,300,America/Chicago,-6.0000
+485,4865600,San Marcos city,TX,77830,29.8833,-97.9414,194,America/Chicago,-6.0000
+486,5343955,Marysville city,WA,77686,48.0518,-122.1771,6,America/Los_Angeles,-8.0000
+487,0657456,Pittsburg city,CA,77542,38.0280,-121.8847,8,America/Los_Angeles,-8.0000
+488,2669035,Rochester Hills city,MI,77539,42.6584,-83.1499,250,America/Detroit,-5.0000
+489,0613214,Chino Hills city,CA,77519,33.9938,-117.7589,262,America/Los_Angeles,-8.0000
+490,4848804,Missouri City city,TX,77327,29.6186,-95.5377,26,America/Chicago,-6.0000
+491,0423620,Flagstaff city,AZ,77260,35.1981,-111.6513,2108,America/Phoenix,-7.0000
+492,1768003,Schaumburg village,IL,77249,42.0334,-88.0834,246,America/Chicago,-6.0000
+493,4454640,Pawtucket city,RI,77065,41.8787,-71.3826,-11,America/New_York,-5.0000
+494,0560410,Rogers city,AR,76956,36.3320,-94.1185,422,America/Chicago,-6.0000
+495,0600562,Alameda city,CA,76876,37.7710,-122.2609,11,America/Los_Angeles,-8.0000
+496,0662364,Rocklin city,CA,76821,38.7907,-121.2358,76,America/Los_Angeles,-8.0000
+497,1612250,Caldwell city,ID,76629,43.6629,-116.6874,723,America/Boise,-7.0000
+498,2706382,Blaine city,MN,76603,45.1608,-93.2350,273,America/Chicago,-6.0000
+499,0650258,Napa city,CA,76562,38.2971,-122.2855,9,America/Los_Angeles,-8.0000
