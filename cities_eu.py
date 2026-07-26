@@ -193,6 +193,31 @@ def _grid_cell(lat: float, lng: float) -> tuple[int, int]:
     return (round(lat / GRID_DEG), round(lng / GRID_DEG))
 
 
+def _select_station(
+    station_candidates: DataFrame,
+    claimed_stations: set[tuple[str, str]],
+    *,
+    verify: StationVerifier,
+    start_year: int,
+    end_year: int,
+) -> tuple[Any, tuple[str, str], list[str], bool] | None:
+    """Return the first unclaimed station with data for the required end year."""
+    for station in station_candidates.itertuples():
+        station_key = (str(station.USAF), str(station.WBAN))
+        if station_key in claimed_stations:
+            continue
+        candidate_ids = candidate_ids_for_station(*station_key)
+        if not candidate_ids or not verify(candidate_ids, end_year):
+            continue
+        return (
+            station,
+            station_key,
+            candidate_ids,
+            bool(verify(candidate_ids, start_year)),
+        )
+    return None
+
+
 def select_cities_eu(
     candidates: DataFrame,
     country_names: dict[str, str],
@@ -230,21 +255,13 @@ def select_cities_eu(
             start_year=start_year,
             end_year=end_year,
         )
-        selected: tuple[Any, tuple[str, str], list[str], bool] | None = None
-        for station in station_candidates.itertuples():
-            station_key = (str(station.USAF), str(station.WBAN))
-            if station_key in claimed_stations:
-                continue
-            candidate_ids = candidate_ids_for_station(*station_key)
-            if not candidate_ids or not verify(candidate_ids, end_year):
-                continue
-            selected = (
-                station,
-                station_key,
-                candidate_ids,
-                bool(verify(candidate_ids, start_year)),
-            )
-            break
+        selected = _select_station(
+            station_candidates,
+            claimed_stations,
+            verify=verify,
+            start_year=start_year,
+            end_year=end_year,
+        )
         if selected is None:
             continue
 
