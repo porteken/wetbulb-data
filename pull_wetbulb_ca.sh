@@ -2,7 +2,7 @@
 # Pull and optionally load the top-100 Canadian ECCC wet-bulb dataset.
 #
 # With no step arguments this generates inputs and performs the resumable
-# 1991-2025 ECCC pull. Database writes are explicit:
+# 2000-2025 ECCC pull. Database writes are explicit:
 #
 #   ./pull_wetbulb_ca.sh --yes load views
 #
@@ -24,7 +24,7 @@ CA_OUT_DIR=${CA_OUT_DIR:-ca}
 CA_CITIES_CSV=${CA_CITIES_CSV:-cities_ca.csv}
 CA_LOCATIONS_CSV=${CA_LOCATIONS_CSV:-locations_ca.csv}
 CA_STATION_MAP_CSV=${CA_STATION_MAP_CSV:-cities_ca_eccc_stations.csv}
-CA_START_YEAR=${CA_START_YEAR:-1991}
+CA_START_YEAR=${CA_START_YEAR:-2000}
 CA_END_YEAR=${CA_END_YEAR:-2025}
 CA_ECCC_CONCURRENCY=${CA_ECCC_CONCURRENCY:-4}
 CA_CDS_CONCURRENCY=${CA_CDS_CONCURRENCY:-2}

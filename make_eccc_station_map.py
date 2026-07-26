@@ -24,6 +24,7 @@ MAX_DISTANCE_KM = 100.0
 PREFERRED_DISTANCE_KM = 30.0
 EXTENDED_DISTANCE_KM = 60.0
 MAX_CANDIDATES = 3
+CANADA_START_YEAR = 2000
 
 _INVENTORY_ALIASES = {
     "Station ID": "station_id",
@@ -131,7 +132,7 @@ def build_station_map(
     cities_csv: str,
     inventory: DataFrame,
     *,
-    start_year: int = 1991,
+    start_year: int = CANADA_START_YEAR,
     end_year: int = 2025,
 ) -> DataFrame:
     """Return an ordered three-station ECCC crosswalk for each Canadian city."""
@@ -179,7 +180,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--cities-csv", default="cities_ca.csv")
     parser.add_argument("--inventory", default=STATION_INVENTORY_URL)
     parser.add_argument("--out", default="cities_ca_eccc_stations.csv")
-    parser.add_argument("--start-year", type=int, default=1991)
+    parser.add_argument("--start-year", type=int, default=CANADA_START_YEAR)
     parser.add_argument("--end-year", type=int, default=2025)
     return parser.parse_args()
 
