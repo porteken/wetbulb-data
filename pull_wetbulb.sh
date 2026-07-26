@@ -3,6 +3,14 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${HERE}"
+
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . .env
+  set +a
+fi
+
 CATALOG_VERSION="na-census-2025-csd-2021"
 OUTPUT_ROOT="${WETBULB_NA_ROOT:-na/${CATALOG_VERSION}}"
 STEPS=()
