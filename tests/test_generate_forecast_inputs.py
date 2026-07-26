@@ -110,7 +110,7 @@ def test_parse_args_defaults_resolve_within_the_working_directory(
 
     assert args.hadcrut_csv is None
     assert args.station_map == generate_forecast_inputs._safe_cli_path(
-        "cities_isd_stations.csv"
+        "cities_na_isd_stations.csv"
     )
     assert args.output_dir == generate_forecast_inputs._safe_cli_path("forecast_inputs")
 

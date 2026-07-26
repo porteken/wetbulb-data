@@ -1,4 +1,4 @@
-"""Prepare EU city data for the wetbulb pipeline (mirrors `cities.py` for the US)."""
+"""Prepare EU city data for the wetbulb pipeline."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from importlib import import_module
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
-from cities import CITY_COORD_DECIMALS, GRID_DEG
+from cities_na import CITY_COORD_DECIMALS
 
 type DataFrame = Any
 pd: Any = cast("Any", import_module("pandas"))
@@ -22,6 +22,7 @@ GEONAMES_COUNTRY_INFO_URL = "https://download.geonames.org/export/dump/countryIn
 
 EU_LOCATION_ID_OFFSET = 1000
 MAX_CITIES = 500
+GRID_DEG = 0.25
 
 _GEONAMES_COLUMNS = {
     1: "city",

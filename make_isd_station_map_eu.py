@@ -10,9 +10,16 @@ from typing import Any, cast
 import requests
 
 import nldas
+from isd_history import (
+    EARTH_RADIUS_KM,
+    MAX_ELEV_DELTA_M,
+    MAX_STATION_DISTANCE_KM,
+    candidate_ids_for_station,
+    haversine_km,
+    prepare_history,
+    rank_station_rows,
+)
 from make_isd_station_map import (
-    PLACEHOLDER_USAF,
-    PLACEHOLDER_WBAN,
     _candidate_verified_at,
     fetch_isd_history,
     write_station_map,
@@ -23,6 +30,15 @@ np = cast("Any", importlib.import_module("numpy"))
 
 type DataFrame = Any
 
+__all__ = [
+    "EARTH_RADIUS_KM",
+    "MAX_ELEV_DELTA_M",
+    "MAX_STATION_DISTANCE_KM",
+    "candidate_ids_for_station",
+    "haversine_km",
+    "rank_station_rows",
+]
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -32,9 +48,6 @@ LOGGER = logging.getLogger(__name__)
 
 CITIES_EU_CSV = "cities_eu.csv"
 EU_START_YEAR = 1991
-EARTH_RADIUS_KM = 6371.0088
-MAX_STATION_DISTANCE_KM = 60.0
-MAX_ELEV_DELTA_M = 300.0
 
 EUROPE_HISTORY_MIN_LAT = 30.0
 EUROPE_HISTORY_MAX_LAT = 75.0
@@ -42,87 +55,15 @@ EUROPE_HISTORY_MIN_LON = -30.0
 EUROPE_HISTORY_MAX_LON = 65.0
 
 
-def haversine_km(
-    lat1: DataFrame | float,
-    lon1: DataFrame | float,
-    lat2: DataFrame,
-    lon2: DataFrame,
-) -> DataFrame:
-    """Return the great-circle distance in km between one point and a series of points."""
-    lat1_rad = np.radians(lat1)
-    lat2_rad = np.radians(lat2)
-    dlat_rad = np.radians(lat2 - lat1)
-    dlon_rad = np.radians(lon2 - lon1)
-    a = (
-        np.sin(dlat_rad / 2.0) ** 2
-        + np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(dlon_rad / 2.0) ** 2
-    )
-    return 2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(a))
-
-
-def rank_station_rows(
-    history: DataFrame,
-    city_lat: float,
-    city_lng: float,
-    city_dem_m: float,
-    *,
-    start_year: int,
-    end_year: int,
-) -> DataFrame:
-    """Return candidate station rows within range, ranked by (coverage, distance)."""
-    dist_km = haversine_km(city_lat, city_lng, history["LAT_NUM"], history["LON_NUM"])
-    elev_delta = (history["ELEV_NUM"] - city_dem_m).abs()
-    within_range = (dist_km <= MAX_STATION_DISTANCE_KM) & (
-        elev_delta <= MAX_ELEV_DELTA_M
-    )
-    candidates = history[within_range].copy()
-    if candidates.empty:
-        return candidates
-    candidates["dist_km"] = dist_km[within_range]
-
-    begin_year = pd.to_numeric(candidates["BEGIN"].str[:4], errors="coerce")
-    end_year_col = pd.to_numeric(candidates["END"].str[:4], errors="coerce")
-    full_coverage = (begin_year <= start_year) & (end_year_col >= end_year - 1)
-    recent_only = end_year_col >= end_year - 1
-    candidates["coverage_bucket"] = np.where(
-        full_coverage, 0, np.where(recent_only, 1, 2)
-    )
-
-    return candidates.sort_values(["coverage_bucket", "dist_km"])
-
-
-def candidate_ids_for_station(usaf: str, wban: str) -> list[str]:
-    """Return the ordered id fallthrough for one physical station."""
-    ids: list[str] = []
-    if usaf != PLACEHOLDER_USAF and wban != PLACEHOLDER_WBAN:
-        ids.append(usaf + wban)
-    if usaf != PLACEHOLDER_USAF:
-        ids.append(usaf + PLACEHOLDER_WBAN)
-    if wban != PLACEHOLDER_WBAN:
-        ids.append(PLACEHOLDER_USAF + wban)
-
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for station_id in ids:
-        if station_id not in seen:
-            seen.add(station_id)
-            ordered.append(station_id)
-    return ordered
-
-
 def _prepare_history(history: DataFrame) -> DataFrame:
     """Numeric-parse and pre-filter the global inventory to a loose Europe bbox."""
-    history = history.copy()
-    history["LAT_NUM"] = pd.to_numeric(history["LAT"], errors="coerce")
-    history["LON_NUM"] = pd.to_numeric(history["LON"], errors="coerce")
-    history["ELEV_NUM"] = pd.to_numeric(history["ELEV(M)"], errors="coerce")
-    history = history.dropna(subset=["LAT_NUM", "LON_NUM", "ELEV_NUM"])
-    return history[
-        (history["LAT_NUM"] >= EUROPE_HISTORY_MIN_LAT)
-        & (history["LAT_NUM"] <= EUROPE_HISTORY_MAX_LAT)
-        & (history["LON_NUM"] >= EUROPE_HISTORY_MIN_LON)
-        & (history["LON_NUM"] <= EUROPE_HISTORY_MAX_LON)
-    ]
+    return prepare_history(
+        history,
+        min_lat=EUROPE_HISTORY_MIN_LAT,
+        max_lat=EUROPE_HISTORY_MAX_LAT,
+        min_lon=EUROPE_HISTORY_MIN_LON,
+        max_lon=EUROPE_HISTORY_MAX_LON,
+    )
 
 
 def _select_city_station(

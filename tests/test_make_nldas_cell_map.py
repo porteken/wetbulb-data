@@ -85,7 +85,7 @@ class TestParseArgs:
     def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(sys, "argv", ["make_nldas_cell_map.py"])
         args = cellmap._parse_args()
-        assert args.cities_csv == "cities.csv"
+        assert args.cities_csv == "cities_na.csv"
         assert args.out == "cities_nldas_cells.csv"
 
     def test_overrides(self, monkeypatch: pytest.MonkeyPatch) -> None:

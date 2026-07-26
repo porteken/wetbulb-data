@@ -14,8 +14,8 @@ LOGGER = logging.getLogger(__name__)
 
 EU_CITIES_CSV = "cities_eu.csv"
 EU_STATION_MAP_CSV = "cities_eu_isd_stations.csv"
-CA_CITIES_CSV = "cities_ca.csv"
-CA_STATION_MAP_CSV = "cities_ca_eccc_stations.csv"
+NA_CITIES_CSV = "cities_na.csv"
+NA_STATION_MAP_CSV = "cities_na_isd_stations.csv"
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -29,10 +29,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--months", type=int, nargs="+")
     parser.add_argument(
         "--wetbulb-source",
-        choices=["isd", "lcd", "giovanni", "nldas", "eccc"],
+        choices=["isd", "lcd", "giovanni", "nldas"],
         default="isd",
     )
-    parser.add_argument("--region", choices=["us", "eu", "ca"], default="us")
+    parser.add_argument("--region", choices=["na", "eu"], default="na")
     parser.add_argument("--out-dir", default=".")
     parser.add_argument("--city-shard-count", type=int, default=1)
     parser.add_argument(
@@ -68,7 +68,7 @@ def _validated_positive_integer(value: int, option: str) -> int:
 
 def _validated_source(value: str) -> str:
     """Return one of the fixed child-program names."""
-    if not re.fullmatch(r"isd|lcd|giovanni|nldas|eccc", value):
+    if not re.fullmatch(r"isd|lcd|giovanni|nldas", value):
         msg = "--wetbulb-source must name a supported source"
         raise argparse.ArgumentTypeError(msg)
     return value
@@ -76,8 +76,8 @@ def _validated_source(value: str) -> str:
 
 def _validated_region(value: str) -> str:
     """Return one of the fixed region names."""
-    if not re.fullmatch(r"us|eu|ca", value):
-        msg = "--region must be 'us', 'eu', or 'ca'"
+    if not re.fullmatch(r"na|eu", value):
+        msg = "--region must be 'na' or 'eu'"
         raise argparse.ArgumentTypeError(msg)
     return value
 
@@ -94,7 +94,7 @@ def _command(
     months: list[int] | None,
     year: int,
 ) -> list[str]:
-    if wetbulb_source in {"isd", "lcd", "giovanni", "eccc"}:
+    if wetbulb_source in {"isd", "lcd", "giovanni"}:
         command = [
             sys.executable,
             f"{wetbulb_source}.py",
@@ -120,13 +120,13 @@ def _command(
                     EU_STATION_MAP_CSV,
                 ],
             )
-        elif region == "ca":
+        elif region == "na":
             command.extend(
                 [
                     "--cities-csv",
-                    CA_CITIES_CSV,
+                    NA_CITIES_CSV,
                     "--station-map-csv",
-                    CA_STATION_MAP_CSV,
+                    NA_STATION_MAP_CSV,
                 ],
             )
         return command
@@ -161,20 +161,11 @@ def main(argv: list[str] | None = None) -> None:
     if region == "eu" and wetbulb_source != "isd":
         msg = "--region eu only supports --wetbulb-source isd"
         raise argparse.ArgumentTypeError(msg)
-    if region == "ca" and wetbulb_source != "eccc":
-        msg = "--region ca only supports --wetbulb-source eccc"
-        raise argparse.ArgumentTypeError(msg)
     if region == "eu" and out_dir == ".":
         LOGGER.warning(
             "--region eu with the default --out-dir would share parquet "
-            "partition filenames with any US run; pass a distinct --out-dir "
+            "partition filenames with any North America run; pass a distinct --out-dir "
             "(e.g. 'eu').",
-        )
-    if region == "ca" and out_dir == ".":
-        LOGGER.warning(
-            "--region ca with the default --out-dir would share parquet "
-            "partition filenames with a US run; pass a distinct --out-dir "
-            "(e.g. 'ca').",
         )
     city_shard_count = _validated_positive_integer(
         args.city_shard_count, "--city-shard-count"

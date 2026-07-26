@@ -161,7 +161,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--station-map",
         type=_safe_cli_path,
-        default=_safe_cli_path("cities_isd_stations.csv"),
+        default=_safe_cli_path("cities_na_isd_stations.csv"),
     )
     parser.add_argument(
         "--output-dir", type=_safe_cli_path, default=_safe_cli_path("forecast_inputs")

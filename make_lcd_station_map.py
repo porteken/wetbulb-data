@@ -229,7 +229,7 @@ def _pick_station(
 
 
 def build_station_map(
-    cities_csv: str = "cities.csv",
+    cities_csv: str = "cities_na.csv",
     *,
     session: requests.Session | None = None,
     start_year: int = nldas.NLDAS_START_YEAR,
@@ -327,7 +327,7 @@ def build_station_map(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cities-csv", default="cities.csv")
+    parser.add_argument("--cities-csv", default="cities_na.csv")
     parser.add_argument("--out", default="cities_lcd_stations.csv")
     parser.add_argument("--start-year", type=int, default=nldas.NLDAS_START_YEAR)
     parser.add_argument("--end-year", type=int, default=nldas.NLDAS_END_YEAR)

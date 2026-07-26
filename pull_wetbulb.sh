@@ -3,8 +3,8 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${HERE}"
-CATALOG_VERSION="census-2025"
-OUTPUT_ROOT="${WETBULB_US_ROOT:-us/${CATALOG_VERSION}}"
+CATALOG_VERSION="na-census-2025-csd-2021"
+OUTPUT_ROOT="${WETBULB_NA_ROOT:-na/${CATALOG_VERSION}}"
 STEPS=()
 DRY_RUN=0
 CONFIRM_DB=0
@@ -45,7 +45,7 @@ if ((${#STEPS[@]} == 0)); then
 fi
 [[ "${SHARD_COUNT}" =~ ^[1-9][0-9]*$ ]] || { echo "invalid shard count" >&2; exit 2; }
 
-MANIFEST="${HERE}/cities.catalog.json"
+MANIFEST="${HERE}/cities_na.catalog.json"
 mkdir -p "${OUTPUT_ROOT}"
 check_catalog() {
   [[ -f "${MANIFEST}" ]] || { echo "missing committed ${MANIFEST}" >&2; exit 1; }
@@ -64,10 +64,9 @@ check_catalog() {
 for step in "${STEPS[@]}"; do
   case "${step}" in
     cities)
-      run python3 "${HERE}/cities.py"
+      run python3 "${HERE}/cities_na.py"
       ;;
     crosswalk)
-      run python3 "${HERE}/make_isd_station_map.py"
       run python3 "${HERE}/make_nldas_cell_map.py"
       run python3 "${HERE}/make_lcd_station_map.py"
       run python3 "${HERE}/generate_forecast_inputs.py"
@@ -101,7 +100,7 @@ for step in "${STEPS[@]}"; do
       ;;
     validate)
       check_catalog
-      run python3 "${HERE}/validate_us_catalog.py" --root "${OUTPUT_ROOT}"
+      run python3 "${HERE}/validate_na_catalog.py" --root "${OUTPUT_ROOT}"
       ;;
     load)
       ((CONFIRM_DB)) || { echo "load requires --confirm-db-write" >&2; exit 1; }

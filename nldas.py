@@ -334,7 +334,7 @@ def resolve_location_indices(
 def load_nldas_city_shard(
     city_shard_index: int,
     city_shard_count: int,
-    cities_csv: str = "cities.csv",
+    cities_csv: str = "cities_na.csv",
 ) -> DataFrame:
     """Return the slice of `cities_csv` assigned to this city shard."""
     cities_df = pd.read_csv(cities_csv, usecols=["location_id", "lat", "lng"])

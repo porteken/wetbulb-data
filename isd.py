@@ -52,7 +52,7 @@ ISD_MAX_RETRIES = 3
 ISD_RETRY_DELAY_SECONDS = 5
 ISD_DEFAULT_CONCURRENCY = 8
 
-STATION_MAP_PATH = "cities_isd_stations.csv"
+STATION_MAP_PATH = "cities_na_isd_stations.csv"
 _STATION_MAP_WARNED = [False]
 
 _HOURLY_FRAME_COLUMNS = ("time", "tair_c", "dewpoint_c", "pressure_hpa")
@@ -200,7 +200,7 @@ def _parse_isd_response(
             ).dropna()
             station_lon = float(observed_lon.iloc[0]) if not observed_lon.empty else 0.0
         utc_offset_hours = round(station_lon / 15.0)
-    local_time = hourly["time_utc"] + pd.to_timedelta(int(utc_offset_hours), unit="h")
+    local_time = hourly["time_utc"] + pd.to_timedelta(float(utc_offset_hours), unit="h")
 
     return pd.DataFrame(
         {
@@ -348,7 +348,7 @@ def process_isd(
     concurrency: int,
     *,
     force: bool = False,
-    cities_csv: str = "cities.csv",
+    cities_csv: str = "cities_na.csv",
     station_map_csv: str | None = None,
 ) -> None:
     """Fetch NOAA ISD station data, compute daily wet-bulb, and save as parquet shards."""

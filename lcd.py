@@ -48,7 +48,7 @@ LCD_RETRY_DELAY_SECONDS = 5
 LCD_DEFAULT_CONCURRENCY = 8
 
 STATION_MAP_PATH = "cities_lcd_stations.csv"
-DEFAULT_CITIES_CSV = "cities.csv"
+DEFAULT_CITIES_CSV = "cities_na.csv"
 _STATION_MAP_WARNED = [False]
 
 _HOURLY_FRAME_COLUMNS = ("time", "tair_c", "dewpoint_c", "pressure_hpa")

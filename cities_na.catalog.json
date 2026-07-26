@@ -1,0 +1,16 @@
+{
+  "ca_population_vintage": 2021,
+  "catalog_sha256": "9ab6b8f1ad8d51c4752048ac369e9fe3c7c3afa61ef718d60bb475fdbe6c932e",
+  "catalog_version": "na-census-2025-csd-2021",
+  "generated_at": "2026-07-26T21:28:17.030648+00:00",
+  "grid_deg": 0.1,
+  "max_cities": 500,
+  "sources": {
+    "census_estimates": "https://www2.census.gov/programs-surveys/popest/datasets/2020-2025/cities/totals/sub-est2025.csv",
+    "census_gazetteer": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2025_Gazetteer/2025_Gaz_place_national.zip",
+    "geonames_cities": "https://download.geonames.org/export/dump/cities15000.zip",
+    "geosuite_csd": "https://www12.statcan.gc.ca/census-recensement/2021/geo/aip-pia/geosuite/files-fichiers/2021_92-150-X_eng.zip",
+    "isd_history": "https://www.ncei.noaa.gov/pub/data/noaa/isd-history.csv"
+  },
+  "us_population_vintage": 2025
+}

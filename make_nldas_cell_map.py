@@ -28,7 +28,7 @@ _CANDIDATE_HOURS = [
 ]
 
 
-def build_cell_map(cities_csv: str = "cities.csv") -> DataFrame:
+def build_cell_map(cities_csv: str = "cities_na.csv") -> DataFrame:
     """Return a DataFrame of location_id, cell_lat, cell_lon, snapped."""
     cities_df = pd.read_csv(cities_csv, usecols=["location_id", "lat", "lng"])
     cities_df = cities_df.sort_values("location_id").reset_index(drop=True)
@@ -68,7 +68,7 @@ def build_cell_map(cities_csv: str = "cities.csv") -> DataFrame:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cities-csv", default="cities.csv")
+    parser.add_argument("--cities-csv", default="cities_na.csv")
     parser.add_argument("--out", default="cities_nldas_cells.csv")
     return parser.parse_args()
 

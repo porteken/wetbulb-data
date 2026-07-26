@@ -1,4 +1,4 @@
-"""Generate the database-ready locations CSV from the pipeline's cities.csv."""
+"""Generate the database-ready locations CSV from the North America catalog."""
 
 from __future__ import annotations
 
@@ -8,31 +8,18 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, cast
 
-from cities import (
-    CITIES_SOURCE_URL,
-    CITY_COORD_DECIMALS,
-    DataFrame,
-    filter_bounding_box,
-    load_data,
-    process_cities,
-)
-from cities import main as generate_cities_csv
+from cities_na import CITY_COORD_DECIMALS, DataFrame
+from cities_na import main as generate_cities_csv
 
 pd: Any = cast("Any", import_module("pandas"))
 
 LOGGER = logging.getLogger(__name__)
 OUTPUT_FILE = "locations.csv"
-CITIES_CSV = "cities.csv"
-
-
-def build_locations_frame(url: str = CITIES_SOURCE_URL) -> DataFrame:
-    """Return processed city rows with the database column name for the key."""
-    city_frame = process_cities(filter_bounding_box(load_data(url)))
-    return city_frame.rename(columns={"location_id": "id"})
+CITIES_CSV = "cities_na.csv"
 
 
 def locations_frame_from_cities_csv(csv_path: str | Path = CITIES_CSV) -> DataFrame:
-    """Derive the locations frame from an existing cities.csv."""
+    """Derive database columns from an existing city catalog."""
     city_frame = pd.read_csv(csv_path)
     return city_frame.rename(columns={"location_id": "id"})[
         ["id", "city", "state", "lat", "lng"]

@@ -37,6 +37,10 @@ def test_main_runs_fixed_python_command_without_a_shell(
                 "4",
                 "--out-dir",
                 ".",
+                "--cities-csv",
+                pipeline.NA_CITIES_CSV,
+                "--station-map-csv",
+                pipeline.NA_STATION_MAP_CSV,
             ],
             True,
             False,
@@ -96,42 +100,21 @@ def test_eu_region_with_default_out_dir_warns(
     assert any("--out-dir" in message for message in caplog.messages)
 
 
-def test_us_region_is_unaffected(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Default region behaves exactly as before -- no EU flags appended."""
+def test_na_region_uses_combined_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default region passes the combined catalog and station crosswalk."""
     calls: list[list[str]] = []
     monkeypatch.setattr(
         pipeline.subprocess, "run", lambda command, **_k: calls.append(command)
     )
     pipeline.main(["--years", "2025", "--wetbulb-source", "isd"])
-    assert "--cities-csv" not in calls[0]
-
-
-def test_ca_region_uses_eccc_crosswalk(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[list[str]] = []
-    monkeypatch.setattr(
-        pipeline.subprocess, "run", lambda command, **_kwargs: calls.append(command)
-    )
-    pipeline.main(
-        [
-            "--years",
-            "2025",
-            "--wetbulb-source",
-            "eccc",
-            "--region",
-            "ca",
-            "--out-dir",
-            "ca",
-        ]
-    )
-    assert calls[0][1] == "eccc.py"
     assert calls[0][-4:] == [
         "--cities-csv",
-        pipeline.CA_CITIES_CSV,
+        pipeline.NA_CITIES_CSV,
         "--station-map-csv",
-        pipeline.CA_STATION_MAP_CSV,
+        pipeline.NA_STATION_MAP_CSV,
     ]
 
 
-def test_ca_region_rejects_non_eccc_source() -> None:
-    with pytest.raises(argparse.ArgumentTypeError, match="--region ca"):
-        pipeline.main(["--wetbulb-source", "isd", "--region", "ca"])
+def test_old_region_names_are_rejected() -> None:
+    with pytest.raises(SystemExit):
+        pipeline.main(["--region", "us"])

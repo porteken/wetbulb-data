@@ -17,7 +17,7 @@ on:
         description: "Concurrent city fetches within one shard job"
         default: "8"
       clear_prefix:
-        description: "Explicitly clear the census-2025 U.S. prefix before fetching"
+        description: "Explicitly clear the North America catalog prefix before fetching"
         type: boolean
         default: false
       skip_db_load:
@@ -69,7 +69,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
-        run: python3 clear_s3_prefix.py --bucket wetbulb-parquet-files --prefix us/census-2025/wetbulb_data_csv/ --max-workers 8
+        run: python3 clear_s3_prefix.py --bucket wetbulb-parquet-files --prefix na/na-census-2025-csd-2021/wetbulb_data_csv/ --max-workers 8
 
   fetch:
     needs: [prepare, clear-wetbulb-output]
@@ -111,7 +111,7 @@ jobs:
             --city-shard-index ${{ matrix.shard }} \
             --city-shard-count "$SHARD_COUNT" \
             --concurrency "$CONCURRENCY" \
-            --out-dir s3://wetbulb-parquet-files/us/census-2025
+            --out-dir s3://wetbulb-parquet-files/na/na-census-2025-csd-2021
 
   load-to-db:
     if: ${{ !inputs.skip_db_load }}
@@ -138,7 +138,7 @@ jobs:
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
         run: |
           mkdir -p wetbulb_data_csv
-          aws s3 sync s3://wetbulb-parquet-files/us/census-2025/wetbulb_data_csv/ ./wetbulb_data_csv/ --delete
+          aws s3 sync s3://wetbulb-parquet-files/na/na-census-2025-csd-2021/wetbulb_data_csv/ ./wetbulb_data_csv/ --delete
       - name: Load wetbulb into Postgres (full rebuild)
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}

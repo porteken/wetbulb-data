@@ -18,3 +18,4 @@ tmp_*/
 weather_data_parquet_test/
 *.parquet
 *.csv
+!cities_na.csv

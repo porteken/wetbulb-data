@@ -23,9 +23,9 @@ def test_main_derives_locations_from_cities_csv(
     monkeypatch.setattr(
         locations,
         "_parse_args",
-        lambda: argparse.Namespace(cities_csv="cities.csv", out="locations.csv"),
+        lambda: argparse.Namespace(cities_csv="cities_na.csv", out="locations.csv"),
     )
-    (tmp_path / "cities.csv").write_text(CITIES_CSV_CONTENT, encoding="utf-8")
+    (tmp_path / "cities_na.csv").write_text(CITIES_CSV_CONTENT, encoding="utf-8")
     output_file = tmp_path / "locations.csv"
 
     locations.main()
@@ -43,11 +43,11 @@ def test_main_generates_cities_csv_when_missing(
     monkeypatch.setattr(
         locations,
         "_parse_args",
-        lambda: argparse.Namespace(cities_csv="cities.csv", out="locations.csv"),
+        lambda: argparse.Namespace(cities_csv="cities_na.csv", out="locations.csv"),
     )
 
     def fake_generate() -> None:
-        (tmp_path / "cities.csv").write_text(CITIES_CSV_CONTENT, encoding="utf-8")
+        (tmp_path / "cities_na.csv").write_text(CITIES_CSV_CONTENT, encoding="utf-8")
 
     monkeypatch.setattr(locations, "generate_cities_csv", fake_generate)
 
@@ -81,29 +81,6 @@ def test_locations_frame_from_cities_csv_renames_location_id_to_id(
     csv_path.write_text(CITIES_CSV_CONTENT, encoding="utf-8")
 
     result = locations.locations_frame_from_cities_csv(csv_path)
-
-    assert list(result.columns) == ["id", "city", "state", "lat", "lng"]
-    assert result.iloc[0]["id"] == 0
-
-
-def test_build_locations_frame_renames_location_id_to_id(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sample = pd.DataFrame(
-        {
-            "location_id": [0],
-            "city": ["Test ville"],
-            "state": ["TS"],
-            "lat": [30.123],
-            "lng": [-90.456],
-        }
-    )
-
-    monkeypatch.setattr(locations, "load_data", lambda _url: pd.DataFrame())
-    monkeypatch.setattr(locations, "filter_bounding_box", lambda df: df)
-    monkeypatch.setattr(locations, "process_cities", lambda _df: sample)
-
-    result = locations.build_locations_frame("https://example.test/cities.csv")
 
     assert list(result.columns) == ["id", "city", "state", "lat", "lng"]
     assert result.iloc[0]["id"] == 0
