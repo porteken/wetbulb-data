@@ -17,6 +17,12 @@ def test_clean_place_name_removes_legal_suffix_and_uses_override() -> None:
     assert cities_na.clean_place_name("Macon-Bibb County", "1349008") == "Macon"
 
 
+def test_clean_place_name_strips_only_the_trailing_legal_suffix() -> None:
+    assert cities_na.clean_place_name("Kansas City city", "0000000") == "Kansas City"
+    assert cities_na.clean_place_name("Jersey City city", "0000000") == "Jersey City"
+    assert cities_na.clean_place_name("Carson City city", "0000000") == "Carson City"
+
+
 def test_load_census_places_keeps_incorporated_conus_places() -> None:
     payload = (
         b"SUMLEV,STATE,PLACE,NAME,POPESTIMATE2025\n"

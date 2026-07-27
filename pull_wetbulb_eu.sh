@@ -131,13 +131,18 @@ step_trial() {
 step_backfill() {
   require_file "${EU_STATION_MAP_CSV}" crosswalk
   log "[backfill] ISD ${EU_START_YEAR}-${EU_END_YEAR} into ${EU_OUT_DIR}" \
-    "(${EU_CITY_SHARDS} shard(s) x ${EU_ISD_CONCURRENCY} threads); resumable"
-  run_sharded isd.py \
-    --cities-csv "${EU_CITIES_CSV}" \
-    --station-map-csv "${EU_STATION_MAP_CSV}" \
-    --start-year "${EU_START_YEAR}" --end-year "${EU_END_YEAR}" \
-    --out-dir "${EU_OUT_DIR}" \
-    --concurrency "${EU_ISD_CONCURRENCY}"
+    "(${EU_CITY_SHARDS} shard(s) x ${EU_ISD_CONCURRENCY} threads);" \
+    "processing one year at a time to bound memory; resumable"
+  local year
+  for ((year = EU_START_YEAR; year <= EU_END_YEAR; year++)); do
+    log "[backfill] ISD year ${year}"
+    run_sharded isd.py \
+      --cities-csv "${EU_CITIES_CSV}" \
+      --station-map-csv "${EU_STATION_MAP_CSV}" \
+      --start-year "${year}" --end-year "${year}" \
+      --out-dir "${EU_OUT_DIR}" \
+      --concurrency "${EU_ISD_CONCURRENCY}"
+  done
   log "[backfill] done"
 }
 

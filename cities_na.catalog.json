@@ -1,8 +1,8 @@
 {
   "ca_population_vintage": 2021,
-  "catalog_sha256": "9ab6b8f1ad8d51c4752048ac369e9fe3c7c3afa61ef718d60bb475fdbe6c932e",
+  "catalog_sha256": "da36e9b66f332e7991936753b5545bf3d2eeaddffdd94acbc79ca06f34e41065",
   "catalog_version": "na-census-2025-csd-2021",
-  "generated_at": "2026-07-26T21:28:17.030648+00:00",
+  "generated_at": "2026-07-27T03:35:29.415285+00:00",
   "grid_deg": 0.1,
   "max_cities": 500,
   "sources": {

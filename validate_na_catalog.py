@@ -12,11 +12,31 @@ from pathlib import Path
 import pandas as pd
 
 from cities_na import ERA5_LAND_GRID_DEG, MAX_CITIES
-from isd_history import MAX_ELEV_DELTA_M, MAX_STATION_DISTANCE_KM
+from isd_history import MAX_ELEV_DELTA_M, MAX_STATION_DISTANCE_KM, haversine_km
+from make_city_center_map_na import MAX_CENTER_OFFSET_KM
 
 
 def _grid_cell(value: pd.Series) -> pd.Series:
     return (value / ERA5_LAND_GRID_DEG).round().astype(int)
+
+
+def validate_city_centers(cities: pd.DataFrame, centers_path: Path) -> None:
+    """Check the display-coordinate map still lines up with the catalog it was built from."""
+    if not centers_path.exists():
+        return
+    centers = pd.read_csv(centers_path)
+    if centers["location_id"].tolist() != cities["location_id"].tolist():
+        raise ValueError("center map must contain one ordered row per city")
+    if centers.isna().any().any():
+        raise ValueError("center map requires fully resolved coordinates")
+    drift = haversine_km(
+        cities["lat"].to_numpy(),
+        cities["lng"].to_numpy(),
+        centers["center_lat"].to_numpy(),
+        centers["center_lng"].to_numpy(),
+    )
+    if (drift > MAX_CENTER_OFFSET_KM).any():
+        raise ValueError("center map is stale: rerun make_city_center_map_na.py")
 
 
 def validate_catalog(base: Path = Path()) -> None:
@@ -59,6 +79,8 @@ def validate_catalog(base: Path = Path()) -> None:
     )
     if ((elevations["dem_m"] - elevations["elev_m"]).abs() > MAX_ELEV_DELTA_M).any():
         raise ValueError("ISD station exceeds 300 m elevation difference")
+
+    validate_city_centers(cities, base / "cities_na_centers.csv")
 
 
 def main() -> None:

@@ -23,7 +23,11 @@ def test_main_derives_locations_from_cities_csv(
     monkeypatch.setattr(
         locations,
         "_parse_args",
-        lambda: argparse.Namespace(cities_csv="cities_na.csv", out="locations.csv"),
+        lambda: argparse.Namespace(
+            cities_csv="cities_na.csv",
+            centers_csv="cities_na_centers.csv",
+            out="locations.csv",
+        ),
     )
     (tmp_path / "cities_na.csv").write_text(CITIES_CSV_CONTENT, encoding="utf-8")
     output_file = tmp_path / "locations.csv"
@@ -43,7 +47,11 @@ def test_main_generates_cities_csv_when_missing(
     monkeypatch.setattr(
         locations,
         "_parse_args",
-        lambda: argparse.Namespace(cities_csv="cities_na.csv", out="locations.csv"),
+        lambda: argparse.Namespace(
+            cities_csv="cities_na.csv",
+            centers_csv="cities_na_centers.csv",
+            out="locations.csv",
+        ),
     )
 
     def fake_generate() -> None:
@@ -64,7 +72,11 @@ def test_main_uses_custom_cities_csv_and_out(
     monkeypatch.setattr(
         locations,
         "_parse_args",
-        lambda: argparse.Namespace(cities_csv="cities_eu.csv", out="locations_eu.csv"),
+        lambda: argparse.Namespace(
+            cities_csv="cities_eu.csv",
+            centers_csv="cities_na_centers.csv",
+            out="locations_eu.csv",
+        ),
     )
 
     locations.main()
@@ -84,3 +96,69 @@ def test_locations_frame_from_cities_csv_renames_location_id_to_id(
 
     assert list(result.columns) == ["id", "city", "state", "lat", "lng"]
     assert result.iloc[0]["id"] == 0
+
+
+CENTERS_CSV_CONTENT = (
+    "location_id,center_lat,center_lng,offset_km,matched\n0,30.5,-90.9,5.2,True\n"
+)
+
+
+def test_apply_city_centers_replaces_catalog_coordinates(
+    tmp_path: pathlib.Path,
+) -> None:
+    centers_path = tmp_path / "centers.csv"
+    centers_path.write_text(CENTERS_CSV_CONTENT, encoding="utf-8")
+    frame = pd.DataFrame(
+        {
+            "id": [0],
+            "city": ["Test ville"],
+            "state": ["TS"],
+            "lat": [30.123],
+            "lng": [-90.456],
+        }
+    )
+
+    result = locations.apply_city_centers(frame, centers_path)
+
+    assert list(result.columns) == ["id", "city", "state", "lat", "lng"]
+    assert result.iloc[0]["lat"] == 30.5
+    assert result.iloc[0]["lng"] == -90.9
+
+
+def test_apply_city_centers_keeps_coordinates_without_a_center_row(
+    tmp_path: pathlib.Path,
+) -> None:
+    centers_path = tmp_path / "centers.csv"
+    centers_path.write_text(CENTERS_CSV_CONTENT, encoding="utf-8")
+    frame = pd.DataFrame(
+        {
+            "id": [1000],
+            "city": ["Berlin"],
+            "state": ["Germany"],
+            "lat": [52.5244],
+            "lng": [13.4105],
+        }
+    )
+
+    result = locations.apply_city_centers(frame, centers_path)
+
+    assert result.iloc[0]["lat"] == 52.5244
+    assert result.iloc[0]["lng"] == 13.4105
+
+
+def test_apply_city_centers_without_a_center_file_is_a_passthrough(
+    tmp_path: pathlib.Path,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "id": [0],
+            "city": ["Test ville"],
+            "state": ["TS"],
+            "lat": [30.123],
+            "lng": [-90.456],
+        }
+    )
+
+    result = locations.apply_city_centers(frame, tmp_path / "missing.csv")
+
+    assert result.iloc[0]["lat"] == 30.123

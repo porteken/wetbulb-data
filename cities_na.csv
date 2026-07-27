@@ -25,7 +25,7 @@ location_id,place_id,city,state,country,population,lat,lng,dem_m,timezone,utc_of
 23,CA4611040,Winnipeg,MB,CA,749607,49.8638,-97.1566,245,America/Winnipeg,-6.0000
 24,US0820000,Denver,CO,US,740613,39.7619,-104.8811,1651,America/Denver,-7.0000
 25,US4752006,Nashville,TN,US,721074,36.1718,-86.7850,171,America/Chicago,-6.0000
-26,US4055000,Oklahoma,OK,US,719849,35.4671,-97.5137,395,America/Chicago,-6.0000
+26,US4055000,Oklahoma City,OK,US,719849,35.4671,-97.5137,395,America/Chicago,-6.0000
 27,CA3521005,Mississauga,ON,CA,717961,43.5946,-79.6557,159,America/Toronto,-5.0000
 28,US1150000,Washington,DC,US,693645,38.9042,-77.0165,15,America/New_York,-5.0000
 29,US4824000,El Paso,TX,US,683012,31.8478,-106.4311,1137,America/Denver,-7.0000
@@ -47,7 +47,7 @@ location_id,place_id,city,state,country,population,lat,lng,dem_m,timezone,utc_of
 45,US0477000,Tucson,AZ,US,548371,32.1530,-110.8708,757,America/Phoenix,-7.0000
 46,US0664000,Sacramento,CA,US,536449,38.5677,-121.4682,14,America/Los_Angeles,-8.0000
 47,US1304000,Atlanta,GA,US,529110,33.7629,-84.4227,336,America/New_York,-5.0000
-48,US2938000,Kansas,MO,US,521220,39.1252,-94.5503,290,America/Chicago,-6.0000
+48,US2938000,Kansas City,MO,US,521220,39.1252,-94.5503,290,America/Chicago,-6.0000
 49,US0446000,Mesa,AZ,US,513656,33.3994,-111.7160,377,America/Phoenix,-7.0000
 50,US3755000,Raleigh,NC,US,506306,35.8319,-78.6410,124,America/New_York,-5.0000
 51,US0816000,Colorado Springs,CO,US,494743,38.8673,-104.7607,1965,America/Denver,-7.0000
@@ -85,7 +85,7 @@ location_id,place_id,city,state,country,population,lat,lng,dem_m,timezone,utc_of
 83,US4261000,Pittsburgh,PA,US,307632,40.4399,-79.9757,239,America/New_York,-5.0000
 84,US2758000,St. Paul,MN,US,306684,44.9489,-93.1041,242,America/Chicago,-6.0000
 85,US3719000,Durham,NC,US,305561,35.9779,-78.8981,121,America/New_York,-5.0000
-86,US3436000,Jersey,NJ,US,302013,40.7114,-74.0648,11,America/New_York,-5.0000
+86,US3436000,Jersey City,NJ,US,302013,40.7114,-74.0648,11,America/New_York,-5.0000
 87,US3128000,Lincoln,NE,US,301522,40.8103,-96.6749,366,America/Chicago,-6.0000
 88,US3251800,North Las Vegas,NV,US,296653,36.2899,-115.0892,561,America/Los_Angeles,-8.0000
 89,US4858016,Plano,TX,US,293028,33.0508,-96.7479,207,America/Chicago,-6.0000
@@ -131,7 +131,7 @@ location_id,place_id,city,state,country,population,lat,lng,dem_m,timezone,utc_of
 129,US0665000,San Bernardino,CA,US,222044,34.1411,-117.2946,324,America/Los_Angeles,-8.0000
 130,US0624680,Fontana,CA,US,221223,34.1097,-117.4629,378,America/Los_Angeles,-8.0000
 131,US0648354,Modesto,CA,US,219652,37.6375,-121.0030,29,America/Los_Angeles,-8.0000
-132,US4967000,Salt Lake,UT,US,218428,40.7769,-111.9310,1311,America/Denver,-7.0000
+132,US4967000,Salt Lake City,UT,US,218428,40.7769,-111.9310,1311,America/Denver,-7.0000
 133,US0649270,Moreno Valley,CA,US,214263,33.9233,-117.2057,499,America/Los_Angeles,-8.0000
 134,US2582000,Worcester,MA,US,213862,42.2695,-71.8078,164,America/New_York,-5.0000
 135,CA3524001,Oakville,ON,CA,213759,43.4540,-79.7245,99,America/Toronto,-5.0000
@@ -197,7 +197,7 @@ location_id,place_id,city,state,country,population,lat,lng,dem_m,timezone,utc_of
 195,US5101000,Alexandria,VA,US,160662,38.8193,-77.0837,15,America/New_York,-5.0000
 196,US4513330,Charleston,SC,US,159423,32.8280,-79.9729,4,America/New_York,-5.0000
 197,US0664224,Salinas,CA,US,159134,36.6902,-121.6338,17,America/Los_Angeles,-8.0000
-198,US2036000,Kansas,KS,US,157805,39.1225,-94.7418,328,America/Chicago,-6.0000
+198,US2036000,Kansas City,KS,US,157805,39.1225,-94.7418,328,America/Chicago,-6.0000
 199,US1349008,Macon,GA,US,157556,32.8090,-83.6941,118,America/New_York,-5.0000
 200,US0633000,Hayward,CA,US,157113,37.6268,-122.1040,32,America/Los_Angeles,-8.0000
 201,US1232000,Hollywood,FL,US,157019,26.0310,-80.1646,10,America/New_York,-5.0000
@@ -245,7 +245,7 @@ location_id,place_id,city,state,country,population,lat,lng,dem_m,timezone,utc_of
 243,US0680000,Torrance,CA,US,138391,33.8305,-118.3566,33,America/Los_Angeles,-8.0000
 244,US0653980,Orange,CA,US,138365,33.7870,-117.8613,61,America/Los_Angeles,-8.0000
 245,US1912000,Cedar Rapids,IA,US,137935,41.9642,-91.6792,251,America/Chicago,-6.0000
-246,US4983470,West Valley,UT,US,137491,40.6885,-112.0118,1316,America/Denver,-7.0000
+246,US4983470,West Valley City,UT,US,137491,40.6885,-112.0118,1316,America/Denver,-7.0000
 247,US5135000,Hampton,VA,US,137315,37.0480,-76.2973,7,America/New_York,-5.0000
 248,US2684000,Warren,MI,US,137138,42.4929,-83.0250,196,America/Detroit,-5.0000
 249,CA3526053,St. Catharines,ON,CA,136803,43.1819,-79.2590,102,America/Toronto,-5.0000
@@ -294,7 +294,7 @@ location_id,place_id,city,state,country,population,lat,lng,dem_m,timezone,utc_of
 292,US1656260,Nampa,ID,US,120384,43.5864,-116.5639,767,America/Boise,-7.0000
 293,US2537000,Lowell,MA,US,119971,42.6390,-71.3210,39,America/New_York,-5.0000
 294,CA2464008,Terrebonne,QC,CA,119944,45.7106,-73.6768,18,America/Toronto,-5.0000
-295,US4841980,League,TX,US,119905,29.4901,-95.1091,9,America/Chicago,-6.0000
+295,US4841980,League City,TX,US,119905,29.4901,-95.1091,9,America/Chicago,-6.0000
 296,US4816432,Conroe,TX,US,119564,30.3287,-95.4846,69,America/Chicago,-6.0000
 297,US0602252,Antioch,CA,US,118958,37.9783,-121.7961,13,America/Los_Angeles,-8.0000
 298,US0646842,Menifee,CA,US,118592,33.6899,-117.1844,440,America/Los_Angeles,-8.0000
@@ -372,7 +372,7 @@ location_id,place_id,city,state,country,population,lat,lng,dem_m,timezone,utc_of
 370,US3601000,Albany,NY,US,101698,42.6657,-73.7984,59,America/New_York,-5.0000
 371,US1224125,Fort Myers,FL,US,101581,26.6178,-81.8317,9,America/New_York,-5.0000
 372,CA3518017,Clarington,ON,CA,101427,43.9726,-78.6594,104,America/Toronto,-5.0000
-373,US0617918,Daly,CA,US,101261,37.7017,-122.4650,123,America/Los_Angeles,-8.0000
+373,US0617918,Daly City,CA,US,101261,37.7017,-122.4650,123,America/Los_Angeles,-8.0000
 374,US0404720,Avondale,AZ,US,100983,33.3132,-112.3289,295,America/Phoenix,-7.0000
 375,CA4808011,Red Deer,AB,CA,100844,52.2823,-113.7985,856,America/Edmonton,-7.0000
 376,US4864472,San Angelo,TX,US,100640,31.4411,-100.4505,564,America/Chicago,-6.0000
@@ -452,7 +452,7 @@ location_id,place_id,city,state,country,population,lat,lng,dem_m,timezone,utc_of
 450,US4806128,Baytown,TX,US,86561,29.7648,-94.9675,9,America/Chicago,-6.0000
 451,US4147000,Medford,OR,US,86494,42.3360,-122.8518,422,America/Los_Angeles,-8.0000
 452,US0669070,Santa Barbara,CA,US,86422,34.4036,-119.7137,16,America/Los_Angeles,-8.0000
-453,US1973335,Sioux,IA,US,86356,42.4954,-96.3895,364,America/Chicago,-6.0000
+453,US1973335,Sioux City,IA,US,86356,42.4954,-96.3895,364,America/Chicago,-6.0000
 454,US0613588,Citrus Heights,CA,US,86348,38.6948,-121.2880,52,America/Los_Angeles,-8.0000
 455,US5303180,Auburn,WA,US,86301,47.3047,-122.2107,25,America/Los_Angeles,-8.0000
 456,CA2460013,Repentigny,QC,CA,86100,45.7581,-73.4763,10,America/Toronto,-5.0000
@@ -478,7 +478,7 @@ location_id,place_id,city,state,country,population,lat,lng,dem_m,timezone,utc_of
 476,US2771428,Woodbury,MN,US,81558,44.9063,-92.9237,323,America/Chicago,-6.0000
 477,US5147672,Lynchburg,VA,US,81347,37.3990,-79.1955,225,America/New_York,-5.0000
 478,US1239425,Largo,FL,US,80690,27.9087,-82.7742,17,America/New_York,-5.0000
-479,US4652980,Rapid,SD,US,80589,44.0711,-103.2179,990,America/Denver,-7.0000
+479,US4652980,Rapid City,SD,US,80589,44.0711,-103.2179,990,America/Denver,-7.0000
 480,US3701520,Apex,NC,US,80419,35.7256,-78.8799,153,America/New_York,-5.0000
 481,US1342425,Johns Creek,GA,US,80401,34.0327,-84.2038,293,America/New_York,-5.0000
 482,CA2475017,Saint-Jérôme,QC,CA,80213,45.7955,-74.0397,95,America/Toronto,-5.0000

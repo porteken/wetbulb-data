@@ -77,6 +77,7 @@ for step in "${STEPS[@]}"; do
     crosswalk)
       run python3 "${HERE}/make_nldas_cell_map.py"
       run python3 "${HERE}/make_isd_station_map_na.py"
+      run python3 "${HERE}/make_city_center_map_na.py"
       run python3 "${HERE}/generate_forecast_inputs.py"
       ;;
     trial)

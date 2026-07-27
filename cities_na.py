@@ -283,10 +283,7 @@ def clean_place_name(name: str, census_geoid: str) -> str:
     if override is not None:
         return override
     cleaned = re.sub(r"\([^)]*+\)", "", str(name)).strip()
-    previous = None
-    while previous != cleaned:
-        previous = cleaned
-        cleaned = _PLACE_SUFFIX_PATTERN.sub("", cleaned).strip()
+    cleaned = _PLACE_SUFFIX_PATTERN.sub("", cleaned, count=1).strip()
     return cleaned or str(name).strip()
 
 
