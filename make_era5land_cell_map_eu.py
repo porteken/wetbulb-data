@@ -249,7 +249,12 @@ def build_cell_map(
         taken.add(found["cell"])
         resolved.append({k: v for k, v in found.items() if k != "cell"})
 
-    frame = pd.concat([existing, pd.DataFrame(resolved)], ignore_index=True)
+    snapped = pd.DataFrame(resolved)
+    frame = (
+        pd.concat([existing, snapped], ignore_index=True)
+        if not existing.empty
+        else snapped
+    )
     frame = frame.sort_values("location_id")
     frame.to_csv(out_csv, index=False)
     LOGGER.info(
