@@ -207,6 +207,58 @@ def _hourly_frame_from_era5land(
     ).dropna(subset=["Tair", "Qair", "PSurf"])
 
 
+def _fetch_span_with_retries(
+    client: CdsClient,
+    row: CityRow,
+    start_year: int,
+    end_year: int,
+    download_dir: str,
+) -> DataFrame | None:
+    """Fetch one span, retrying transient CDS failures; `None` once retries run out."""
+    last_error: Exception | None = None
+    for attempt in range(1, ERA5LAND_MAX_RETRIES + 1):
+        try:
+            return fetch_city_span(
+                client,
+                lat=row.lat,
+                lng=row.lng,
+                start_year=start_year,
+                end_year=end_year,
+                download_dir=download_dir,
+            )
+        except RETRYABLE_FETCH_ERRORS as exc:
+            last_error = exc
+            if attempt < ERA5LAND_MAX_RETRIES:
+                time.sleep(ERA5LAND_RETRY_DELAY_SECONDS * attempt)
+    LOGGER.warning(
+        "Giving up on location_id=%d %d-%d after %d attempt(s): %s",
+        row.location_id,
+        start_year,
+        end_year,
+        ERA5LAND_MAX_RETRIES,
+        last_error,
+    )
+    return None
+
+
+def _span_frame(
+    row: CityRow, raw: DataFrame, start_year: int, end_year: int
+) -> DataFrame:
+    """Convert one fetched span, warning when a land-only cell yields nothing usable."""
+    frame = _hourly_frame_from_era5land(row.location_id, raw, row.utc_offset_hours)
+    if frame.empty and not raw.empty:
+        LOGGER.warning(
+            "location_id=%d %d-%d returned %d row(s) but none usable. "
+            "ERA5-Land is land-only, so this cell is probably all sea; "
+            "map the city to a nearby land cell.",
+            row.location_id,
+            start_year,
+            end_year,
+            len(raw),
+        )
+    return frame
+
+
 def _fetch_city_gaps(
     client: CdsClient,
     row: CityRow,
@@ -217,46 +269,13 @@ def _fetch_city_gaps(
     year_frames: list[DataFrame] = []
     had_gap = False
     for start_year, end_year in giovanni.contiguous_year_ranges(gap_years):
-        for attempt in range(1, ERA5LAND_MAX_RETRIES + 1):
-            try:
-                raw = fetch_city_span(
-                    client,
-                    lat=row.lat,
-                    lng=row.lng,
-                    start_year=start_year,
-                    end_year=end_year,
-                    download_dir=download_dir,
-                )
-            except RETRYABLE_FETCH_ERRORS as exc:
-                if attempt == ERA5LAND_MAX_RETRIES:
-                    LOGGER.warning(
-                        "Giving up on location_id=%d %d-%d after %d attempt(s): %s",
-                        row.location_id,
-                        start_year,
-                        end_year,
-                        attempt,
-                        exc,
-                    )
-                    had_gap = True
-                    break
-                time.sleep(ERA5LAND_RETRY_DELAY_SECONDS * attempt)
-                continue
-            frame = _hourly_frame_from_era5land(
-                row.location_id, raw, row.utc_offset_hours
-            )
-            if frame.empty and not raw.empty:
-                LOGGER.warning(
-                    "location_id=%d %d-%d returned %d row(s) but none usable. "
-                    "ERA5-Land is land-only, so this cell is probably all sea; "
-                    "map the city to a nearby land cell.",
-                    row.location_id,
-                    start_year,
-                    end_year,
-                    len(raw),
-                )
-            if not frame.empty:
-                year_frames.append(frame)
-            break
+        raw = _fetch_span_with_retries(client, row, start_year, end_year, download_dir)
+        if raw is None:
+            had_gap = True
+            continue
+        frame = _span_frame(row, raw, start_year, end_year)
+        if not frame.empty:
+            year_frames.append(frame)
 
     if not year_frames:
         return _empty_hourly_frame(), had_gap

@@ -161,6 +161,21 @@ def _existing_map(out_csv: str, requested: set[int]) -> DataFrame:
     return prior[~prior["location_id"].isin(requested)]
 
 
+def _resolve_probe_dir(probe_dir: str) -> Path | None:
+    """Resolve the probe directory, rejecting a path that escapes the working tree."""
+    root = Path.cwd().resolve()
+    resolved = Path(probe_dir).expanduser()
+    resolved = (root / resolved).resolve() if not resolved.is_absolute() else resolved
+    if not resolved.is_relative_to(root):
+        LOGGER.error(
+            "Refusing --probe-dir %s: it resolves outside the working directory %s.",
+            probe_dir,
+            root,
+        )
+        return None
+    return resolved
+
+
 def build_cell_map(
     location_ids: list[int],
     cities_csv: str,
@@ -193,7 +208,9 @@ def build_cell_map(
         len(existing),
     )
 
-    probe_path = Path(probe_dir)
+    probe_path = _resolve_probe_dir(probe_dir)
+    if probe_path is None:
+        return 1
     probe_path.mkdir(parents=True, exist_ok=True)
     client = era5land.cds_client()
 

@@ -175,9 +175,10 @@ class TestReadEra5landDownload:
         target = tmp_path / "span.csv"
         with zipfile.ZipFile(target, "w") as archive:
             archive.writestr("readme.txt", "no data here")
+        path = str(target)
 
         with pytest.raises(ValueError, match="no CSV member"):
-            era5land.read_era5land_download(str(target))
+            era5land.read_era5land_download(path)
 
 
 class TestDownloadCache:
@@ -348,6 +349,46 @@ class TestFetchCityGaps:
         )
         assert not had_gap
         assert len(frame) == 1
+
+
+class TestCachedSpan:
+    def test_unreadable_cached_download_is_discarded(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        target = tmp_path / "span.csv"
+        with zipfile.ZipFile(target, "w") as archive:
+            archive.writestr("readme.txt", "no data here")
+
+        with caplog.at_level("WARNING"):
+            result = era5land._cached_span(str(target))
+
+        assert result is None
+        assert any("unreadable cached download" in m for m in caplog.messages)
+
+
+class TestSpanFrame:
+    def test_an_all_sea_cell_warns_that_no_row_was_usable(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        raw = _raw_era5land_frame(["2020-01-01T00:00:00"])
+        raw["t2m"] = None
+
+        with caplog.at_level("WARNING"):
+            frame = era5land._span_frame(TestFetchCityGaps._row(), raw, 2020, 2020)
+
+        assert frame.empty
+        assert any("land-only" in m for m in caplog.messages)
+
+    def test_usable_rows_are_returned_without_a_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        raw = _raw_era5land_frame(["2020-01-01T00:00:00"])
+
+        with caplog.at_level("WARNING"):
+            frame = era5land._span_frame(TestFetchCityGaps._row(), raw, 2020, 2020)
+
+        assert len(frame) == 1
+        assert caplog.messages == []
 
 
 class TestFetchGapsBatch:
@@ -558,6 +599,93 @@ class TestProcessEra5landGapfill:
         assert len(written_frame) == 1
         assert written_frame["date"].iloc[0] == pd.Timestamp("2020-01-01").date()
         assert (written_frame["source"] == "era5land").all()
+
+    def test_no_city_results_skips_the_write(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        self._stub_fetch_setup(monkeypatch)
+        monkeypatch.setattr(era5land, "_fetch_gaps_batch", lambda *_a, **_k: {})
+        write_called: list[int] = []
+        monkeypatch.setattr(
+            era5land,
+            "write_pending_year_batches",
+            lambda *_a, **_k: write_called.append(1),
+        )
+        era5land.process_era5land_gapfill(2020, 2020, str(tmp_path), 0, 1, 2)
+        assert not write_called
+
+    def test_empty_daily_aggregate_skips_the_write(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        self._stub_fetch_setup(monkeypatch)
+        hourly = pd.DataFrame(
+            {
+                "location_id": [1000],
+                "time": [pd.Timestamp("2020-01-01")],
+                "Tair": [290.0],
+                "Qair": [0.01],
+                "PSurf": [100000.0],
+            }
+        )
+        monkeypatch.setattr(
+            era5land, "_fetch_gaps_batch", lambda *_a, **_k: {1000: (hourly, False)}
+        )
+        monkeypatch.setattr(
+            era5land.nldas,
+            "compute_daily_wetbulb",
+            lambda _df: pd.DataFrame(columns=pd.Index(["location_id", "date"])),
+        )
+        write_called: list[int] = []
+        monkeypatch.setattr(
+            era5land,
+            "write_pending_year_batches",
+            lambda *_a, **_k: write_called.append(1),
+        )
+        era5land.process_era5land_gapfill(2020, 2020, str(tmp_path), 0, 1, 2)
+        assert not write_called
+
+    def test_data_matching_no_gap_cell_skips_the_write(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Any,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        self._stub_fetch_setup(monkeypatch)
+        hourly = pd.DataFrame(
+            {
+                "location_id": [1000],
+                "time": [pd.Timestamp("2021-06-01")],
+                "Tair": [290.0],
+                "Qair": [0.01],
+                "PSurf": [100000.0],
+            }
+        )
+        monkeypatch.setattr(
+            era5land, "_fetch_gaps_batch", lambda *_a, **_k: {1000: (hourly, False)}
+        )
+        monkeypatch.setattr(
+            era5land.nldas,
+            "compute_daily_wetbulb",
+            lambda _df: pd.DataFrame(
+                {
+                    "location_id": [1000],
+                    "date": [pd.Timestamp("2021-06-01").date()],
+                    "wetbulb": [20.0],
+                    "wetbulb_avg": [19.0],
+                }
+            ),
+        )
+        write_called: list[int] = []
+        monkeypatch.setattr(
+            era5land,
+            "write_pending_year_batches",
+            lambda *_a, **_k: write_called.append(1),
+        )
+        with caplog.at_level("INFO"):
+            era5land.process_era5land_gapfill(2020, 2020, str(tmp_path), 0, 1, 2)
+
+        assert not write_called
+        assert any("nothing to write" in m for m in caplog.messages)
 
 
 class TestParseArgs:
