@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import logging
 import sys
 import tempfile
 import time
+import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from dotenv import load_dotenv
 from tqdm.auto import tqdm
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 import giovanni
 import lcd
@@ -51,15 +56,102 @@ EU_CITIES_CSV = "cities_eu.csv"
 EU_STATION_MAP_CSV = "cities_eu_isd_stations.csv"
 
 _HOURLY_FRAME_COLUMNS = ("location_id", "time", "Tair", "Qair", "PSurf")
+_REQUIRED_DOWNLOAD_COLUMNS = ("valid_time", "t2m", "d2m", "sp")
+
+
+class Era5LandSources(NamedTuple):
+    """Optional on-disk inputs: a reusable download cache and a cell override map."""
+
+    cache_dir: str | None = None
+    cell_map_csv: str | None = None
+
+
+NO_EXTRA_SOURCES = Era5LandSources()
+
+RETRYABLE_FETCH_ERRORS = (
+    RuntimeError,
+    ValueError,
+    KeyError,
+    OSError,
+    AssertionError,
+)
+"""`AssertionError` is included because multiurl validates a completed download
+with a bare `assert` on its byte count, so a truncated response from CDS
+surfaces as one. Left uncaught it kills the whole run mid-backfill."""
 
 
 def _empty_hourly_frame() -> DataFrame:
     return pd.DataFrame(columns=list(_HOURLY_FRAME_COLUMNS))
 
 
-def _cds_client() -> CdsClient:
+def cds_client() -> CdsClient:
+    """Build a CDS API client from the ambient CDSAPI_URL/CDSAPI_KEY settings."""
     cdsapi = importlib.import_module("cdsapi")
     return cdsapi.Client()
+
+
+def read_era5land_download(target: str) -> DataFrame:
+    """Read a CDS timeseries download, which is a zip of one CSV per variable group.
+
+    The API returns a zip archive even when the request asks for `data_format:
+    csv`, so the members are merged on `valid_time` back into the single wide
+    frame the rest of this module expects.
+    """
+    if not zipfile.is_zipfile(target):
+        return pd.read_csv(target)
+
+    with zipfile.ZipFile(target) as archive:
+        frames = [
+            pd.read_csv(archive.open(name))
+            for name in sorted(archive.namelist())
+            if name.endswith(".csv")
+        ]
+    if not frames:
+        message = f"ERA5-Land download contained no CSV member: {target}"
+        raise ValueError(message)
+
+    merged = frames[0]
+    for frame in frames[1:]:
+        merged = merged.merge(
+            frame, on="valid_time", how="inner", suffixes=("", "_duplicate")
+        )
+    return merged.loc[:, ~merged.columns.str.endswith("_duplicate")]
+
+
+def span_filename(lat: float, lng: float, start_year: int, end_year: int) -> str:
+    """Name the download that holds one city's span; also the cache key."""
+    return f"era5land_{lat}_{lng}_{start_year}_{end_year}.csv"
+
+
+def _cached_span(target: str) -> DataFrame | None:
+    """Return an already-downloaded span, or `None` when absent or unusable.
+
+    A download interrupted mid-write is not a valid zip and would otherwise be
+    read as a plain CSV of garbage, so the columns are checked before the
+    cached copy is trusted.
+    """
+    if not Path(target).exists():
+        return None
+    try:
+        frame = read_era5land_download(target)
+    except OSError, ValueError, KeyError, zipfile.BadZipFile:
+        LOGGER.warning("Re-fetching unreadable cached download: %s", Path(target).name)
+        return None
+    if not set(_REQUIRED_DOWNLOAD_COLUMNS).issubset(frame.columns):
+        LOGGER.warning("Re-fetching incomplete cached download: %s", Path(target).name)
+        return None
+    return frame
+
+
+@contextlib.contextmanager
+def download_cache(path: str | None) -> Generator[str]:
+    """Yield a persistent download cache when configured, else a scratch dir."""
+    if path is None:
+        with tempfile.TemporaryDirectory() as scratch:
+            yield scratch
+        return
+    Path(path).mkdir(parents=True, exist_ok=True)
+    yield path
 
 
 def fetch_city_span(
@@ -72,9 +164,11 @@ def fetch_city_span(
     download_dir: str,
 ) -> DataFrame:
     """Retrieve one city's ERA5-Land hourly point time-series for a year span."""
-    target = str(
-        Path(download_dir) / f"era5land_{lat}_{lng}_{start_year}_{end_year}.csv"
-    )
+    target = str(Path(download_dir) / span_filename(lat, lng, start_year, end_year))
+    cached = _cached_span(target)
+    if cached is not None:
+        return cached
+
     request = {
         "variable": list(ERA5LAND_VARIABLES),
         "location": {"latitude": lat, "longitude": lng},
@@ -82,7 +176,7 @@ def fetch_city_span(
         "data_format": "csv",
     }
     client.retrieve(ERA5LAND_DATASET, request, target)
-    return pd.read_csv(target)
+    return read_era5land_download(target)
 
 
 def _hourly_frame_from_era5land(
@@ -133,7 +227,7 @@ def _fetch_city_gaps(
                     end_year=end_year,
                     download_dir=download_dir,
                 )
-            except (RuntimeError, ValueError, KeyError, OSError) as exc:
+            except RETRYABLE_FETCH_ERRORS as exc:
                 if attempt == ERA5LAND_MAX_RETRIES:
                     LOGGER.warning(
                         "Giving up on location_id=%d %d-%d after %d attempt(s): %s",
@@ -150,6 +244,16 @@ def _fetch_city_gaps(
             frame = _hourly_frame_from_era5land(
                 row.location_id, raw, row.utc_offset_hours
             )
+            if frame.empty and not raw.empty:
+                LOGGER.warning(
+                    "location_id=%d %d-%d returned %d row(s) but none usable. "
+                    "ERA5-Land is land-only, so this cell is probably all sea; "
+                    "map the city to a nearby land cell.",
+                    row.location_id,
+                    start_year,
+                    end_year,
+                    len(raw),
+                )
             if not frame.empty:
                 year_frames.append(frame)
             break
@@ -189,6 +293,28 @@ def _fetch_gaps_batch(
     return results
 
 
+def _log_cache_reuse(
+    gapped_rows: list[CityRow],
+    gap_years_by_location: dict[int, list[int]],
+    download_dir: str,
+) -> None:
+    """Report how much of this run's fetch is already sitting in the cache."""
+    total = cached = 0
+    for row in gapped_rows:
+        for start_year, end_year in giovanni.contiguous_year_ranges(
+            gap_years_by_location[row.location_id]
+        ):
+            total += 1
+            name = span_filename(row.lat, row.lng, start_year, end_year)
+            cached += (Path(download_dir) / name).exists()
+    LOGGER.info(
+        "Download cache holds %d/%d span(s); %d still to fetch from CDS.",
+        cached,
+        total,
+        total - cached,
+    )
+
+
 def _fetch_filled_rows(
     gapped_rows: list[CityRow],
     gap_years_by_location: dict[int, list[int]],
@@ -198,11 +324,13 @@ def _fetch_filled_rows(
     city_shard_count: int,
     start_year: int,
     end_year: int,
+    cache_dir: str | None,
 ) -> DataFrame | None:
     """Fetch ERA5-Land data for every gapped city and merge it against `missing_cells`."""
-    client = _cds_client()
+    client = cds_client()
     worker_count = max(1, min(concurrency, len(gapped_rows)))
-    with tempfile.TemporaryDirectory() as download_dir:
+    with download_cache(cache_dir) as download_dir:
+        _log_cache_reuse(gapped_rows, gap_years_by_location, download_dir)
         city_results = _fetch_gaps_batch(
             gapped_rows,
             gap_years_by_location,
@@ -251,6 +379,37 @@ def _fetch_filled_rows(
     return filled
 
 
+def _apply_cell_overrides(shard_df: DataFrame, cell_map_csv: str | None) -> DataFrame:
+    """Point selected cities at a different ERA5-Land cell than their own centre.
+
+    Coastal cities can sit in a cell ERA5-Land treats as sea, which yields an
+    all-NaN series. The override map moves just the fetch coordinate; the city's
+    real lat/lng is untouched everywhere else.
+    """
+    if not cell_map_csv:
+        return shard_df
+    path = Path(cell_map_csv)
+    if not path.exists():
+        LOGGER.warning(
+            "Cell map %s does not exist; falling back to city centres.", cell_map_csv
+        )
+        return shard_df
+
+    overrides = pd.read_csv(path, usecols=["location_id", "lat", "lng"])
+    merged = shard_df.merge(
+        overrides, on="location_id", how="left", suffixes=("", "_cell")
+    )
+    replaced = merged["lat_cell"].notna() & merged["lng_cell"].notna()
+    merged.loc[replaced, "lat"] = merged.loc[replaced, "lat_cell"]
+    merged.loc[replaced, "lng"] = merged.loc[replaced, "lng_cell"]
+    LOGGER.info(
+        "Applied ERA5-Land cell override for %d/%d city(ies).",
+        int(replaced.sum()),
+        len(overrides),
+    )
+    return merged.drop(columns=["lat_cell", "lng_cell"])
+
+
 def _load_utc_offsets(station_map_csv: str) -> DataFrame:
     """Load each city's standard UTC offset from the EU ISD station crosswalk."""
     path = Path(station_map_csv)
@@ -277,6 +436,7 @@ def process_era5land_gapfill(
     location_ids: list[int] | None = None,
     min_missing_days: int = MIN_MISSING_DAYS_DEFAULT,
     force: bool = False,
+    sources: Era5LandSources = NO_EXTRA_SOURCES,
 ) -> None:
     """Fill (location_id, date) cells the ISD pipeline could not produce, via ERA5-Land."""
     wetbulb_root = f"{out_dir}/wetbulb_data_csv"
@@ -324,6 +484,7 @@ def process_era5land_gapfill(
     shard_df["utc_offset_hours"] = shard_df["utc_offset_hours"].fillna(
         (shard_df["lng"] / 15.0).round()
     )
+    shard_df = _apply_cell_overrides(shard_df, sources.cell_map_csv)
     gapped_rows = list(shard_df[shard_df["location_id"].isin(gapped_ids)].itertuples())
 
     filled = _fetch_filled_rows(
@@ -335,6 +496,7 @@ def process_era5land_gapfill(
         city_shard_count,
         start_year,
         end_year,
+        sources.cache_dir,
     )
     if filled is None:
         return
@@ -357,6 +519,25 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--station-map-csv", type=str, default=EU_STATION_MAP_CSV)
     parser.add_argument("--concurrency", type=int, default=ERA5LAND_DEFAULT_CONCURRENCY)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--cell-map-csv",
+        type=str,
+        default=None,
+        help=(
+            "CSV of location_id,lat,lng overriding the ERA5-Land fetch "
+            "coordinate for cities whose own cell has no land."
+        ),
+    )
+    parser.add_argument(
+        "--download-dir",
+        type=str,
+        default=None,
+        help=(
+            "Persist CDS downloads here and reuse any span already present, so "
+            "an interrupted run resumes instead of re-fetching. Defaults to a "
+            "scratch directory that is discarded on exit."
+        ),
+    )
     parser.add_argument(
         "--location-ids",
         type=int,
@@ -394,6 +575,10 @@ def main() -> None:
             location_ids=args.location_ids,
             min_missing_days=args.min_missing_days,
             force=args.force,
+            sources=Era5LandSources(
+                cache_dir=args.download_dir,
+                cell_map_csv=args.cell_map_csv,
+            ),
         )
     except KeyboardInterrupt:
         exit_code = 130
@@ -409,6 +594,7 @@ def main() -> None:
         AttributeError,
         TypeError,
         IndexError,
+        AssertionError,
     ):
         exit_code = 1
         LOGGER.exception("ERA5-Land gap-fill failed.")

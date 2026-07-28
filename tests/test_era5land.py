@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,47 @@ def _raw_era5land_frame(hours: list[str]) -> pd.DataFrame:
     )
 
 
+def _write_era5land_zip(target: str, hours: list[str]) -> None:
+    """Write the zip-of-per-variable-CSVs the CDS timeseries API actually returns."""
+    temperature = pd.DataFrame(
+        {
+            "valid_time": hours,
+            "d2m": [283.15] * len(hours),
+            "t2m": [293.15] * len(hours),
+            "latitude": [51.4] * len(hours),
+            "longitude": [-0.1] * len(hours),
+        }
+    )
+    pressure = pd.DataFrame(
+        {
+            "valid_time": hours,
+            "sp": [101325.0] * len(hours),
+            "latitude": [51.4] * len(hours),
+            "longitude": [-0.1] * len(hours),
+        }
+    )
+    with zipfile.ZipFile(target, "w") as archive:
+        archive.writestr(
+            "reanalysis-era5-land-timeseries-sfc-2m-temperatureabcd.csv",
+            temperature.to_csv(index=False),
+        )
+        archive.writestr(
+            "reanalysis-era5-land-timeseries-sfc-pressure-precipitationefgh.csv",
+            pressure.to_csv(index=False),
+        )
+
+
+class _ZipCdsClient:
+    """Returns downloads in the API's real zip format, counting each call."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def retrieve(self, _dataset: str, _request: dict[str, Any], target: str) -> None:
+        self.calls += 1
+        _write_era5land_zip(target, ["2020-01-01T00:00:00"])
+
+
 class TestFetchCitySpan:
     def test_writes_request_and_returns_parsed_frame(self, tmp_path: Path) -> None:
         client = _StubCdsClient([_raw_era5land_frame(["2020-01-01T00:00:00"])])
@@ -52,6 +94,144 @@ class TestFetchCitySpan:
         assert list(result["t2m"]) == [293.15]
         assert client.requests[0]["location"] == {"latitude": 51.5, "longitude": -0.1}
         assert client.requests[0]["date"] == ["2020-01-01/2020-12-31"]
+
+    def test_parses_the_zip_the_api_actually_returns(self, tmp_path: Path) -> None:
+        client = _ZipCdsClient()
+        result = era5land.fetch_city_span(
+            client,
+            lat=51.5,
+            lng=-0.1,
+            start_year=2020,
+            end_year=2020,
+            download_dir=str(tmp_path),
+        )
+        assert list(result["t2m"]) == [293.15]
+        assert list(result["d2m"]) == [283.15]
+        assert list(result["sp"]) == [101325.0]
+
+    def test_reuses_a_cached_download_without_calling_cds(self, tmp_path: Path) -> None:
+        target = tmp_path / era5land.span_filename(51.5, -0.1, 2020, 2020)
+        _write_era5land_zip(str(target), ["2020-01-01T00:00:00"])
+        client = _ZipCdsClient()
+
+        result = era5land.fetch_city_span(
+            client,
+            lat=51.5,
+            lng=-0.1,
+            start_year=2020,
+            end_year=2020,
+            download_dir=str(tmp_path),
+        )
+
+        assert client.calls == 0
+        assert list(result["t2m"]) == [293.15]
+
+    def test_refetches_when_the_cached_download_is_corrupt(
+        self, tmp_path: Path
+    ) -> None:
+        target = tmp_path / era5land.span_filename(51.5, -0.1, 2020, 2020)
+        target.write_bytes(b"PK\x03\x04 not really a zip")
+        client = _ZipCdsClient()
+
+        result = era5land.fetch_city_span(
+            client,
+            lat=51.5,
+            lng=-0.1,
+            start_year=2020,
+            end_year=2020,
+            download_dir=str(tmp_path),
+        )
+
+        assert client.calls == 1
+        assert list(result["t2m"]) == [293.15]
+
+
+class TestReadEra5landDownload:
+    def test_merges_zip_members_on_valid_time(self, tmp_path: Path) -> None:
+        target = tmp_path / "span.csv"
+        _write_era5land_zip(str(target), ["2020-01-01T00:00:00", "2020-01-01T01:00:00"])
+
+        result = era5land.read_era5land_download(str(target))
+
+        assert len(result) == 2
+        assert set(result.columns) == {
+            "valid_time",
+            "d2m",
+            "t2m",
+            "sp",
+            "latitude",
+            "longitude",
+        }
+
+    def test_reads_a_plain_csv_unchanged(self, tmp_path: Path) -> None:
+        target = tmp_path / "span.csv"
+        _raw_era5land_frame(["2020-01-01T00:00:00"]).to_csv(target, index=False)
+
+        result = era5land.read_era5land_download(str(target))
+
+        assert list(result["t2m"]) == [293.15]
+
+    def test_zip_without_a_csv_member_raises(self, tmp_path: Path) -> None:
+        target = tmp_path / "span.csv"
+        with zipfile.ZipFile(target, "w") as archive:
+            archive.writestr("readme.txt", "no data here")
+
+        with pytest.raises(ValueError, match="no CSV member"):
+            era5land.read_era5land_download(str(target))
+
+
+class TestDownloadCache:
+    def test_none_yields_a_scratch_dir_that_is_removed(self) -> None:
+        with era5land.download_cache(None) as scratch:
+            assert Path(scratch).is_dir()
+        assert not Path(scratch).exists()
+
+    def test_a_path_is_created_and_kept(self, tmp_path: Path) -> None:
+        target = tmp_path / "cache"
+        with era5land.download_cache(str(target)) as resolved:
+            assert resolved == str(target)
+        assert target.is_dir()
+
+
+class TestApplyCellOverrides:
+    @staticmethod
+    def _shard() -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "location_id": [1000, 1001],
+                "lat": [51.5085, 41.3888],
+                "lng": [-0.1257, 2.159],
+                "utc_offset_hours": [0.0, 1.0],
+            }
+        )
+
+    def test_no_map_leaves_coordinates_untouched(self) -> None:
+        shard = self._shard()
+        result = era5land._apply_cell_overrides(shard, None)
+        assert result["lat"].tolist() == shard["lat"].tolist()
+        assert result["lng"].tolist() == shard["lng"].tolist()
+
+    def test_missing_file_falls_back_to_city_centres(self, tmp_path: Path) -> None:
+        shard = self._shard()
+        result = era5land._apply_cell_overrides(shard, str(tmp_path / "absent.csv"))
+        assert result["lat"].tolist() == shard["lat"].tolist()
+
+    def test_overrides_only_the_listed_city(self, tmp_path: Path) -> None:
+        cell_map = tmp_path / "cells.csv"
+        pd.DataFrame({"location_id": [1001], "lat": [41.4], "lng": [2.0]}).to_csv(
+            cell_map, index=False
+        )
+
+        result = era5land._apply_cell_overrides(self._shard(), str(cell_map)).set_index(
+            "location_id"
+        )
+
+        assert result.loc[1000, "lat"] == pytest.approx(51.5085)
+        assert result.loc[1000, "lng"] == pytest.approx(-0.1257)
+        assert result.loc[1001, "lat"] == pytest.approx(41.4)
+        assert result.loc[1001, "lng"] == pytest.approx(2.0)
+        assert result.loc[1001, "utc_offset_hours"] == pytest.approx(1.0)
+        assert "lat_cell" not in result.columns
 
 
 class TestHourlyFrameFromEra5land:
@@ -125,6 +305,29 @@ class TestFetchCityGaps:
         )
         assert had_gap
         assert frame.empty
+
+    def test_truncated_download_assertion_is_retried_not_fatal(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Multiurl validates byte counts with a bare assert; it must not kill a run."""
+        monkeypatch.setattr(era5land, "ERA5LAND_RETRY_DELAY_SECONDS", 0)
+        attempts: list[int] = []
+
+        def truncated_once(*_a: Any, **_k: Any) -> pd.DataFrame:
+            attempts.append(1)
+            if len(attempts) < 2:
+                msg = "File size mismatch 0 bytes instead of 497741"
+                raise AssertionError(msg)
+            return _raw_era5land_frame(["2000-01-01T00:00:00"])
+
+        monkeypatch.setattr(era5land, "fetch_city_span", truncated_once)
+        frame, had_gap = era5land._fetch_city_gaps(
+            None, self._row(), [2000], str(tmp_path)
+        )
+
+        assert len(attempts) == 2
+        assert not had_gap
+        assert len(frame) == 1
 
     def test_succeeds_on_a_later_retry(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -237,7 +440,7 @@ class TestProcessEra5landGapfill:
             ),
         )
         called: list[int] = []
-        monkeypatch.setattr(era5land, "_cds_client", lambda: called.append(1))
+        monkeypatch.setattr(era5land, "cds_client", lambda: called.append(1))
         with caplog.at_level("INFO"):
             era5land.process_era5land_gapfill(2020, 2020, str(tmp_path), 0, 1, 2)
         assert not called
@@ -260,7 +463,7 @@ class TestProcessEra5landGapfill:
             gapfill, "find_missing_cells", lambda *_a, **_k: self._missing_cells()
         )
         monkeypatch.setattr(gapfill, "_filter_material_gaps", lambda cells, _n: cells)
-        monkeypatch.setattr(era5land, "_cds_client", object)
+        monkeypatch.setattr(era5land, "cds_client", object)
         monkeypatch.setattr(
             era5land,
             "_load_utc_offsets",

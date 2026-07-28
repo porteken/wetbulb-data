@@ -23,6 +23,8 @@ EU_ISD_CONCURRENCY=${EU_ISD_CONCURRENCY:-8}
 EU_CDS_CONCURRENCY=${EU_CDS_CONCURRENCY:-2}
 EU_CITY_SHARDS=${EU_CITY_SHARDS:-1}
 EU_MIN_MISSING_DAYS=${EU_MIN_MISSING_DAYS:-19}
+EU_DOWNLOAD_DIR=${EU_DOWNLOAD_DIR:-}
+EU_CELL_MAP_CSV=${EU_CELL_MAP_CSV:-cities_eu_era5land_cells.csv}
 PYTHON_RUN=${PYTHON_RUN:-uv run python}
 
 DEFAULT_STEPS=(cities crosswalk backfill gapfill)
@@ -157,6 +159,16 @@ step_gapfill() {
     : "${CDSAPI_KEY:?CDSAPI_KEY must be set (see .env)}"
   fi
 
+  local cache_args=()
+  if [[ -n ${EU_DOWNLOAD_DIR} ]]; then
+    cache_args=(--download-dir "${EU_DOWNLOAD_DIR}")
+    log "[gapfill] reusing downloads cached in ${EU_DOWNLOAD_DIR}"
+  fi
+  if [[ -n ${EU_CELL_MAP_CSV} && -f ${EU_CELL_MAP_CSV} ]]; then
+    cache_args+=(--cell-map-csv "${EU_CELL_MAP_CSV}")
+    log "[gapfill] applying ERA5-Land land-cell overrides from ${EU_CELL_MAP_CSV}"
+  fi
+
   log "[gapfill] ERA5-Land ${EU_START_YEAR}-${EU_END_YEAR}," \
     "min-missing-days=${EU_MIN_MISSING_DAYS}, ${EU_CDS_CONCURRENCY} concurrent CDS request(s)"
   run "${PY[@]}" era5land.py \
@@ -166,7 +178,8 @@ step_gapfill() {
     --out-dir "${EU_OUT_DIR}" \
     --city-shard-index 0 --city-shard-count 1 \
     --concurrency "${EU_CDS_CONCURRENCY}" \
-    --min-missing-days "${EU_MIN_MISSING_DAYS}"
+    --min-missing-days "${EU_MIN_MISSING_DAYS}" \
+    "${cache_args[@]}"
   log "[gapfill] done"
 }
 
