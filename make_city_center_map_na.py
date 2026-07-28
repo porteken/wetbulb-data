@@ -11,17 +11,14 @@ have no settlement of their own name. Cities with no confident match keep their 
 from __future__ import annotations
 
 import argparse
-import csv
 import importlib
-import io
 import logging
 import unicodedata
-import zipfile
 from typing import TYPE_CHECKING, Any, cast
 
 import requests
 
-from cities_na import GEONAMES_CITIES_URL, _download
+from cities_na import GEONAMES_CITIES_URL, _download, read_geonames_table
 from isd_history import haversine_km
 
 if TYPE_CHECKING:
@@ -116,23 +113,7 @@ def name_variants(city_name: str, place_id: str = "") -> set[str]:
 
 def load_geonames_populated_places(payload: bytes) -> DataFrame:
     """Return GeoNames populated places with their normalized name variants."""
-    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-        members = [name for name in archive.namelist() if name.endswith(".txt")]
-        if not members:
-            message = "GeoNames archive has no .txt table"
-            raise ValueError(message)
-        raw = archive.read(members[0])
-
-    frame = pd.read_csv(
-        io.BytesIO(raw),
-        sep="\t",
-        header=None,
-        quoting=csv.QUOTE_NONE,
-        usecols=list(_GEONAMES_COLUMNS),
-        dtype=str,
-    ).rename(columns=_GEONAMES_COLUMNS)
-
-    frame = frame[frame["feature_class"] == "P"].copy()
+    frame = read_geonames_table(payload, _GEONAMES_COLUMNS)
     for column in ("lat", "lng"):
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
     frame = frame.dropna(subset=["lat", "lng", "country_code", "admin1_code"])

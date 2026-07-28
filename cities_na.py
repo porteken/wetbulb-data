@@ -406,8 +406,12 @@ def build_ca_places(csd: DataFrame) -> DataFrame:
     return result[_PLACE_COLUMNS].reset_index(drop=True)
 
 
-def load_geonames_places(payload: bytes) -> DataFrame:
-    """Return GeoNames populated places used only for elevation and timezone."""
+def read_geonames_table(payload: bytes, columns: dict[int, str]) -> DataFrame:
+    """Parse the tab-separated GeoNames dump inside a zip, keeping populated places.
+
+    `columns` selects and names the positional fields the caller needs; the dump
+    itself is headerless and unquoted.
+    """
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
         members = [name for name in archive.namelist() if name.endswith(".txt")]
         if not members:
@@ -419,10 +423,15 @@ def load_geonames_places(payload: bytes) -> DataFrame:
         sep="\t",
         header=None,
         quoting=csv.QUOTE_NONE,
-        usecols=list(_GEONAMES_COLUMNS),
+        usecols=list(columns),
         dtype=str,
-    ).rename(columns=_GEONAMES_COLUMNS)
-    frame = frame[frame["feature_class"] == "P"].copy()
+    ).rename(columns=columns)
+    return frame[frame["feature_class"] == "P"].copy()
+
+
+def load_geonames_places(payload: bytes) -> DataFrame:
+    """Return GeoNames populated places used only for elevation and timezone."""
+    frame = read_geonames_table(payload, _GEONAMES_COLUMNS)
     for column in ("lat", "lng", "dem_m"):
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
     return frame.dropna(subset=["lat", "lng", "dem_m", "timezone"]).reset_index(
