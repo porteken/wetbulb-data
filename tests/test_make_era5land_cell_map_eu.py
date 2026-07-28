@@ -112,7 +112,8 @@ class TestSnapOne:
         found = cell_map._snap_one(client, _city_row(), candidates, tmp_path)
 
         assert found is not None
-        assert (found["lat"], found["lng"]) == land
+        assert found["lat"] == land[0]
+        assert found["lng"] == land[1]
         assert found["cell"] == candidates[1]
         assert found["moved_km"] > 0
 
