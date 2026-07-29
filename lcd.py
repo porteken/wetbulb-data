@@ -371,6 +371,7 @@ def _write_daily_shard(
     logger: logging.Logger,
     write_batches: Callable[..., None],
     source: str = "isd",
+    min_daily_hours: int | None = None,
 ) -> None:
     """Aggregate hourly rows to daily wet-bulb and write pending years."""
     hourly_df = (
@@ -380,7 +381,14 @@ def _write_daily_shard(
     )
     if hourly_df.empty:
         return
-    daily_df = nldas.compute_daily_wetbulb(hourly_df)
+    daily_df = (
+        nldas.compute_daily_wetbulb(hourly_df)
+        if min_daily_hours is None
+        else nldas.compute_daily_wetbulb(
+            hourly_df,
+            min_daily_hours=min_daily_hours,
+        )
+    )
     if daily_df.empty:
         return
     daily_df["source"] = source

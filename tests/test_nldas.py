@@ -216,6 +216,17 @@ class TestComputeDailyWetbulb:
         daily = compute_daily_wetbulb(df)
         assert len(daily) == 1
 
+    def test_supports_source_specific_minimum_hours(self) -> None:
+        daily = compute_daily_wetbulb(
+            self._hourly_frame(8),
+            min_daily_hours=8,
+        )
+        assert len(daily) == 1
+
+    def test_rejects_nonpositive_minimum_hours(self) -> None:
+        with pytest.raises(ValueError, match="must be positive"):
+            compute_daily_wetbulb(self._hourly_frame(24), min_daily_hours=0)
+
     def test_empty_input_returns_empty_with_columns(self) -> None:
         empty = pd.DataFrame(
             columns=pd.Index(["location_id", "time", "Tair", "Qair", "PSurf"]),

@@ -55,6 +55,7 @@ GHCNH_REQUEST_TIMEOUT_SECONDS = 90
 GHCNH_MAX_RETRIES = 3
 GHCNH_RETRY_DELAY_SECONDS = 5
 GHCNH_DEFAULT_CONCURRENCY = 8
+GHCNH_MIN_DAILY_HOURS = 8
 STATION_MAP_PATH = "cities_na_ghcnh_stations.csv"
 
 _HOURLY_FRAME_COLUMNS = ("time", "tair_c", "dewpoint_c", "pressure_hpa")
@@ -73,8 +74,8 @@ _PARQUET_COLUMNS = (
     "altimeter",
     "altimeter_Quality_Code",
 )
-_REPORT_TYPES = frozenset({"FM12", "FM15", "FM16"})
-_REPORT_PRIORITY = {"FM15": 0, "FM16": 1, "FM12": 2}
+_REPORT_TYPES = frozenset({"EnvCan", "FM12", "FM15", "FM16"})
+_REPORT_PRIORITY = {"FM15": 0, "FM16": 1, "FM12": 2, "EnvCan": 3}
 _REJECT_QC_CODES = frozenset({"2", "3", "6", "7"})
 
 
@@ -392,6 +393,7 @@ def process_ghcnh(
         logger=LOGGER,
         write_batches=write_pending_year_batches,
         source="ghcnh",
+        min_daily_hours=GHCNH_MIN_DAILY_HOURS,
     )
 
 

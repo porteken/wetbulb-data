@@ -416,8 +416,15 @@ def _process_time_batch(
     return pd.concat(rows, ignore_index=True)
 
 
-def compute_daily_wetbulb(hourly_df: DataFrame) -> DataFrame:
+def compute_daily_wetbulb(
+    hourly_df: DataFrame,
+    *,
+    min_daily_hours: int = MIN_DAILY_HOURS,
+) -> DataFrame:
     """Aggregate by fixed local-standard day when an offset column is present."""
+    if min_daily_hours < 1:
+        msg = "min_daily_hours must be positive"
+        raise ValueError(msg)
     output_columns = ["location_id", "date", "wetbulb", "wetbulb_avg"]
     df = hourly_df.dropna(subset=list(NLDAS_VARIABLES)).copy()
     if df.empty:
@@ -460,7 +467,7 @@ def compute_daily_wetbulb(hourly_df: DataFrame) -> DataFrame:
         wetbulb_avg=("tw", "mean"),
         n_hours=("tw", "count"),
     )
-    daily = daily[daily["n_hours"] >= MIN_DAILY_HOURS].drop(columns="n_hours")
+    daily = daily[daily["n_hours"] >= min_daily_hours].drop(columns="n_hours")
     daily["wetbulb"] = (
         daily["wetbulb"] * WETBULB_ROUNDING_FACTOR
     ).round() / WETBULB_ROUNDING_FACTOR

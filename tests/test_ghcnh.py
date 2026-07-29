@@ -116,6 +116,21 @@ def test_parse_derives_station_pressure_from_sea_level_pressure() -> None:
     assert 1000 < result.iloc[0]["pressure_hpa"] < 1013.25
 
 
+def test_parse_accepts_environment_canada_reports() -> None:
+    payload = _parquet_payload(
+        [{"temperature_Report_Type": "EnvCan"}],
+    )
+
+    result = ghcnh._parse_ghcnh_parquet(
+        payload,
+        lon=-104.67,
+        utc_offset_hours=-6,
+        drop_incomplete_latest_day=False,
+    )
+
+    assert len(result) == 1
+
+
 def test_current_local_day_is_removed_but_prior_synoptic_day_is_retained() -> None:
     frame = pd.DataFrame(
         {

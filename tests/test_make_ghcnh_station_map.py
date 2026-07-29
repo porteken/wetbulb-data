@@ -57,3 +57,31 @@ def test_build_station_map_obeys_distance_and_elevation_limits() -> None:
 
     assert list(result["location_id"]) == [1]
     assert result.iloc[0]["ghcn_id"] == "NEAR"
+
+
+def test_build_station_map_excludes_usl_marine_style_stations() -> None:
+    cities = pd.DataFrame(
+        {
+            "location_id": [1],
+            "lat": [40.0],
+            "lng": [-74.0],
+            "dem_m": [10.0],
+            "utc_offset_hours": [-5.0],
+        },
+    )
+    stations = pd.DataFrame(
+        {
+            "GHCN_ID": ["USL000MARINE", "USW000LAND01"],
+            "LATITUDE": [40.0, 40.05],
+            "LONGITUDE": [-74.0, -74.0],
+            "ELEVATION": [10.0, 20.0],
+        },
+    )
+
+    result = station_map.build_station_map(
+        cities,
+        stations,
+        {"USL000MARINE", "USW000LAND01"},
+    )
+
+    assert result.iloc[0]["ghcn_id"] == "USW000LAND01"

@@ -18,6 +18,7 @@ REQUIRED_VARIABLES = frozenset({"temperature", "dew_point_temperature"})
 PRESSURE_VARIABLES = frozenset(
     {"station_level_pressure", "sea_level_pressure", "altimeter"},
 )
+DISALLOWED_STATION_PREFIXES = ("USL",)
 LOGGER = logging.getLogger(__name__)
 
 
@@ -68,7 +69,11 @@ def build_station_map(
     max_elevation_difference_m: float = MAX_ELEVATION_DIFFERENCE_M,
 ) -> pd.DataFrame:
     """Return the nearest eligible station satisfying distance/elevation limits."""
-    eligible_mask = cast("pd.Series", stations["GHCN_ID"]).isin(list(eligible_ids))
+    station_ids = cast("pd.Series", stations["GHCN_ID"]).astype("string")
+    eligible_mask = station_ids.isin(list(eligible_ids)) & ~station_ids.str.startswith(
+        DISALLOWED_STATION_PREFIXES,
+        na=False,
+    )
     candidates = cast("pd.DataFrame", stations.loc[eligible_mask]).copy()
     rows: list[dict[str, Any]] = []
     for city in cities.to_dict("records"):
