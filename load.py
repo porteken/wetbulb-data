@@ -45,7 +45,7 @@ TABLE_UNIQUE_KEYS: dict[str, tuple[str, ...]] = {
 }
 TABLE_SOURCE_COLUMNS: dict[str, str] = {"wetbulb": "source"}
 SOURCE_DEFAULT_PRIMARY = "isd"
-SOURCE_RANK_PRIMARY: tuple[str, ...] = ("isd",)
+SOURCE_RANK_PRIMARY: tuple[str, ...] = ("ghcnh", "isd")
 SOURCE_RANK_FILL: tuple[str, ...] = ("nldas", "era5land")
 
 

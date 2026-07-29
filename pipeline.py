@@ -14,8 +14,11 @@ LOGGER = logging.getLogger(__name__)
 
 EU_CITIES_CSV = "cities_eu.csv"
 EU_STATION_MAP_CSV = "cities_eu_isd_stations.csv"
+EU_GHCNH_STATION_MAP_CSV = "cities_eu_ghcnh_stations.csv"
 NA_CITIES_CSV = "cities_na.csv"
 NA_STATION_MAP_CSV = "cities_na_isd_stations.csv"
+NA_GHCNH_STATION_MAP_CSV = "cities_na_ghcnh_stations.csv"
+GHCNH_TRANSITION_YEAR = 2026
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -29,8 +32,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--months", type=int, nargs="+")
     parser.add_argument(
         "--wetbulb-source",
-        choices=["isd", "lcd", "giovanni", "nldas"],
-        default="isd",
+        choices=["auto", "ghcnh", "isd", "lcd", "giovanni", "nldas"],
+        default="auto",
     )
     parser.add_argument("--region", choices=["na", "eu"], default="na")
     parser.add_argument("--out-dir", default=".")
@@ -68,7 +71,7 @@ def _validated_positive_integer(value: int, option: str) -> int:
 
 def _validated_source(value: str) -> str:
     """Return one of the fixed child-program names."""
-    if not re.fullmatch(r"isd|lcd|giovanni|nldas", value):
+    if not re.fullmatch(r"auto|ghcnh|isd|lcd|giovanni|nldas", value):
         msg = "--wetbulb-source must name a supported source"
         raise argparse.ArgumentTypeError(msg)
     return value
@@ -94,10 +97,17 @@ def _command(
     months: list[int] | None,
     year: int,
 ) -> list[str]:
-    if wetbulb_source in {"isd", "lcd", "giovanni"}:
+    selected_source = (
+        "ghcnh"
+        if wetbulb_source == "auto" and year >= GHCNH_TRANSITION_YEAR
+        else "isd"
+        if wetbulb_source == "auto"
+        else wetbulb_source
+    )
+    if selected_source in {"ghcnh", "isd", "lcd", "giovanni"}:
         command = [
             sys.executable,
-            f"{wetbulb_source}.py",
+            f"{selected_source}.py",
             "--start-year",
             str(year),
             "--end-year",
@@ -112,21 +122,31 @@ def _command(
         if city_shard_count > 1:
             command[8:8] = ["--city-shard-index", str(city_shard_index)]
         if region == "eu":
+            station_map = (
+                EU_GHCNH_STATION_MAP_CSV
+                if selected_source == "ghcnh"
+                else EU_STATION_MAP_CSV
+            )
             command.extend(
                 [
                     "--cities-csv",
                     EU_CITIES_CSV,
                     "--station-map-csv",
-                    EU_STATION_MAP_CSV,
+                    station_map,
                 ],
             )
         elif region == "na":
+            station_map = (
+                NA_GHCNH_STATION_MAP_CSV
+                if selected_source == "ghcnh"
+                else NA_STATION_MAP_CSV
+            )
             command.extend(
                 [
                     "--cities-csv",
                     NA_CITIES_CSV,
                     "--station-map-csv",
-                    NA_STATION_MAP_CSV,
+                    station_map,
                 ],
             )
         return command
@@ -158,8 +178,8 @@ def main(argv: list[str] | None = None) -> None:
     out_dir = _validated_output_directory(args.out_dir)
     wetbulb_source = _validated_source(args.wetbulb_source)
     region = _validated_region(args.region)
-    if region == "eu" and wetbulb_source != "isd":
-        msg = "--region eu only supports --wetbulb-source isd"
+    if region == "eu" and wetbulb_source not in {"auto", "ghcnh", "isd"}:
+        msg = "--region eu only supports auto, GHCNh, or ISD observation sources"
         raise argparse.ArgumentTypeError(msg)
     if region == "eu" and out_dir == ".":
         LOGGER.warning(

@@ -85,9 +85,72 @@ def test_eu_region_appends_eu_crosswalk_flags(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_eu_region_rejects_non_isd_sources() -> None:
-    """`--region eu` only supports the ISD worker."""
+    """`--region eu` rejects sources without European coverage."""
     with pytest.raises(argparse.ArgumentTypeError, match="--region eu"):
         pipeline.main(["--wetbulb-source", "nldas", "--region", "eu"])
+
+
+@pytest.mark.parametrize(
+    ("region", "cities", "station_map"),
+    [
+        (
+            "na",
+            pipeline.NA_CITIES_CSV,
+            pipeline.NA_GHCNH_STATION_MAP_CSV,
+        ),
+        (
+            "eu",
+            pipeline.EU_CITIES_CSV,
+            pipeline.EU_GHCNH_STATION_MAP_CSV,
+        ),
+    ],
+)
+def test_auto_source_uses_ghcnh_for_2026_and_later(
+    monkeypatch: pytest.MonkeyPatch,
+    region: str,
+    cities: str,
+    station_map: str,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        pipeline.subprocess,
+        "run",
+        lambda command, **_kwargs: calls.append(command),
+    )
+
+    pipeline.main(
+        [
+            "--years",
+            "2026",
+            "--region",
+            region,
+            "--out-dir",
+            region,
+        ],
+    )
+
+    assert calls[0][1] == "ghcnh.py"
+    assert calls[0][-4:] == [
+        "--cities-csv",
+        cities,
+        "--station-map-csv",
+        station_map,
+    ]
+
+
+def test_auto_source_keeps_isd_for_pre_2026_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        pipeline.subprocess,
+        "run",
+        lambda command, **_kwargs: calls.append(command),
+    )
+
+    pipeline.main(["--years", "2025"])
+
+    assert calls[0][1] == "isd.py"
 
 
 def test_eu_region_with_default_out_dir_warns(

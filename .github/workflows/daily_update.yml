@@ -1,0 +1,214 @@
+name: Daily Wetbulb Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_year:
+        description: "Year to refresh (blank = current UTC year)"
+        default: ""
+      skip_db_load:
+        description: "Fetch and upload only; skip Postgres"
+        type: boolean
+        default: false
+  schedule:
+    # Avoid the top of the hour and allow NOAA's daily GHCNh refresh to settle.
+    - cron: "27 20 * * *"
+
+concurrency:
+  group: daily-wetbulb-update
+  cancel-in-progress: false
+
+env:
+  BUCKET_NAME: wetbulb-parquet-files
+  CITY_SHARD_COUNT: "5"
+  FETCH_CONCURRENCY: "8"
+  CDS_CONCURRENCY: "2"
+
+jobs:
+  resolve-target:
+    if: github.ref_name == 'prd'
+    runs-on: ubuntu-latest
+    outputs:
+      target_year: ${{ steps.target.outputs.year }}
+      shard_matrix: ${{ steps.target.outputs.shards }}
+    steps:
+      - name: Resolve target year and city shards
+        id: target
+        env:
+          SHARD_COUNT: ${{ env.CITY_SHARD_COUNT }}
+          TARGET_YEAR_INPUT: ${{ inputs.target_year }}
+        run: |
+          target_year="$TARGET_YEAR_INPUT"
+          if [ -z "$target_year" ]; then
+            target_year="$(date -u +%Y)"
+          fi
+          if ! [[ "$target_year" =~ ^[0-9]{4}$ ]] || ((target_year < 2026)); then
+            echo "target_year must be 2026 or later" >&2
+            exit 2
+          fi
+          echo "year=$target_year" >> "$GITHUB_OUTPUT"
+          python3 -c "import json,os; print('shards=' + json.dumps(list(range(int(os.environ['SHARD_COUNT'])))))" >> "$GITHUB_OUTPUT"
+
+  fetch-current-year:
+    if: github.ref_name == 'prd'
+    needs: resolve-target
+    strategy:
+      fail-fast: false
+      matrix:
+        region:
+          - name: na
+            cities: cities_na.csv
+            station_map: cities_na_ghcnh_stations.csv
+            output_root: na/na-census-2025-csd-2021
+            cell_map: ""
+          - name: eu
+            cities: cities_eu.csv
+            station_map: cities_eu_ghcnh_stations.csv
+            output_root: eu
+            cell_map: cities_eu_era5land_cells.csv
+        shard: ${{ fromJson(needs.resolve-target.outputs.shard_matrix) }}
+    runs-on: ubuntu-latest
+    name: Refresh ${{ matrix.region.name }} ${{ needs.resolve-target.outputs.target_year }} shard ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version-file: "pyproject.toml"
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990
+        with:
+          enable-cache: true
+      - name: Sync runtime dependencies
+        run: uv sync --locked --no-dev --no-build --extra era5
+      - name: Fetch NOAA GHCNh and replace the current-year shard
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
+        run: |
+          uv run --locked --no-build python ghcnh.py \
+            --start-year "$TARGET_YEAR" \
+            --end-year "$TARGET_YEAR" \
+            --cities-csv "${{ matrix.region.cities }}" \
+            --station-map-csv "${{ matrix.region.station_map }}" \
+            --city-shard-index "${{ matrix.shard }}" \
+            --city-shard-count "$CITY_SHARD_COUNT" \
+            --concurrency "$FETCH_CONCURRENCY" \
+            --force \
+            --out-dir "s3://$BUCKET_NAME/${{ matrix.region.output_root }}"
+      - name: Fill material GHCNh gaps with ERA5-Land
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          CDSAPI_URL: ${{ secrets.CDSAPI_URL }}
+          CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
+          TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
+        run: |
+          cell_map_args=()
+          if [ -n "${{ matrix.region.cell_map }}" ]; then
+            cell_map_args=(--cell-map-csv "${{ matrix.region.cell_map }}")
+          fi
+          uv run --locked --no-build python era5land.py \
+            --start-year "$TARGET_YEAR" \
+            --end-year "$TARGET_YEAR" \
+            --cities-csv "${{ matrix.region.cities }}" \
+            --station-map-csv "${{ matrix.region.station_map }}" \
+            --city-shard-index "${{ matrix.shard }}" \
+            --city-shard-count "$CITY_SHARD_COUNT" \
+            --concurrency "$CDS_CONCURRENCY" \
+            --min-missing-days 19 \
+            --force \
+            --out-dir "s3://$BUCKET_NAME/${{ matrix.region.output_root }}" \
+            "${cell_map_args[@]}"
+
+  load-current-year:
+    if: github.ref_name == 'prd' && !inputs.skip_db_load
+    needs: [resolve-target, fetch-current-year]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version-file: "pyproject.toml"
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990
+        with:
+          enable-cache: true
+      - name: Sync runtime dependencies
+        run: uv sync --locked --no-dev --no-build
+      - name: Download North America and Europe current-year shards
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
+        run: |
+          mkdir -p "na_data/year=$TARGET_YEAR" "eu_data/year=$TARGET_YEAR"
+          aws s3 sync \
+            "s3://$BUCKET_NAME/na/na-census-2025-csd-2021/wetbulb_data_csv/year=$TARGET_YEAR/" \
+            "na_data/year=$TARGET_YEAR/" \
+            --delete
+          aws s3 sync \
+            "s3://$BUCKET_NAME/eu/wetbulb_data_csv/year=$TARGET_YEAR/" \
+            "eu_data/year=$TARGET_YEAR/" \
+            --delete
+      - name: Upsert both regions into Postgres
+        env:
+          POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
+        run: |
+          uv run --locked --no-build python load_wetbulb.py \
+            --wetbulb-root na_data \
+            --load-workers 4
+          uv run --locked --no-build python load_wetbulb.py \
+            --wetbulb-root eu_data \
+            --load-workers 4
+      - name: Refresh materialized views
+        env:
+          POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
+        run: uv run --locked --no-build python refresh_views.py
+
+  notify-on-failure:
+    if: github.ref_name == 'prd' && failure()
+    needs: [resolve-target, fetch-current-year, load-current-year]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the daily-update failure issue
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        with:
+          script: |
+            const title = "Daily wetbulb update failed";
+            const body = [
+              `The North America/Europe update failed on ${new Date().toISOString().slice(0, 10)}.`,
+              ``,
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              ``,
+              `The fetch and database load are idempotent; re-run the workflow after fixing the cause.`,
+            ].join("\n");
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "daily-wetbulb-update-failure",
+            });
+            if (issues.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues[0].number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["daily-wetbulb-update-failure"],
+              });
+            }

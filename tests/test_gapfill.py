@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -119,6 +120,27 @@ class TestFindMissingCells:
         missing = gapfill.find_missing_cells([1], [2020], filesystem, base_path)
 
         assert len(missing) == 366
+
+    def test_current_year_stops_at_era5land_availability_window(
+        self,
+        tmp_path: Any,
+    ) -> None:
+        root = str(tmp_path / "wetbulb_data_csv")
+        filesystem, base_path = resolve_filesystem(root)
+        current_year = pd.Timestamp.now(tz="UTC").year
+
+        missing = gapfill.find_missing_cells(
+            [1],
+            [current_year],
+            filesystem,
+            base_path,
+        )
+
+        expected_end = (
+            pd.Timestamp.now(tz="UTC").normalize()
+            - timedelta(days=gapfill.CURRENT_YEAR_LAG_DAYS)
+        ).date()
+        assert missing["date"].max().date() == expected_end
 
 
 class TestGapYearsByLocation:

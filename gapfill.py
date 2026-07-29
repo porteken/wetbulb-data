@@ -8,6 +8,7 @@ import logging
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -44,6 +45,7 @@ GAPFILL_FILE_PREFIX = "wetbulb_fill"
 GAPFILL_SOURCE = "nldas"
 DEFAULT_CONCURRENCY = 8
 MIN_MISSING_DAYS_DEFAULT = 19
+CURRENT_YEAR_LAG_DAYS = 5
 
 
 def _empty_cells_frame() -> DataFrame:
@@ -100,8 +102,15 @@ def find_missing_cells(
 
     location_id_set = set(location_ids)
     missing_frames: list[DataFrame] = []
+    today_utc = pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
     for year in years:
-        calendar = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D")
+        calendar_end = pd.Timestamp(f"{year}-12-31")
+        if year == today_utc.year:
+            calendar_end = min(
+                calendar_end,
+                today_utc - timedelta(days=CURRENT_YEAR_LAG_DAYS),
+            )
+        calendar = pd.date_range(f"{year}-01-01", calendar_end, freq="D")
         expected = pd.MultiIndex.from_product(
             [location_ids, calendar],
             names=["location_id", "date"],
