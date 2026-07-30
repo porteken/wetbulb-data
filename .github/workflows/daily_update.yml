@@ -26,7 +26,7 @@ env:
 
 jobs:
   resolve-target:
-    if: github.ref_name == 'prd'
+    if: github.ref_name == 'prd' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       target_year: ${{ steps.target.outputs.year }}
@@ -50,7 +50,7 @@ jobs:
           python3 -c "import json,os; print('shards=' + json.dumps(list(range(int(os.environ['SHARD_COUNT'])))))" >> "$GITHUB_OUTPUT"
 
   fetch-current-year:
-    if: github.ref_name == 'prd'
+    if: github.ref_name == 'prd' || github.event_name == 'workflow_dispatch'
     needs: resolve-target
     strategy:
       fail-fast: false
@@ -125,7 +125,7 @@ jobs:
             "${cell_map_args[@]}"
 
   load-current-year:
-    if: github.ref_name == 'prd' && !inputs.skip_db_load
+    if: (github.ref_name == 'prd' || github.event_name == 'workflow_dispatch') && !inputs.skip_db_load
     needs: [resolve-target, fetch-current-year]
     runs-on: ubuntu-latest
     steps:
@@ -172,7 +172,7 @@ jobs:
         run: uv run --locked --no-build python refresh_views.py
 
   notify-on-failure:
-    if: github.ref_name == 'prd' && failure()
+    if: (github.ref_name == 'prd' || github.event_name == 'workflow_dispatch') && failure()
     needs: [resolve-target, fetch-current-year, load-current-year]
     runs-on: ubuntu-latest
     permissions:
