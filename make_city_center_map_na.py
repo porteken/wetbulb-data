@@ -14,7 +14,7 @@ import argparse
 import importlib
 import logging
 import unicodedata
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import requests
 
@@ -27,6 +27,18 @@ if TYPE_CHECKING:
 pd = cast("Any", importlib.import_module("pandas"))
 
 type DataFrame = Any
+
+
+class CityRow(Protocol):
+    """Catalog fields consumed while resolving a city center."""
+
+    city: str
+    place_id: str
+    country: str
+    state: str
+    lat: float
+    lng: float
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -146,19 +158,20 @@ def _nearest_match(
 
 def resolve_city_center(
     places: DataFrame,
-    city: Any,  # noqa: ANN401
+    city: object,
 ) -> tuple[Any, float] | None:
     """Return the GeoNames place and its offset for a city, preferring primary names."""
-    wanted = name_variants(city.city, str(city.place_id))
-    admin1 = geonames_admin1_code(str(city.country), str(city.state))
+    row = cast("CityRow", city)
+    wanted = name_variants(row.city, str(row.place_id))
+    admin1 = geonames_admin1_code(str(row.country), str(row.state))
     in_division = places[
-        (places["country_code"] == city.country) & (places["admin1_code"] == admin1)
+        (places["country_code"] == row.country) & (places["admin1_code"] == admin1)
     ]
     for column in ("primary_names", "alternate_names"):
         candidates = in_division[
             in_division[column].map(lambda names: bool(names & wanted))
         ]
-        match = _nearest_match(candidates, float(city.lat), float(city.lng))
+        match = _nearest_match(candidates, float(row.lat), float(row.lng))
         if match is not None:
             return match
     return None

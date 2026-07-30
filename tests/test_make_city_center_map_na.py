@@ -195,10 +195,14 @@ def test_resolve_city_center_rejects_a_match_beyond_the_offset_cap() -> None:
 def test_build_center_map_falls_back_to_catalog_points(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ) -> None:
+    def download_stub(_url: str, *, session: object) -> bytes:
+        assert session is not None
+        return _geonames_zip()
+
     monkeypatch.setattr(
         centermap,
         "_download",
-        lambda _url, *, session: _geonames_zip(),  # noqa: ARG005
+        download_stub,
     )
     cities_csv = tmp_path / "cities_na.csv"
     cities_csv.write_text(

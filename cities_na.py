@@ -631,12 +631,12 @@ def canonical_catalog_bytes(catalog: DataFrame) -> bytes:
 
 def resolve_output_path(path: str | Path) -> Path:
     """Canonicalize an output path and reject anything outside the working tree."""
-    resolved = os.path.realpath(path)
-    base_dir = os.path.realpath(os.getcwd())  # noqa: PTH109
-    if resolved != base_dir and not resolved.startswith(base_dir + os.sep):
+    resolved = Path(path).resolve()
+    base_dir = Path.cwd().resolve()
+    if not resolved.is_relative_to(base_dir):
         message = f"output path escapes the working directory: {path}"
         raise ValueError(message)
-    return Path(resolved)
+    return resolved
 
 
 def atomic_write(path: str | Path, data: bytes) -> None:

@@ -1,6 +1,5 @@
 """Validate committed North America catalog and ISD crosswalk invariants."""
 
-# ruff: noqa: EM101, TRY003
 from __future__ import annotations
 
 import argparse
@@ -25,9 +24,11 @@ def validate_city_centers(cities: pd.DataFrame, centers_path: Path) -> None:
         return
     centers = pd.read_csv(centers_path)
     if centers["location_id"].tolist() != cities["location_id"].tolist():
-        raise ValueError("center map must contain one ordered row per city")
+        message = "center map must contain one ordered row per city"
+        raise ValueError(message)
     if centers.isna().any().any():
-        raise ValueError("center map requires fully resolved coordinates")
+        message = "center map requires fully resolved coordinates"
+        raise ValueError(message)
     drift = haversine_km(
         cities["lat"].to_numpy(),
         cities["lng"].to_numpy(),
@@ -35,7 +36,8 @@ def validate_city_centers(cities: pd.DataFrame, centers_path: Path) -> None:
         centers["center_lng"].to_numpy(),
     )
     if (drift > MAX_CENTER_OFFSET_KM).any():
-        raise ValueError("center map is stale: rerun make_city_center_map_na.py")
+        message = "center map is stale: rerun make_city_center_map_na.py"
+        raise ValueError(message)
 
 
 def validate_catalog(base: Path = Path()) -> None:
@@ -46,38 +48,48 @@ def validate_catalog(base: Path = Path()) -> None:
     cities = pd.read_csv(catalog_path, dtype={"place_id": str})
     expected_ids = list(range(MAX_CITIES))
     if cities["location_id"].tolist() != expected_ids:
-        raise ValueError("cities_na.csv must contain ordered location IDs 0..499")
+        message = "cities_na.csv must contain ordered location IDs 0..499"
+        raise ValueError(message)
     if cities["place_id"].nunique() != MAX_CITIES or cities.isna().any().any():
-        raise ValueError("cities_na.csv requires 500 unique, fully resolved places")
+        message = "cities_na.csv requires 500 unique, fully resolved places"
+        raise ValueError(message)
     if set(cities["country"]) - {"US", "CA"}:
-        raise ValueError("cities_na.csv contains an unsupported country")
+        message = "cities_na.csv contains an unsupported country"
+        raise ValueError(message)
     cells = pd.DataFrame(
         {"lat": _grid_cell(cities["lat"]), "lng": _grid_cell(cities["lng"])}
     )
     if cells.duplicated().any():
-        raise ValueError("cities_na.csv contains duplicate ERA5-Land grid cells")
+        message = "cities_na.csv contains duplicate ERA5-Land grid cells"
+        raise ValueError(message)
 
     manifest = json.loads(manifest_path.read_text())
     if (
         hashlib.sha256(catalog_path.read_bytes()).hexdigest()
         != manifest["catalog_sha256"]
     ):
-        raise ValueError("cities_na.csv does not match its catalog manifest")
+        message = "cities_na.csv does not match its catalog manifest"
+        raise ValueError(message)
 
     stations = pd.read_csv(station_path, dtype={"usaf": str, "wban": str})
     if stations["location_id"].tolist() != expected_ids:
-        raise ValueError("ISD crosswalk must contain one ordered row per city")
+        message = "ISD crosswalk must contain one ordered row per city"
+        raise ValueError(message)
     if stations[["usaf", "wban"]].duplicated().any():
-        raise ValueError("ISD crosswalk assigns a station more than once")
+        message = "ISD crosswalk assigns a station more than once"
+        raise ValueError(message)
     if stations.isna().any().any():
-        raise ValueError("ISD crosswalk requires fully resolved stations")
+        message = "ISD crosswalk requires fully resolved stations"
+        raise ValueError(message)
     if (stations["dist_km"] > MAX_STATION_DISTANCE_KM).any():
-        raise ValueError("ISD station exceeds 60 km")
+        message = "ISD station exceeds 60 km"
+        raise ValueError(message)
     elevations = cities[["location_id", "dem_m"]].merge(
         stations[["location_id", "elev_m"]], on="location_id", validate="one_to_one"
     )
     if ((elevations["dem_m"] - elevations["elev_m"]).abs() > MAX_ELEV_DELTA_M).any():
-        raise ValueError("ISD station exceeds 300 m elevation difference")
+        message = "ISD station exceeds 300 m elevation difference"
+        raise ValueError(message)
 
     validate_city_centers(cities, base / "cities_na_centers.csv")
 

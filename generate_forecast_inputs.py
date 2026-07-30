@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import csv
 import io
-import os
 from pathlib import Path
 from typing import cast
 
@@ -147,12 +146,12 @@ def build_station_groups(mapping_path: Path) -> pd.DataFrame:
 
 def _safe_cli_path(value: str) -> Path:
     """Resolve a CLI path only when it remains within the working directory."""
-    resolved = os.path.realpath(value)
-    base_dir = os.path.realpath(os.getcwd())  # noqa: PTH109
-    if resolved != base_dir and not resolved.startswith(base_dir + os.sep):
+    resolved = Path(value).resolve()
+    base_dir = Path.cwd().resolve()
+    if not resolved.is_relative_to(base_dir):
         msg = "paths must not escape the working directory"
         raise argparse.ArgumentTypeError(msg)
-    return Path(resolved)
+    return resolved
 
 
 def _parse_args() -> argparse.Namespace:
