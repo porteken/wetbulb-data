@@ -1,7 +1,6 @@
 """Validate committed North America catalog and ISD crosswalk invariants."""
-# ruff: noqa: EM101, TRY003
-# pyright: reportAttributeAccessIssue=false, reportArgumentType=false
 
+# ruff: noqa: EM101, TRY003
 from __future__ import annotations
 
 import argparse

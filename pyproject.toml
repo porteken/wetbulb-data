@@ -21,11 +21,40 @@ nldas = ["h5netcdf", "h5py", "xarray"]
 era5 = ["cdsapi"]
 
 [dependency-groups]
-dev = ["pytest", "pytest-cov>=7.1.0", "ruff"]
+dev = [
+    "pyrefly>=1.1.1",
+    "pytest",
+    "pytest-cov>=7.1.0",
+    "ruff",
+]
 
 [tool.uv]
 package = false
 default-groups = ["dev"]
+
+[tool.pyrefly]
+preset = "default"
+project-includes = ["*.py", "tests/**/*.py"]
+project-excludes = [
+  "venv",
+  ".venv",
+  "typings",
+  "**/__pycache__",
+  ".ruff_cache",
+  "output_tiles",
+  "raw_weather_grib",
+  "weather_data_parquet",
+  "utci_data_parquet",
+  "combined_data_parquet",
+  "**/node_modules",
+  "**/.*",
+  ".conda",
+]
+python-version = "3.14"
+python-platform = "linux"
+python-interpreter-path = ".venv/bin/python"
+search-path = [".", "typings"]
+ignore-missing-imports = ["*"]
 
 [tool.ruff]
 line-length = 88

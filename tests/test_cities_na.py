@@ -9,8 +9,6 @@ import pytest
 
 import cities_na
 
-# pyright: reportArgumentType=false
-
 
 def test_clean_place_name_removes_legal_suffix_and_uses_override() -> None:
     assert cities_na.clean_place_name("Springfield city", "0000000") == "Springfield"
