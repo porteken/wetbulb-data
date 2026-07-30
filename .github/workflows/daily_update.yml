@@ -172,7 +172,7 @@ jobs:
         run: uv run --locked --no-build python refresh_views.py
 
   notify-on-failure:
-    if: (github.ref_name == 'prd' || github.event_name == 'workflow_dispatch') && failure()
+    if: github.ref_name == 'prd' && failure()
     needs: [resolve-target, fetch-current-year, load-current-year]
     runs-on: ubuntu-latest
     permissions:
