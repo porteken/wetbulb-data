@@ -57,6 +57,7 @@ EU_STATION_MAP_CSV = "cities_eu_isd_stations.csv"
 
 _HOURLY_FRAME_COLUMNS = ("location_id", "time", "Tair", "Qair", "PSurf")
 _REQUIRED_DOWNLOAD_COLUMNS = ("valid_time", "t2m", "d2m", "sp")
+_ARCHIVE_READ_ERRORS = (OSError, ValueError, KeyError, zipfile.BadZipFile)
 
 
 class Era5LandSources(NamedTuple):
@@ -134,7 +135,7 @@ def _cached_span(target: str) -> DataFrame | None:
         return None
     try:
         frame = read_era5land_download(target)
-    except OSError, ValueError, KeyError, zipfile.BadZipFile:
+    except _ARCHIVE_READ_ERRORS:
         LOGGER.warning("Re-fetching unreadable cached download: %s", Path(target).name)
         return None
     if not set(_REQUIRED_DOWNLOAD_COLUMNS).issubset(frame.columns):

@@ -40,7 +40,7 @@ logging.basicConfig(
 )
 LOGGER = logging.getLogger(__name__)
 
-ISD_FILE_PREFIX = "wetbulb"
+PRIMARY_FILE_PREFIXES = ("wetbulb_batch_", "wetbulb_eccc_batch_")
 GAPFILL_FILE_PREFIX = "wetbulb_fill"
 GAPFILL_SOURCE = "nldas"
 DEFAULT_CONCURRENCY = 8
@@ -63,7 +63,7 @@ def _existing_cells(
     year: int,
     location_ids: set[int],
 ) -> DataFrame:
-    """Return the (location_id, date) cells the ISD pipeline already wrote for `year`."""
+    """Return cells already written by any primary station pipeline."""
     partition_dir = f"{base_path}/year={year}"
     try:
         file_infos = filesystem.get_file_info(fs_module.FileSelector(partition_dir))
@@ -74,7 +74,7 @@ def _existing_cells(
         file_info.path
         for file_info in file_infos
         if file_info.type == fs_module.FileType.File
-        and Path(file_info.path).name.startswith(f"{ISD_FILE_PREFIX}_batch_")
+        and Path(file_info.path).name.startswith(PRIMARY_FILE_PREFIXES)
     ]
     if not paths:
         return _empty_cells_frame()

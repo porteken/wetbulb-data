@@ -17,6 +17,7 @@ import requests
 from dotenv import load_dotenv
 from tqdm.auto import tqdm
 
+import nldas
 from lcd import (
     _HYPSOMETRIC_SCALE_M_PER_K,
     _ICAO_EXPONENT,
@@ -25,7 +26,6 @@ from lcd import (
     _KELVIN_OFFSET,
     _load_pending_shard,
     _station_to_hourly,
-    _write_daily_shard,
     add_common_shard_args,
     concat_frames,
 )
@@ -36,8 +36,11 @@ pd = cast("Any", importlib.import_module("pandas"))
 np = cast("Any", importlib.import_module("numpy"))
 pa = cast("Any", importlib.import_module("pyarrow"))
 pq = cast("Any", importlib.import_module("pyarrow.parquet"))
+_PARQUET_PARSE_ERRORS = (OSError, pa.ArrowException)
 
 type DataFrame = Any
+type CandidateRow = Any
+type CandidateKey = tuple[str, float | None, float | None]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,7 +58,8 @@ GHCNH_REQUEST_TIMEOUT_SECONDS = 90
 GHCNH_MAX_RETRIES = 3
 GHCNH_RETRY_DELAY_SECONDS = 5
 GHCNH_DEFAULT_CONCURRENCY = 8
-GHCNH_MIN_DAILY_HOURS = 8
+GHCNH_MIN_DAILY_HOURS = 20
+GHCNH_RELIABLE_DAILY_HOURS = 20
 STATION_MAP_PATH = "cities_na_ghcnh_stations.csv"
 
 _HOURLY_FRAME_COLUMNS = ("time", "tair_c", "dewpoint_c", "pressure_hpa")
@@ -118,7 +122,7 @@ def _parse_ghcnh_parquet(
             pa.BufferReader(payload),
             columns=list(_PARQUET_COLUMNS),
         ).to_pandas()
-    except OSError, pa.ArrowException:
+    except _PARQUET_PARSE_ERRORS:
         return _empty_hourly_frame()
 
     report_type = raw["temperature_Report_Type"].astype("string").str.strip()
@@ -277,33 +281,72 @@ def _load_station_map(path: str) -> DataFrame:
         return pd.DataFrame(
             columns=["location_id", "ghcn_id", "lon", "utc_offset_hours"],
         )
-    return pd.read_csv(
+    available = pd.read_csv(map_path, nrows=0).columns
+    required = ["location_id", "ghcn_id", "lon", "utc_offset_hours"]
+    optional = [
+        "candidate_rank",
+        "variable_coverage",
+        "dist_km",
+        "elevation_difference_m",
+        "year",
+        "start_year",
+        "end_year",
+    ]
+    station_map = pd.read_csv(
         map_path,
-        usecols=["location_id", "ghcn_id", "lon", "utc_offset_hours"],
+        usecols=[column for column in [*required, *optional] if column in available],
     )
+    if "candidate_rank" not in station_map:
+        station_map["candidate_rank"] = (
+            station_map.groupby("location_id").cumcount() + 1
+        )
+    for column in ("variable_coverage", "dist_km", "elevation_difference_m"):
+        if column not in station_map:
+            station_map[column] = None
+    return station_map
+
+
+def station_map_for_years(station_map: DataFrame, years: list[int]) -> DataFrame:
+    """Discard candidate rows whose declared period cannot serve this run."""
+    if station_map.empty:
+        return station_map
+    wanted = set(years)
+    if "year" in station_map:
+        declared_year = pd.to_numeric(station_map["year"], errors="coerce")
+        return station_map[declared_year.isna() | declared_year.isin(wanted)].copy()
+    mask = pd.Series(data=True, index=station_map.index)
+    if "start_year" in station_map:
+        start = pd.to_numeric(station_map["start_year"], errors="coerce")
+        mask &= start.isna() | (start <= max(wanted))
+    if "end_year" in station_map:
+        end = pd.to_numeric(station_map["end_year"], errors="coerce")
+        mask &= end.isna() | (end >= min(wanted))
+    return station_map[mask].copy()
+
+
+def _candidate_key(row: CandidateRow) -> CandidateKey:
+    return row.ghcn_id, row.lon, row.utc_offset_hours
 
 
 def _fetch_stations_batch(
-    station_ids: list[str],
-    lon_by_station: dict[str, float | None],
-    offset_by_station: dict[str, float | None],
+    candidates: list[CandidateKey],
     years: list[int],
     worker_count: int,
     city_shard_index: int,
-) -> dict[str, tuple[DataFrame, set[int]]]:
-    results: dict[str, tuple[DataFrame, set[int]]] = {}
+) -> dict[CandidateKey, tuple[DataFrame, set[int]]]:
+    results: dict[CandidateKey, tuple[DataFrame, set[int]]] = {}
     session = requests.Session()
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = {
             executor.submit(
                 _fetch_station_series,
                 session,
-                station_id,
+                candidate[0],
                 years,
-                lon_by_station[station_id],
-                offset_by_station[station_id],
-            ): station_id
-            for station_id in station_ids
+                candidate[1],
+                candidate[2],
+            ): candidate
+            for candidate in candidates
         }
         for future in tqdm(
             as_completed(futures),
@@ -312,6 +355,72 @@ def _fetch_stations_batch(
         ):
             results[futures[future]] = future.result()
     return results
+
+
+def _candidate_daily_frame(row: CandidateRow, station_df: DataFrame) -> DataFrame:
+    """Aggregate one physical station independently and attach provenance."""
+    hourly = _station_to_hourly(int(row.location_id), station_df)
+    daily = nldas.compute_daily_wetbulb(
+        hourly,
+        min_daily_hours=GHCNH_MIN_DAILY_HOURS,
+        include_observation_count=True,
+    )
+    if daily.empty:
+        return daily
+    dates = pd.to_datetime(daily["date"])
+    if hasattr(row, "year") and not pd.isna(row.year):
+        daily = daily[dates.dt.year == int(row.year)]
+    else:
+        if hasattr(row, "start_year") and not pd.isna(row.start_year):
+            daily = daily[dates.dt.year >= int(row.start_year)]
+            dates = pd.to_datetime(daily["date"])
+        if hasattr(row, "end_year") and not pd.isna(row.end_year):
+            daily = daily[dates.dt.year <= int(row.end_year)]
+    if daily.empty:
+        return daily
+    daily["source"] = "ghcnh"
+    daily["station_id"] = str(row.ghcn_id)
+    daily["station_distance_km"] = row.dist_km
+    daily["station_elevation_difference_m"] = row.elevation_difference_m
+    daily["station_quality"] = daily["observed_hours"].map(
+        lambda count: "complete" if count >= GHCNH_RELIABLE_DAILY_HOURS else "sparse",
+    )
+    daily["_candidate_rank"] = int(row.candidate_rank)
+    daily["_variable_coverage"] = row.variable_coverage
+    return daily
+
+
+def select_best_station_days(candidates: DataFrame) -> DataFrame:
+    """Choose one physical station per city-day without mixing hourly rows."""
+    if candidates.empty:
+        return candidates
+    ranked = candidates.copy()
+    ranked["_variable_coverage"] = pd.to_numeric(
+        ranked["_variable_coverage"],
+        errors="coerce",
+    ).fillna(0.0)
+    ranked["station_distance_km"] = pd.to_numeric(
+        ranked["station_distance_km"],
+        errors="coerce",
+    )
+    ranked = ranked.sort_values(
+        [
+            "location_id",
+            "date",
+            "_candidate_rank",
+            "observed_hours",
+            "_variable_coverage",
+            "station_distance_km",
+            "station_id",
+        ],
+        ascending=[True, True, True, False, False, True, True],
+        kind="stable",
+    )
+    return (
+        ranked.drop_duplicates(["location_id", "date"], keep="first")
+        .drop(columns=["_candidate_rank", "_variable_coverage"])
+        .reset_index(drop=True)
+    )
 
 
 def process_ghcnh(
@@ -342,59 +451,61 @@ def process_ghcnh(
     if loaded is None:
         return
     shard_df, years, filesystem, base_path, wetbulb_root = loaded
-    station_map = _load_station_map(station_map_csv)
+    station_map = station_map_for_years(_load_station_map(station_map_csv), years)
     shard_df = shard_df.merge(station_map, on="location_id", how="left")
-    unmapped = shard_df[shard_df["ghcn_id"].isna()]
-    if not unmapped.empty:
+    unmapped_ids = set(shard_df.loc[shard_df["ghcn_id"].isna(), "location_id"])
+    if unmapped_ids:
         LOGGER.warning(
             "city_shard=%d/%d: %d city(ies) have no GHCNh mapping and require gap-fill.",
             city_shard_index,
             city_shard_count,
-            len(unmapped),
+            len(unmapped_ids),
         )
     shard_df = shard_df.dropna(subset=["ghcn_id"])
     if shard_df.empty:
         return
 
-    station_to_locations: dict[str, list[int]] = {}
-    lon_by_station: dict[str, float | None] = {}
-    offset_by_station: dict[str, float | None] = {}
+    candidate_rows: dict[CandidateKey, list[Any]] = {}
     for row in shard_df.itertuples():
-        station_to_locations.setdefault(row.ghcn_id, []).append(row.location_id)
-        lon_by_station[row.ghcn_id] = row.lon
-        offset_by_station[row.ghcn_id] = row.utc_offset_hours
-    worker_count = max(1, min(concurrency, len(station_to_locations)))
+        candidate_rows.setdefault(_candidate_key(row), []).append(row)
+    worker_count = max(1, min(concurrency, len(candidate_rows)))
     station_results = _fetch_stations_batch(
-        list(station_to_locations),
-        lon_by_station,
-        offset_by_station,
+        list(candidate_rows),
         years,
         worker_count,
         city_shard_index,
     )
 
-    hourly_frames: list[DataFrame] = []
+    daily_frames: list[DataFrame] = []
     gapped_years: set[int] = set()
-    for station_id, (station_df, gaps) in station_results.items():
+    for candidate, (station_df, gaps) in station_results.items():
         gapped_years |= gaps
-        hourly_frames.extend(
-            _station_to_hourly(location_id, station_df)
-            for location_id in station_to_locations[station_id]
+        daily_frames.extend(
+            _candidate_daily_frame(row, station_df) for row in candidate_rows[candidate]
         )
-    _write_daily_shard(
-        hourly_frames,
-        city_shard_index,
-        city_shard_count,
-        years,
-        gapped_years,
-        wetbulb_root,
-        filesystem,
-        base_path,
-        logger=LOGGER,
-        write_batches=write_pending_year_batches,
-        source="ghcnh",
-        min_daily_hours=GHCNH_MIN_DAILY_HOURS,
-    )
+    usable = [frame for frame in daily_frames if not frame.empty]
+    if not usable:
+        return
+    selected = select_best_station_days(concat_frames(usable))
+    writable_years = [year for year in years if year not in gapped_years]
+    if gapped_years:
+        LOGGER.warning(
+            "city_shard=%d/%d: transient GHCNh failures affected year(s) %s; "
+            "skipping those writes so they remain retryable.",
+            city_shard_index,
+            city_shard_count,
+            sorted(gapped_years),
+        )
+    if writable_years:
+        write_pending_year_batches(
+            selected,
+            writable_years,
+            wetbulb_root,
+            city_shard_index,
+            filesystem,
+            base_path,
+            file_prefix="wetbulb",
+        )
 
 
 def _parse_args() -> argparse.Namespace:

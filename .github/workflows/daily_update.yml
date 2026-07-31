@@ -43,8 +43,8 @@ jobs:
           if [ -z "$target_year" ]; then
             target_year="$(date -u +%Y)"
           fi
-          if ! [[ "$target_year" =~ ^[0-9]{4}$ ]] || ((target_year < 2026)); then
-            echo "target_year must be 2026 or later" >&2
+          if ! [[ "$target_year" =~ ^[0-9]{4}$ ]] || ((target_year < 2025)); then
+            echo "target_year must be 2025 or later" >&2
             exit 2
           fi
           echo "year=$target_year" >> "$GITHUB_OUTPUT"
@@ -96,6 +96,24 @@ jobs:
             --end-year "$TARGET_YEAR" \
             --cities-csv "${{ matrix.region.cities }}" \
             --station-map-csv "${{ matrix.region.station_map }}" \
+            --city-shard-index "${{ matrix.shard }}" \
+            --city-shard-count "$CITY_SHARD_COUNT" \
+            --concurrency "$FETCH_CONCURRENCY" \
+            --force \
+            --out-dir "s3://$BUCKET_NAME/${{ matrix.region.output_root }}"
+      - name: Supplement Canadian gaps with official ECCC observations
+        if: matrix.region.name == 'na'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
+        run: |
+          uv run --locked --no-build python eccc.py \
+            --start-year "$TARGET_YEAR" \
+            --end-year "$TARGET_YEAR" \
+            --cities-csv cities_na.csv \
+            --station-map-csv cities_na_eccc_stations.csv \
             --city-shard-index "${{ matrix.shard }}" \
             --city-shard-count "$CITY_SHARD_COUNT" \
             --concurrency "$FETCH_CONCURRENCY" \
@@ -159,11 +177,17 @@ jobs:
             "s3://$BUCKET_NAME/eu/wetbulb_data_csv/year=$TARGET_YEAR/" \
             "eu_data/year=$TARGET_YEAR/" \
             --delete
-      - name: Upsert both regions into Postgres
+      - name: Audit, validate, and upsert both regions
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
           TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
         run: |
+          uv run --locked --no-build python audit_station_coverage.py \
+            --root na=na_data \
+            --root eu=eu_data \
+            --cities-csv cities_na.csv \
+            --cities-csv cities_eu.csv \
+            --worst-cities 10
           uv run --locked --no-build python validate_daily_coverage.py \
             --cities-csv cities_na.csv \
             --wetbulb-root na_data \

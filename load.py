@@ -45,8 +45,29 @@ TABLE_UNIQUE_KEYS: dict[str, tuple[str, ...]] = {
 }
 TABLE_SOURCE_COLUMNS: dict[str, str] = {"wetbulb": "source"}
 SOURCE_DEFAULT_PRIMARY = "isd"
-SOURCE_RANK_PRIMARY: tuple[str, ...] = ("ghcnh", "isd")
-SOURCE_RANK_FILL: tuple[str, ...] = ("nldas", "era5land")
+SOURCE_RANK: dict[str, int] = {
+    "eccc": 0,
+    "ghcnh": 1,
+    "isd": 2,
+    "lcd": 2,
+    "giovanni": 2,
+    "nldas": 3,
+    "era5land": 4,
+}
+
+
+def _source_rank_expression(column: sql.Composable) -> sql.Composed:
+    """Return deterministic station-first source precedence as a SQL expression."""
+    whens = sql.SQL(" ").join(
+        sql.SQL("WHEN {} THEN {}").format(sql.Literal(source), sql.Literal(rank))
+        for source, rank in SOURCE_RANK.items()
+    )
+    return sql.SQL("CASE COALESCE({}, {}) {} ELSE {} END").format(
+        column,
+        sql.Literal(SOURCE_DEFAULT_PRIMARY),
+        whens,
+        sql.Literal(max(SOURCE_RANK.values()) + 1),
+    )
 
 
 def _consume_line_comment(sql_text: str, index: int) -> int:
@@ -595,20 +616,22 @@ def _upsert_from_staging(
         conflict_action = sql.SQL("DO NOTHING")
     elif has_source:
         conflict_action = sql.SQL(
-            "DO UPDATE SET {updates} WHERE NOT ({table}.{col} IN ({primary}) "
-            "AND EXCLUDED.{col} IN ({fill_sources}))",
+            "DO UPDATE SET {updates} WHERE {incoming_rank} <= {existing_rank}",
         ).format(
             updates=sql.SQL(", ").join(
                 sql.SQL("{col} = EXCLUDED.{col}").format(col=sql.Identifier(col))
                 for col in update_columns
             ),
-            table=sql.Identifier(table_name),
-            col=sql.Identifier(cast("str", source_column)),
-            primary=sql.SQL(", ").join(
-                sql.Literal(source) for source in SOURCE_RANK_PRIMARY
+            incoming_rank=_source_rank_expression(
+                sql.SQL("EXCLUDED.{}").format(
+                    sql.Identifier(cast("str", source_column)),
+                ),
             ),
-            fill_sources=sql.SQL(", ").join(
-                sql.Literal(source) for source in SOURCE_RANK_FILL
+            existing_rank=_source_rank_expression(
+                sql.SQL("{}.{}").format(
+                    sql.Identifier(table_name),
+                    sql.Identifier(cast("str", source_column)),
+                ),
             ),
         )
     else:
@@ -621,15 +644,10 @@ def _upsert_from_staging(
 
     order_sql = keys_sql
     if has_source:
-        order_sql = sql.SQL(
-            "{keys}, CASE WHEN COALESCE({col}, {default}) IN ({primary}) "
-            "THEN 0 ELSE 1 END",
-        ).format(
+        order_sql = sql.SQL("{keys}, {source_rank}").format(
             keys=keys_sql,
-            col=sql.Identifier(cast("str", source_column)),
-            default=sql.Literal(SOURCE_DEFAULT_PRIMARY),
-            primary=sql.SQL(", ").join(
-                sql.Literal(source) for source in SOURCE_RANK_PRIMARY
+            source_rank=_source_rank_expression(
+                sql.Identifier(cast("str", source_column)),
             ),
         )
 
@@ -817,7 +835,7 @@ def _discover_batch_parquet_paths(
 
 
 def _discover_wetbulb_csv_paths(args: argparse.Namespace) -> list[Path]:
-    """Return wetbulb input paths: ISD/LCD/Giovanni batches plus any NLDAS gap-fill batches."""
+    """Return primary station batches plus grid gap-fill batches."""
     batch_paths = _discover_batch_parquet_paths(
         args,
         direct_csv=args.wetbulb_csv,
@@ -828,6 +846,14 @@ def _discover_wetbulb_csv_paths(args: argparse.Namespace) -> list[Path]:
     if args.prefer_wetbulb_csv and Path(args.wetbulb_csv).exists():
         return batch_paths
 
+    eccc_paths = _discover_batch_parquet_paths(
+        args,
+        direct_csv=args.wetbulb_csv,
+        root=args.wetbulb_root,
+        file_glob="wetbulb_eccc_batch_*.parquet",
+        prefer_direct=False,
+    )
+
     fill_paths = _discover_batch_parquet_paths(
         args,
         direct_csv=args.wetbulb_csv,
@@ -835,7 +861,7 @@ def _discover_wetbulb_csv_paths(args: argparse.Namespace) -> list[Path]:
         file_glob="wetbulb_fill_batch_*.parquet",
         prefer_direct=False,
     )
-    return batch_paths + fill_paths
+    return batch_paths + eccc_paths + fill_paths
 
 
 def _load_file_group(
@@ -980,6 +1006,11 @@ def main() -> None:
     try:
         if should_refresh_schema or args.ensure_schema:
             execute_sql_file(conn, "create_tables.sql")
+        if "wetbulb" not in skip_tables:
+            # CREATE TABLE IF NOT EXISTS cannot add provenance columns to an
+            # already-deployed table, so every wet-bulb load applies the
+            # idempotent ALTER migration first.
+            execute_sql_file(conn, "migrate_wetbulb_station_provenance.sql")
 
         _load_requested_tables(
             conn,

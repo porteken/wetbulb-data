@@ -85,3 +85,64 @@ def test_build_station_map_excludes_usl_marine_style_stations() -> None:
     )
 
     assert result.iloc[0]["ghcn_id"] == "USW000LAND01"
+
+
+def test_build_station_map_returns_multiple_candidates_ranked_by_coverage() -> None:
+    cities = pd.DataFrame(
+        {
+            "location_id": [1],
+            "lat": [40.0],
+            "lng": [-74.0],
+            "dem_m": [10.0],
+            "utc_offset_hours": [-5.0],
+        },
+    )
+    stations = pd.DataFrame(
+        {
+            "GHCN_ID": ["NEAREST_SPARSE", "FARTHER_COMPLETE"],
+            "LATITUDE": [40.01, 40.05],
+            "LONGITUDE": [-74.0, -74.0],
+            "ELEVATION": [10.0, 10.0],
+        },
+    )
+
+    result = station_map.build_station_map(
+        cities,
+        stations,
+        {"NEAREST_SPARSE": 1.0, "FARTHER_COMPLETE": 99.0},
+        max_candidates_per_city=2,
+    )
+
+    assert list(result["ghcn_id"]) == ["FARTHER_COMPLETE", "NEAREST_SPARSE"]
+    assert list(result["candidate_rank"]) == [1, 2]
+
+
+def test_year_specific_map_does_not_mix_station_inventories() -> None:
+    cities = pd.DataFrame(
+        {
+            "location_id": [1],
+            "lat": [40.0],
+            "lng": [-74.0],
+            "dem_m": [10.0],
+            "utc_offset_hours": [-5.0],
+        },
+    )
+    stations = pd.DataFrame(
+        {
+            "GHCN_ID": ["OLD", "NEW"],
+            "LATITUDE": [40.01, 40.01],
+            "LONGITUDE": [-74.0, -74.0],
+            "ELEVATION": [10.0, 10.0],
+        },
+    )
+
+    result = station_map.build_year_specific_station_map(
+        cities,
+        stations,
+        {2000: {"OLD": 100.0}, 2025: {"NEW": 100.0}},
+    )
+
+    assert result[["year", "ghcn_id"]].to_dict("records") == [
+        {"year": 2000, "ghcn_id": "OLD"},
+        {"year": 2025, "ghcn_id": "NEW"},
+    ]

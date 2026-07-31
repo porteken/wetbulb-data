@@ -420,12 +420,15 @@ def compute_daily_wetbulb(
     hourly_df: DataFrame,
     *,
     min_daily_hours: int = MIN_DAILY_HOURS,
+    include_observation_count: bool = False,
 ) -> DataFrame:
     """Aggregate by fixed local-standard day when an offset column is present."""
     if min_daily_hours < 1:
         msg = "min_daily_hours must be positive"
         raise ValueError(msg)
     output_columns = ["location_id", "date", "wetbulb", "wetbulb_avg"]
+    if include_observation_count:
+        output_columns.append("observed_hours")
     df = hourly_df.dropna(subset=list(NLDAS_VARIABLES)).copy()
     if df.empty:
         return pd.DataFrame(columns=output_columns)
@@ -462,12 +465,17 @@ def compute_daily_wetbulb(
         offsets = pd.to_numeric(df["utc_offset_hours"], errors="raise")
         timestamps = timestamps + pd.to_timedelta(offsets, unit="h")
     df["date"] = timestamps.dt.date
+    df["hour_slot"] = timestamps.dt.floor("h")
     daily = df.groupby(["location_id", "date"], as_index=False).agg(
         wetbulb=("tw", "max"),
         wetbulb_avg=("tw", "mean"),
-        n_hours=("tw", "count"),
+        n_hours=("hour_slot", "nunique"),
     )
-    daily = daily[daily["n_hours"] >= min_daily_hours].drop(columns="n_hours")
+    daily = daily[daily["n_hours"] >= min_daily_hours]
+    if include_observation_count:
+        daily = daily.rename(columns={"n_hours": "observed_hours"})
+    else:
+        daily = daily.drop(columns="n_hours")
     daily["wetbulb"] = (
         daily["wetbulb"] * WETBULB_ROUNDING_FACTOR
     ).round() / WETBULB_ROUNDING_FACTOR

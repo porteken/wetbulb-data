@@ -14,6 +14,7 @@ from load import (
     _discover_wetbulb_csv_paths,
     _load_table_files,
     _validate_load_shard_args,
+    execute_sql_file,
 )
 from shared_config import DATABASE_CONFIG_HINT, resolve_database_uri
 
@@ -94,6 +95,7 @@ def main() -> None:
                 "Run create_tables.sql (or load.py) first."
             )
             raise SystemExit(msg)
+        execute_sql_file(conn, "migrate_wetbulb_station_provenance.sql")
 
         _load_table_files(
             conn,

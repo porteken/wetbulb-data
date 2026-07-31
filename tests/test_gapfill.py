@@ -92,6 +92,35 @@ class TestFindMissingCells:
 
         assert len(missing) == 365
 
+    def test_eccc_output_counts_as_primary_station_coverage(
+        self, tmp_path: Any
+    ) -> None:
+        root = str(tmp_path / "wetbulb_data_csv")
+        filesystem, base_path = resolve_filesystem(root)
+        station_df = pd.DataFrame(
+            {
+                "location_id": [1],
+                "date": [pd.Timestamp("2021-01-01").date()],
+                "wetbulb": [20.0],
+                "wetbulb_avg": [18.0],
+                "source": ["eccc"],
+            },
+        )
+        write_batch_partition(
+            root,
+            2021,
+            0,
+            station_df,
+            0,
+            file_prefix="wetbulb_eccc",
+            filesystem=filesystem,
+            base_path=base_path,
+        )
+
+        missing = gapfill.find_missing_cells([1], [2021], filesystem, base_path)
+
+        assert len(missing) == 364
+
     def test_ignores_fill_files_when_detecting_gaps(self, tmp_path: Any) -> None:
         """A gap is always relative to ISD output, never to a prior gap-fill run."""
         root = str(tmp_path / "wetbulb_data_csv")

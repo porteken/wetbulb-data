@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import load
 import load_wetbulb
 from load import execute_sql_files_atomically
 
@@ -79,6 +80,28 @@ def _argv(tmp_path: Path, *extra: str) -> list[str]:
     ]
 
 
+def test_discovery_includes_eccc_station_batches(tmp_path: Path) -> None:
+    root = tmp_path / "wetbulb_data_csv" / "year=2025"
+    root.mkdir(parents=True)
+    ghcnh_path = root / "wetbulb_batch_0000_00.parquet"
+    eccc_path = root / "wetbulb_eccc_batch_0000_00.parquet"
+    fill_path = root / "wetbulb_fill_batch_0000_00.parquet"
+    for path in (ghcnh_path, eccc_path, fill_path):
+        path.touch()
+    args = load._parse_args(
+        [
+            "--wetbulb-root",
+            str(tmp_path / "wetbulb_data_csv"),
+            "--wetbulb-csv",
+            str(tmp_path / "wetbulb.csv"),
+        ]
+    )
+
+    discovered = load._discover_wetbulb_csv_paths(args)
+
+    assert discovered == [ghcnh_path, eccc_path, fill_path]
+
+
 class TestParseArgs:
     def test_defaults_append_and_analyze(self) -> None:
         args = load_wetbulb._parse_args([])
@@ -110,7 +133,7 @@ class TestMain:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         batch_path = _make_shard(tmp_path)
-        conn = FakeConnection()
+        conn = TransactionConnection()
         bulk_insert = MagicMock()
 
         monkeypatch.setattr(sys, "argv", ["load_wetbulb.py", *_argv(tmp_path)])
@@ -132,7 +155,7 @@ class TestMain:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         _make_shard(tmp_path)
-        conn = FakeConnection()
+        conn = TransactionConnection()
         bulk_insert = MagicMock()
 
         monkeypatch.setattr(
@@ -152,7 +175,7 @@ class TestMain:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         _make_shard(tmp_path)
-        conn = FakeConnection()
+        conn = TransactionConnection()
 
         monkeypatch.setattr(
             sys, "argv", ["load_wetbulb.py", *_argv(tmp_path, "--skip-analyze")]

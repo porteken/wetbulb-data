@@ -15,6 +15,7 @@ EU_OUT_DIR=${EU_OUT_DIR:-eu}
 EU_CITIES_CSV=${EU_CITIES_CSV:-cities_eu.csv}
 EU_LOCATIONS_CSV=${EU_LOCATIONS_CSV:-locations_eu.csv}
 EU_STATION_MAP_CSV=${EU_STATION_MAP_CSV:-cities_eu_isd_stations.csv}
+EU_GHCNH_STATION_MAP_CSV=${EU_GHCNH_STATION_MAP_CSV:-cities_eu_ghcnh_stations.csv}
 EU_START_YEAR=${EU_START_YEAR:-2000}
 EU_END_YEAR=${EU_END_YEAR:-2025}
 EU_CROSSWALK_START_YEAR=${EU_CROSSWALK_START_YEAR:-1991}
@@ -25,6 +26,7 @@ EU_CITY_SHARDS=${EU_CITY_SHARDS:-1}
 EU_MIN_MISSING_DAYS=${EU_MIN_MISSING_DAYS:-19}
 EU_DOWNLOAD_DIR=${EU_DOWNLOAD_DIR:-}
 EU_CELL_MAP_CSV=${EU_CELL_MAP_CSV:-cities_eu_era5land_cells.csv}
+EU_FORCE_STATION_BACKFILL=${EU_FORCE_STATION_BACKFILL:-0}
 PYTHON_RUN=${PYTHON_RUN:-uv run python}
 
 DEFAULT_STEPS=(cities crosswalk backfill gapfill)
@@ -35,6 +37,12 @@ ASSUME_YES=0
 
 read -ra PY <<<"${PYTHON_RUN}"
 read -ra TRIAL_YEARS <<<"${EU_TRIAL_YEARS}"
+[[ ${EU_FORCE_STATION_BACKFILL} =~ ^[01]$ ]] || {
+  printf 'EU_FORCE_STATION_BACKFILL must be 0 or 1\n' >&2
+  exit 2
+}
+STATION_FORCE_ARGS=()
+((EU_FORCE_STATION_BACKFILL)) && STATION_FORCE_ARGS=(--force)
 
 log() { printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S' || true)" "$*" >&2; }
 die() {
@@ -119,31 +127,47 @@ step_trial() {
   require_file "${EU_STATION_MAP_CSV}" crosswalk
   local year
   for year in "${TRIAL_YEARS[@]}"; do
-    log "[trial] ISD year ${year}"
-    run "${PY[@]}" isd.py \
+    local worker=isd.py station_map=${EU_STATION_MAP_CSV} source=ISD
+    if ((year >= 2000)); then
+      worker=ghcnh.py
+      station_map=${EU_GHCNH_STATION_MAP_CSV}
+      source=GHCNh
+      require_file "${station_map}" crosswalk
+    fi
+    log "[trial] ${source} year ${year}"
+    run "${PY[@]}" "${worker}" \
       --cities-csv "${EU_CITIES_CSV}" \
-      --station-map-csv "${EU_STATION_MAP_CSV}" \
+      --station-map-csv "${station_map}" \
       --start-year "${year}" --end-year "${year}" \
       --out-dir "${EU_OUT_DIR}" \
-      --concurrency "${EU_ISD_CONCURRENCY}"
+      --concurrency "${EU_ISD_CONCURRENCY}" \
+      "${STATION_FORCE_ARGS[@]}"
   done
   log "[trial] inspect ${EU_OUT_DIR}/wetbulb_data_csv before running the backfill"
 }
 
 step_backfill() {
   require_file "${EU_STATION_MAP_CSV}" crosswalk
-  log "[backfill] ISD ${EU_START_YEAR}-${EU_END_YEAR} into ${EU_OUT_DIR}" \
+  require_file "${EU_GHCNH_STATION_MAP_CSV}" crosswalk
+  log "[backfill] station observations ${EU_START_YEAR}-${EU_END_YEAR} into ${EU_OUT_DIR}" \
     "(${EU_CITY_SHARDS} shard(s) x ${EU_ISD_CONCURRENCY} threads);" \
     "processing one year at a time to bound memory; resumable"
   local year
   for ((year = EU_START_YEAR; year <= EU_END_YEAR; year++)); do
-    log "[backfill] ISD year ${year}"
-    run_sharded isd.py \
+    local worker=isd.py station_map=${EU_STATION_MAP_CSV} source=ISD
+    if ((year >= 2000)); then
+      worker=ghcnh.py
+      station_map=${EU_GHCNH_STATION_MAP_CSV}
+      source=GHCNh
+    fi
+    log "[backfill] ${source} year ${year}"
+    run_sharded "${worker}" \
       --cities-csv "${EU_CITIES_CSV}" \
-      --station-map-csv "${EU_STATION_MAP_CSV}" \
+      --station-map-csv "${station_map}" \
       --start-year "${year}" --end-year "${year}" \
       --out-dir "${EU_OUT_DIR}" \
-      --concurrency "${EU_ISD_CONCURRENCY}"
+      --concurrency "${EU_ISD_CONCURRENCY}" \
+      "${STATION_FORCE_ARGS[@]}"
   done
   log "[backfill] done"
 }

@@ -43,6 +43,7 @@ LOGGER = logging.getLogger(__name__)
 
 DEFAULT_SNAPSHOT = "/home/kenneth-porter/era5land_gapfill_snapshot"
 LIVE_RUN_PID = 2853596
+_SNAPSHOT_READ_ERRORS = (OSError, ValueError, KeyError, zipfile.BadZipFile)
 
 
 def _live_run_is_active(pid: int) -> bool:
@@ -56,7 +57,7 @@ def _span_csv(snapshot: Path, lat: float, lng: float, start: int, end: int) -> P
 def _read_span(path: Path) -> DataFrame | None:
     try:
         return read_era5land_download(str(path))
-    except OSError, ValueError, KeyError, zipfile.BadZipFile:
+    except _SNAPSHOT_READ_ERRORS:
         LOGGER.warning("Unreadable or truncated snapshot file: %s", path.name)
         return None
 

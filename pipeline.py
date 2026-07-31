@@ -18,7 +18,10 @@ EU_GHCNH_STATION_MAP_CSV = "cities_eu_ghcnh_stations.csv"
 NA_CITIES_CSV = "cities_na.csv"
 NA_STATION_MAP_CSV = "cities_na_isd_stations.csv"
 NA_GHCNH_STATION_MAP_CSV = "cities_na_ghcnh_stations.csv"
-GHCNH_TRANSITION_YEAR = 2026
+NA_ECCC_STATION_MAP_CSV = "cities_na_eccc_stations.csv"
+# GHCNh is NOAA's supported hourly archive and exposes yearly inventory data
+# needed for multi-station selection. The configured analysis record starts in 2000.
+GHCNH_TRANSITION_YEAR = 2000
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -32,7 +35,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--months", type=int, nargs="+")
     parser.add_argument(
         "--wetbulb-source",
-        choices=["auto", "ghcnh", "isd", "lcd", "giovanni", "nldas"],
+        choices=["auto", "eccc", "ghcnh", "isd", "lcd", "giovanni", "nldas"],
         default="auto",
     )
     parser.add_argument("--region", choices=["na", "eu"], default="na")
@@ -49,6 +52,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--download-workers", type=int, default=12)
     parser.add_argument("--batch-hours", type=int, default=720)
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace existing worker shards instead of treating them as complete.",
+    )
     return parser.parse_args(argv)
 
 
@@ -71,7 +79,7 @@ def _validated_positive_integer(value: int, option: str) -> int:
 
 def _validated_source(value: str) -> str:
     """Return one of the fixed child-program names."""
-    if not re.fullmatch(r"auto|ghcnh|isd|lcd|giovanni|nldas", value):
+    if not re.fullmatch(r"auto|eccc|ghcnh|isd|lcd|giovanni|nldas", value):
         msg = "--wetbulb-source must name a supported source"
         raise argparse.ArgumentTypeError(msg)
     return value
@@ -96,6 +104,8 @@ def _command(
     batch_hours: int,
     months: list[int] | None,
     year: int,
+    *,
+    force: bool = False,
 ) -> list[str]:
     selected_source = (
         "ghcnh"
@@ -104,7 +114,7 @@ def _command(
         if wetbulb_source == "auto"
         else wetbulb_source
     )
-    if selected_source in {"ghcnh", "isd", "lcd", "giovanni"}:
+    if selected_source in {"eccc", "ghcnh", "isd", "lcd", "giovanni"}:
         command = [
             sys.executable,
             f"{selected_source}.py",
@@ -137,7 +147,9 @@ def _command(
             )
         elif region == "na":
             station_map = (
-                NA_GHCNH_STATION_MAP_CSV
+                NA_ECCC_STATION_MAP_CSV
+                if selected_source == "eccc"
+                else NA_GHCNH_STATION_MAP_CSV
                 if selected_source == "ghcnh"
                 else NA_STATION_MAP_CSV
             )
@@ -149,6 +161,8 @@ def _command(
                     station_map,
                 ],
             )
+        if force:
+            command.append("--force")
         return command
 
     command = [
@@ -169,6 +183,8 @@ def _command(
         command[6:6] = ["--city-shard-index", str(city_shard_index)]
     if months:
         command.extend(["--months", *(str(month) for month in months)])
+    if force:
+        command.append("--force")
     return command
 
 
@@ -225,6 +241,7 @@ def main(argv: list[str] | None = None) -> None:
                     batch_hours,
                     months,
                     year,
+                    force=args.force,
                 ),
                 check=True,
                 shell=False,

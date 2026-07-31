@@ -208,3 +208,41 @@ def test_fetch_station_year_marks_exhausted_request_as_transient(
 
     assert frame.empty
     assert gap is True
+
+
+def test_select_best_station_days_uses_fallback_without_mixing() -> None:
+    candidates = pd.DataFrame(
+        {
+            "location_id": [1, 1, 1],
+            "date": pd.to_datetime(["2025-01-01", "2025-01-02", "2025-01-02"]),
+            "wetbulb": [10.0, 20.0, 30.0],
+            "wetbulb_avg": [9.0, 19.0, 29.0],
+            "observed_hours": [24, 20, 24],
+            "source": ["ghcnh"] * 3,
+            "station_id": ["PRIMARY", "PRIMARY", "SECONDARY"],
+            "station_distance_km": [5.0, 5.0, 2.0],
+            "station_elevation_difference_m": [1.0, 1.0, 1.0],
+            "station_quality": ["complete"] * 3,
+            "_candidate_rank": [1, 1, 2],
+            "_variable_coverage": [100.0, 100.0, 100.0],
+        },
+    )
+
+    result = ghcnh.select_best_station_days(candidates)
+
+    assert list(result["station_id"]) == ["PRIMARY", "PRIMARY"]
+    assert list(result["wetbulb"]) == [10.0, 20.0]
+
+
+def test_station_map_for_years_filters_year_specific_rows() -> None:
+    station_map = pd.DataFrame(
+        {
+            "location_id": [1, 1],
+            "ghcn_id": ["OLD", "NEW"],
+            "year": [2000, 2025],
+        },
+    )
+
+    result = ghcnh.station_map_for_years(station_map, [2025])
+
+    assert result["ghcn_id"].tolist() == ["NEW"]

@@ -103,6 +103,24 @@ def test_ghcnh_row_overwrites_an_existing_fill_row(
 
 
 @pytest.mark.db
+def test_ghcnh_row_overwrites_legacy_isd_row(
+    conn: psycopg.Connection[Any],
+) -> None:
+    _upsert_rows(conn, [(1, "2020-06-01", 19.0, 18.0, "isd")])
+    _upsert_rows(conn, [(1, "2020-06-01", 20.0, 19.0, "ghcnh")])
+    assert _wetbulb_row(conn) == (20.0, "ghcnh")
+
+
+@pytest.mark.db
+def test_eccc_row_overwrites_ghcnh_row(
+    conn: psycopg.Connection[Any],
+) -> None:
+    _upsert_rows(conn, [(1, "2020-06-01", 19.0, 18.0, "ghcnh")])
+    _upsert_rows(conn, [(1, "2020-06-01", 20.0, 19.0, "eccc")])
+    assert _wetbulb_row(conn) == (20.0, "eccc")
+
+
+@pytest.mark.db
 def test_in_batch_dedup_prefers_primary_over_any_fill_source(
     conn: psycopg.Connection[Any],
 ) -> None:
@@ -118,10 +136,10 @@ def test_in_batch_dedup_prefers_primary_over_any_fill_source(
 
 
 @pytest.mark.db
-def test_one_fill_source_can_overwrite_another(
+def test_lower_priority_fill_cannot_overwrite_higher_priority_fill(
     conn: psycopg.Connection[Any],
 ) -> None:
-    """Only primary observations are protected; fill sources can replace each other."""
+    """NLDAS remains preferred when a later ERA5-Land shard duplicates its cell."""
     _upsert_rows(conn, [(1, "2020-06-01", 22.0, 21.0, "nldas")])
     _upsert_rows(conn, [(1, "2020-06-01", 25.0, 24.0, "era5land")])
-    assert _wetbulb_row(conn) == (25.0, "era5land")
+    assert _wetbulb_row(conn) == (22.0, "nldas")

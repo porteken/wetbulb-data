@@ -2,6 +2,7 @@
 # Immutable catalogs required by GitHub Actions.
 !cities_na.csv
 !cities_na_ghcnh_stations.csv
+!cities_na_eccc_stations.csv
 !cities_eu.csv
 !cities_eu_ghcnh_stations.csv
 !cities_eu_era5land_cells.csv

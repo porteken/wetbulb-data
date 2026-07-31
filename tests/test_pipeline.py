@@ -105,7 +105,7 @@ def test_eu_region_rejects_non_isd_sources() -> None:
         ),
     ],
 )
-def test_auto_source_uses_ghcnh_for_2026_and_later(
+def test_auto_source_uses_ghcnh_for_analysis_period(
     monkeypatch: pytest.MonkeyPatch,
     region: str,
     cities: str,
@@ -121,7 +121,7 @@ def test_auto_source_uses_ghcnh_for_2026_and_later(
     pipeline.main(
         [
             "--years",
-            "2026",
+            "2000",
             "--region",
             region,
             "--out-dir",
@@ -138,7 +138,7 @@ def test_auto_source_uses_ghcnh_for_2026_and_later(
     ]
 
 
-def test_auto_source_keeps_isd_for_pre_2026_history(
+def test_auto_source_keeps_isd_for_pre_analysis_history(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[list[str]] = []
@@ -148,9 +148,24 @@ def test_auto_source_keeps_isd_for_pre_2026_history(
         lambda command, **_kwargs: calls.append(command),
     )
 
-    pipeline.main(["--years", "2025"])
+    pipeline.main(["--years", "1999"])
 
     assert calls[0][1] == "isd.py"
+
+
+def test_force_is_forwarded_to_station_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        pipeline.subprocess,
+        "run",
+        lambda command, **_kwargs: calls.append(command),
+    )
+
+    pipeline.main(["--years", "2000", "--force"])
+
+    assert calls[0][-1] == "--force"
 
 
 def test_eu_region_with_default_out_dir_warns(

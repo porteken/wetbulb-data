@@ -17,7 +17,13 @@ date date NOT NULL,
 wetbulb real NOT NULL,
 wetbulb_avg real,
 source text NOT NULL DEFAULT 'isd',
-CONSTRAINT wetbulb_source_check CHECK (source IN ('ghcnh', 'isd', 'nldas', 'lcd', 'giovanni', 'era5land'))
+station_id text,
+station_distance_km real,
+station_elevation_difference_m real,
+observed_hours smallint,
+station_quality text,
+CONSTRAINT wetbulb_source_check CHECK (source IN ('eccc', 'ghcnh', 'isd', 'nldas', 'lcd', 'giovanni', 'era5land')),
+CONSTRAINT wetbulb_station_quality_check CHECK (station_quality IS NULL OR station_quality IN ('complete', 'sparse'))
 ) ;
 
 CREATE UNIQUE INDEX IF NOT EXISTS wetbulb_location_date_uidx
