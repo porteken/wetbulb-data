@@ -169,7 +169,18 @@ jobs:
       - name: Refresh materialized views
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
-        run: uv run --locked --no-build python refresh_views.py
+        run: |
+          for attempt in 1 2 3; do
+            if uv run --locked --no-build python refresh_views.py; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Materialized view refresh failed after $attempt attempts." >&2
+              exit 1
+            fi
+            echo "Materialized view refresh failed; retrying in 60 seconds (attempt $((attempt + 1))/3)..." >&2
+            sleep 60
+          done
 
   notify-on-failure:
     if: github.ref_name == 'prd' && failure()
