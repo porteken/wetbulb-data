@@ -22,7 +22,8 @@ env:
   BUCKET_NAME: wetbulb-parquet-files
   CITY_SHARD_COUNT: "5"
   FETCH_CONCURRENCY: "8"
-  CDS_CONCURRENCY: "2"
+  EARTH_ENGINE_CONCURRENCY: "8"
+  ERA5_LAND_RELIABLE_LAG_DAYS: "8"
 
 jobs:
   resolve-target:
@@ -54,6 +55,8 @@ jobs:
     needs: resolve-target
     strategy:
       fail-fast: false
+      # 4 jobs x 8 workers stays below Earth Engine's standard 40-request quota.
+      max-parallel: 4
       matrix:
         region:
           - name: na
@@ -80,7 +83,7 @@ jobs:
         with:
           enable-cache: true
       - name: Sync runtime dependencies
-        run: uv sync --locked --no-dev --no-build --extra era5
+        run: uv sync --locked --no-dev --no-build --extra earth-engine
       - name: Fetch NOAA GHCNh and replace the current-year shard
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -98,28 +101,28 @@ jobs:
             --concurrency "$FETCH_CONCURRENCY" \
             --force \
             --out-dir "s3://$BUCKET_NAME/${{ matrix.region.output_root }}"
-      - name: Fill material GHCNh gaps with ERA5-Land
+      - name: Fill every GHCNh gap with Earth Engine ERA5-Land
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
-          CDSAPI_URL: ${{ secrets.CDSAPI_URL }}
-          CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
+          # Existing service-account JSON; the project ID is read from the document.
+          GOOGLE_EARTH_ENGINE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
           TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
         run: |
           cell_map_args=()
           if [ -n "${{ matrix.region.cell_map }}" ]; then
             cell_map_args=(--cell-map-csv "${{ matrix.region.cell_map }}")
           fi
-          uv run --locked --no-build python era5land.py \
+          uv run --locked --no-build python earth_engine_era5land.py \
             --start-year "$TARGET_YEAR" \
             --end-year "$TARGET_YEAR" \
             --cities-csv "${{ matrix.region.cities }}" \
             --station-map-csv "${{ matrix.region.station_map }}" \
             --city-shard-index "${{ matrix.shard }}" \
             --city-shard-count "$CITY_SHARD_COUNT" \
-            --concurrency "$CDS_CONCURRENCY" \
-            --min-missing-days 19 \
+            --concurrency "$EARTH_ENGINE_CONCURRENCY" \
+            --min-missing-days 1 \
             --force \
             --out-dir "s3://$BUCKET_NAME/${{ matrix.region.output_root }}" \
             "${cell_map_args[@]}"
@@ -159,7 +162,18 @@ jobs:
       - name: Upsert both regions into Postgres
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
+          TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
         run: |
+          uv run --locked --no-build python validate_daily_coverage.py \
+            --cities-csv cities_na.csv \
+            --wetbulb-root na_data \
+            --year "$TARGET_YEAR" \
+            --lag-days "$ERA5_LAND_RELIABLE_LAG_DAYS"
+          uv run --locked --no-build python validate_daily_coverage.py \
+            --cities-csv cities_eu.csv \
+            --wetbulb-root eu_data \
+            --year "$TARGET_YEAR" \
+            --lag-days "$ERA5_LAND_RELIABLE_LAG_DAYS"
           uv run --locked --no-build python load_wetbulb.py \
             --wetbulb-root na_data \
             --load-workers 4

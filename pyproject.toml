@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 gcs = ["dask", "gcsfs", "thermofeel", "xarray", "zarr"]
 nldas = ["h5netcdf", "h5py", "xarray"]
+earth-engine = ["earthengine-api"]
 era5 = ["cdsapi"]
 
 [dependency-groups]
