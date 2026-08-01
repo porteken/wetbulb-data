@@ -196,3 +196,30 @@ def test_na_region_uses_combined_catalog(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_old_region_names_are_rejected() -> None:
     with pytest.raises(SystemExit):
         pipeline.main(["--region", "us"])
+
+
+@pytest.mark.parametrize(
+    ("source", "region", "cities", "station_map"),
+    [
+        ("eccc", "na", pipeline.NA_CITIES_CSV, pipeline.NA_ECCC_STATION_MAP_CSV),
+        ("lcd", "na", pipeline.NA_CITIES_CSV, pipeline.NA_STATION_MAP_CSV),
+        ("isd", "eu", pipeline.EU_CITIES_CSV, pipeline.EU_STATION_MAP_CSV),
+        ("ghcnh", "eu", pipeline.EU_CITIES_CSV, pipeline.EU_GHCNH_STATION_MAP_CSV),
+    ],
+)
+def test_station_map_for_selects_each_source_and_region(
+    source: str,
+    region: str,
+    cities: str,
+    station_map: str,
+) -> None:
+    assert pipeline._station_map_for(source, region) == (cities, station_map)
+
+
+def test_shard_indices_rejects_an_out_of_range_index() -> None:
+    with pytest.raises(argparse.ArgumentTypeError, match="--city-shard-index"):
+        pipeline._shard_indices(2, 2)
+
+
+def test_optional_positive_values_preserves_an_omitted_option() -> None:
+    assert pipeline._positive_values(None, "--months") is None

@@ -131,6 +131,29 @@ def test_file_group_retries_each_file_with_a_fresh_connection(
     assert all(connection.closed for connection in connections)
 
 
+def test_load_file_reraises_the_final_connection_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = FakeConnection()
+    monkeypatch.setattr(load, "LOAD_FILE_MAX_ATTEMPTS", 1)
+    monkeypatch.setattr(load.psycopg, "connect", lambda _uri: connection)
+    monkeypatch.setattr(
+        load,
+        "bulk_insert_csv_files",
+        MagicMock(side_effect=psycopg.OperationalError("SSL EOF")),
+    )
+
+    with pytest.raises(psycopg.OperationalError, match="SSL EOF"):
+        load._load_file_with_retries(
+            "postgresql://test",
+            Path("first.parquet"),
+            "wetbulb",
+            batch_size=100,
+        )
+
+    assert connection.closed is True
+
+
 class TestParseArgs:
     def test_defaults_append_and_analyze(self) -> None:
         args = load_wetbulb._parse_args([])

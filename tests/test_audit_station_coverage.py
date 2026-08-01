@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -67,3 +68,32 @@ def test_json_output_path_stays_in_the_current_directory(
         argparse.ArgumentTypeError, match="within the current directory"
     ):
         audit._validated_json_output_path("../audit.json")
+
+    with pytest.raises(
+        argparse.ArgumentTypeError, match="within the current directory"
+    ):
+        audit._validated_json_output_path(str(tmp_path / "audit.json"))
+
+
+def test_main_writes_json_audit_to_a_validated_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The CLI writes JSON only after constraining its destination."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        audit,
+        "_parse_args",
+        lambda: argparse.Namespace(
+            root=["na=unused"],
+            cities_csv=[],
+            worst_cities=20,
+            json_out="audit.json",
+        ),
+    )
+    monkeypatch.setattr(audit, "read_parquet_roots", lambda _roots: _observations())
+
+    audit.main()
+
+    payload = json.loads((tmp_path / "audit.json").read_text(encoding="utf-8"))
+    assert payload["by_year"][0]["station_days"] == 2
