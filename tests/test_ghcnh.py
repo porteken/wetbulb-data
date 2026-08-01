@@ -132,6 +132,115 @@ def test_parse_accepts_environment_canada_reports() -> None:
     assert len(result) == 1
 
 
+@pytest.mark.parametrize("quality_code", ["2", "3", "6", "7"])
+def test_parse_rejects_suspect_source_quality_codes(quality_code: str) -> None:
+    payload = _parquet_payload([{"temperature_Quality_Code": quality_code}])
+
+    result = ghcnh._parse_ghcnh_parquet(
+        payload,
+        lon=0,
+        utc_offset_hours=0,
+        drop_incomplete_latest_day=False,
+    )
+
+    assert result.empty
+
+
+def test_parse_accepts_source_quality_code_5() -> None:
+    payload = _parquet_payload(
+        [
+            {
+                "temperature_Quality_Code": "5",
+                "dew_point_temperature_Quality_Code": "5",
+                "station_level_pressure_Quality_Code": "5",
+            },
+        ],
+    )
+
+    result = ghcnh._parse_ghcnh_parquet(
+        payload,
+        lon=0,
+        utc_offset_hours=0,
+        drop_incomplete_latest_day=False,
+    )
+
+    assert len(result) == 1
+
+
+@pytest.mark.parametrize(
+    ("temperature", "dewpoint"),
+    [
+        (189.0, 4.0),
+        (171.0, 7.0),
+        (20.0, 41.0),
+        (20.0, 22.0),
+    ],
+)
+def test_parse_rejects_impossible_thermodynamic_inputs(
+    temperature: float,
+    dewpoint: float,
+) -> None:
+    payload = _parquet_payload(
+        [{"temperature": temperature, "dew_point_temperature": dewpoint}],
+    )
+
+    result = ghcnh._parse_ghcnh_parquet(
+        payload,
+        lon=0,
+        utc_offset_hours=0,
+        drop_incomplete_latest_day=False,
+    )
+
+    assert result.empty
+
+
+def test_daily_spike_filter_removes_isolated_unsupported_maximum() -> None:
+    daily = pd.DataFrame(
+        {
+            "location_id": [1, 1, 1],
+            "date": pd.to_datetime(["2025-01-10", "2025-01-11", "2025-01-12"]),
+            "wetbulb": [15.0, 25.0, 15.0],
+            "wetbulb_avg": [12.0, 15.0, 12.0],
+        },
+    )
+
+    result = ghcnh.filter_daily_wetbulb_spikes(daily)
+
+    assert pd.to_datetime(result["date"]).dt.day.tolist() == [10, 12]
+
+
+def test_daily_spike_filter_preserves_coherent_warm_day() -> None:
+    daily = pd.DataFrame(
+        {
+            "location_id": [1, 1, 1],
+            "date": pd.to_datetime(["2025-01-10", "2025-01-11", "2025-01-12"]),
+            "wetbulb": [15.0, 25.0, 15.0],
+            "wetbulb_avg": [12.0, 20.0, 12.0],
+        },
+    )
+
+    result = ghcnh.filter_daily_wetbulb_spikes(daily)
+
+    assert len(result) == 3
+
+
+def test_daily_spike_filter_preserves_multi_day_event() -> None:
+    daily = pd.DataFrame(
+        {
+            "location_id": [1, 1, 1, 1],
+            "date": pd.to_datetime(
+                ["2025-01-10", "2025-01-11", "2025-01-12", "2025-01-13"],
+            ),
+            "wetbulb": [15.0, 25.0, 25.0, 15.0],
+            "wetbulb_avg": [12.0, 15.0, 15.0, 12.0],
+        },
+    )
+
+    result = ghcnh.filter_daily_wetbulb_spikes(daily)
+
+    assert len(result) == 4
+
+
 def test_current_local_day_is_removed_but_prior_synoptic_day_is_retained() -> None:
     frame = pd.DataFrame(
         {

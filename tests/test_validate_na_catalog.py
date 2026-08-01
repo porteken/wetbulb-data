@@ -16,7 +16,7 @@ def test_catalog_and_crosswalk_with_valid_constraints_pass(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The validator accepts a complete catalog, manifest, and ISD crosswalk."""
+    """The validator accepts a catalog, manifest, and GHCNh crosswalk."""
     monkeypatch.setattr(catalog, "MAX_CITIES", 2)
     cities = pd.DataFrame(
         {
@@ -31,15 +31,17 @@ def test_catalog_and_crosswalk_with_valid_constraints_pass(
     stations = pd.DataFrame(
         {
             "location_id": [0, 1],
-            "usaf": ["000001", "000002"],
-            "wban": ["00001", "00002"],
+            "ghcn_id": ["STATION1", "STATION2"],
+            "year": [2025, 2025],
+            "candidate_rank": [1, 1],
             "dist_km": [1.0, 2.0],
             "elev_m": [10.0, 20.0],
+            "elevation_difference_m": [0.0, 0.0],
         }
     )
     cities_path = tmp_path / "cities_na.csv"
     cities.to_csv(cities_path, index=False)
-    stations.to_csv(tmp_path / "cities_na_isd_stations.csv", index=False)
+    stations.to_csv(tmp_path / "cities_na_ghcnh_stations.csv", index=False)
     (tmp_path / "cities_na.catalog.json").write_text(
         json.dumps(
             {"catalog_sha256": hashlib.sha256(cities_path.read_bytes()).hexdigest()}

@@ -1,4 +1,4 @@
-"""Validate committed North America catalog and ISD crosswalk invariants."""
+"""Validate committed North America catalog and GHCNh crosswalk invariants."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def validate_city_centers(cities: pd.DataFrame, centers_path: Path) -> None:
 def validate_catalog(base: Path = Path()) -> None:
     """Validate catalog identity, completeness, and crosswalk constraints."""
     catalog_path = base / "cities_na.csv"
-    station_path = base / "cities_na_isd_stations.csv"
+    station_path = base / "cities_na_ghcnh_stations.csv"
     manifest_path = base / "cities_na.catalog.json"
     cities = pd.read_csv(catalog_path, dtype={"place_id": str})
     expected_ids = list(range(MAX_CITIES))
@@ -71,24 +71,21 @@ def validate_catalog(base: Path = Path()) -> None:
         message = "cities_na.csv does not match its catalog manifest"
         raise ValueError(message)
 
-    stations = pd.read_csv(station_path, dtype={"usaf": str, "wban": str})
-    if stations["location_id"].tolist() != expected_ids:
-        message = "ISD crosswalk must contain one ordered row per city"
+    stations = pd.read_csv(station_path, dtype={"ghcn_id": str})
+    if not set(stations["location_id"]).issubset(expected_ids):
+        message = "GHCNh crosswalk contains an unknown location ID"
         raise ValueError(message)
-    if stations[["usaf", "wban"]].duplicated().any():
-        message = "ISD crosswalk assigns a station more than once"
+    if stations[["location_id", "year", "candidate_rank"]].duplicated().any():
+        message = "GHCNh crosswalk contains a duplicate candidate rank"
         raise ValueError(message)
     if stations.isna().any().any():
-        message = "ISD crosswalk requires fully resolved stations"
+        message = "GHCNh crosswalk requires fully resolved candidates"
         raise ValueError(message)
     if (stations["dist_km"] > MAX_STATION_DISTANCE_KM).any():
-        message = "ISD station exceeds 60 km"
+        message = "GHCNh station exceeds 60 km"
         raise ValueError(message)
-    elevations = cities[["location_id", "dem_m"]].merge(
-        stations[["location_id", "elev_m"]], on="location_id", validate="one_to_one"
-    )
-    if ((elevations["dem_m"] - elevations["elev_m"]).abs() > MAX_ELEV_DELTA_M).any():
-        message = "ISD station exceeds 300 m elevation difference"
+    if (stations["elevation_difference_m"].abs() > MAX_ELEV_DELTA_M).any():
+        message = "GHCNh station exceeds 300 m elevation difference"
         raise ValueError(message)
 
     validate_city_centers(cities, base / "cities_na_centers.csv")

@@ -76,7 +76,20 @@ _PARQUET_COLUMNS = (
 )
 _REPORT_TYPES = frozenset({"EnvCan", "FM12", "FM15", "FM16"})
 _REPORT_PRIORITY = {"FM15": 0, "FM16": 1, "FM12": 2, "EnvCan": 3}
+# These source-specific quality codes follow the ISD/FM report convention;
+# codes 2, 3, 6, and 7 identify suspect or erroneous values. Codes 1 and 5
+# denote observations that passed their applicable checks.
 _REJECT_QC_CODES = frozenset({"2", "3", "6", "7"})
+_MIN_AIR_TEMPERATURE_C = -80.0
+_MAX_AIR_TEMPERATURE_C = 60.0
+_MIN_DEWPOINT_C = -100.0
+_MAX_DEWPOINT_C = 40.0
+_MAX_DEWPOINT_ABOVE_AIR_C = 1.0
+_DAILY_SPIKE_NEIGHBOR_DAYS = 3
+_DAILY_SPIKE_MIN_NEIGHBORS = 2
+_DAILY_SPIKE_NEIGHBOR_DELTA_C = 8.0
+_DAILY_SPIKE_MAX_MEAN_GAP_C = 10.0
+_DAILY_SPIKE_EVENT_SUPPORT_C = 3.0
 
 
 def _empty_hourly_frame() -> DataFrame:
@@ -85,8 +98,71 @@ def _empty_hourly_frame() -> DataFrame:
 
 def _quality_filtered(raw: DataFrame, value: str) -> DataFrame:
     values = pd.to_numeric(raw[value], errors="coerce")
-    quality = raw[f"{value}_Quality_Code"].astype("string")
+    quality = raw[f"{value}_Quality_Code"].astype("string").str.strip()
     return values.where(~quality.isin(_REJECT_QC_CODES))
+
+
+def _physical_quality_filtered(hourly: DataFrame) -> DataFrame:
+    """Discard impossible thermodynamic inputs missed by upstream QC."""
+    valid = (
+        hourly["tair_c"].between(
+            _MIN_AIR_TEMPERATURE_C,
+            _MAX_AIR_TEMPERATURE_C,
+        )
+        & hourly["dewpoint_c"].between(_MIN_DEWPOINT_C, _MAX_DEWPOINT_C)
+        & (hourly["dewpoint_c"] <= hourly["tair_c"] + _MAX_DEWPOINT_ABOVE_AIR_C)
+    )
+    return hourly[valid].copy()
+
+
+def filter_daily_wetbulb_spikes(daily: DataFrame) -> DataFrame:
+    """Remove isolated daily maxima unsupported by hourly or nearby-day data."""
+    if daily.empty:
+        return daily.copy()
+    result = daily.copy()
+    result["_date"] = pd.to_datetime(result["date"])
+    result = result.sort_values(["location_id", "_date"])
+    keep = pd.Series(data=True, index=result.index)
+
+    for _location_id, group in result.groupby("location_id", sort=False):
+        dates = group["_date"]
+        maxima = pd.to_numeric(group["wetbulb"], errors="coerce")
+        means = pd.to_numeric(group["wetbulb_avg"], errors="coerce")
+        neighbors: list[DataFrame] = []
+        adjacent: list[DataFrame] = []
+        for offset in range(1, _DAILY_SPIKE_NEIGHBOR_DAYS + 1):
+            previous = maxima.shift(offset).where(
+                (dates - dates.shift(offset)).dt.days <= _DAILY_SPIKE_NEIGHBOR_DAYS,
+            )
+            following = maxima.shift(-offset).where(
+                (dates.shift(-offset) - dates).dt.days <= _DAILY_SPIKE_NEIGHBOR_DAYS,
+            )
+            neighbors.extend([previous, following])
+            if offset == 1:
+                adjacent.extend(
+                    [
+                        previous.where((dates - dates.shift()).dt.days == 1),
+                        following.where((dates.shift(-1) - dates).dt.days == 1),
+                    ],
+                )
+
+        neighbor_frame = pd.concat(neighbors, axis="columns")
+        adjacent_frame = pd.concat(adjacent, axis="columns")
+        enough_neighbors = (
+            neighbor_frame.notna().sum(axis="columns") >= _DAILY_SPIKE_MIN_NEIGHBORS
+        )
+        neighbor_median = neighbor_frame.median(axis="columns")
+        isolated_jump = maxima - neighbor_median >= _DAILY_SPIKE_NEIGHBOR_DELTA_C
+        unsupported_maximum = maxima - means >= _DAILY_SPIKE_MAX_MEAN_GAP_C
+        event_supported = adjacent_frame.ge(
+            maxima - _DAILY_SPIKE_EVENT_SUPPORT_C,
+            axis="index",
+        ).any(axis="columns")
+        keep.loc[group.index] = ~(
+            enough_neighbors & isolated_jump & unsupported_maximum & ~event_supported
+        )
+
+    return result[keep].drop(columns="_date").sort_index()
 
 
 def _drop_current_local_day(
@@ -141,6 +217,7 @@ def _parse_ghcnh_parquet(
     )
     hourly["ELEVATION"] = pd.to_numeric(hourly["ELEVATION"], errors="coerce")
     hourly = hourly.dropna(subset=["time_utc", "tair_c", "dewpoint_c"])
+    hourly = _physical_quality_filtered(hourly)
     if hourly.empty:
         return _empty_hourly_frame()
 
@@ -351,6 +428,7 @@ def _candidate_daily_frame(row: CandidateRow, station_df: DataFrame) -> DataFram
         min_daily_hours=GHCNH_MIN_DAILY_HOURS,
         include_observation_count=True,
     )
+    daily = filter_daily_wetbulb_spikes(daily)
     if daily.empty:
         return daily
     dates = pd.to_datetime(daily["date"])

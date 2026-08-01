@@ -242,6 +242,20 @@ class TestComputeDailyWetbulb:
         daily = compute_daily_wetbulb(df)
         assert len(daily) == 1
 
+    def test_discards_wetbulb_values_above_35c(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            nldas,
+            "wetbulb_davies_jones",
+            lambda *_args: np.full(24, 35.1),
+        )
+
+        daily = compute_daily_wetbulb(self._hourly_frame(24))
+
+        assert daily.empty
+
 
 class TestIterAndSelectTimeShardBatches:
     def test_covers_full_range(self) -> None:
