@@ -10,6 +10,7 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -39,6 +40,7 @@ LOGGER = logging.getLogger(__name__)
 EE_COLLECTION = "ECMWF/ERA5_LAND/HOURLY"
 EE_BANDS = ("temperature_2m", "dewpoint_temperature_2m", "surface_pressure")
 EE_SCALE_METERS = 11_132
+EE_CHUNK_DAYS = 31
 EE_DEFAULT_CONCURRENCY = 8
 EE_MAX_RETRIES = 4
 EE_RETRY_DELAY_SECONDS = 2
@@ -83,6 +85,32 @@ def _collection(start_year: int, end_year: int) -> ImageCollection:
     )
 
 
+def _collection_chunks(
+    collection: ImageCollection, start_year: int, end_year: int
+) -> list[ImageCollection]:
+    """Split a collection so each EE reduction has a bounded memory footprint."""
+    start = date(start_year - 1, 12, 30)
+    stop = date(end_year + 1, 1, 3)
+    chunks = []
+    while start < stop:
+        chunk_stop = min(start + timedelta(days=EE_CHUNK_DAYS), stop)
+        chunks.append(collection.filterDate(start.isoformat(), chunk_stop.isoformat()))
+        start = chunk_stop
+    return chunks
+
+
+def _fetch_errors(ee: EarthEngine) -> tuple[type[BaseException], ...]:
+    """Return local and Earth Engine failures that are safe to retry."""
+    errors: tuple[type[BaseException], ...] = (
+        RuntimeError,
+        ValueError,
+        KeyError,
+        OSError,
+    )
+    ee_exception = getattr(getattr(ee, "ee_exception", None), "EEException", None)
+    return (*errors, ee_exception) if isinstance(ee_exception, type) else errors
+
+
 def _raw_region_frame(values: list[list[Any]]) -> DataFrame:
     if not values:
         return pd.DataFrame()
@@ -113,42 +141,52 @@ def _hourly_frame(location_id: int, raw: DataFrame) -> DataFrame:
     )
 
 
-def _fetch_city(collection: ImageCollection, row: CityRow) -> tuple[DataFrame, bool]:
+def _fetch_city(
+    collections: list[ImageCollection], row: CityRow
+) -> tuple[DataFrame, bool]:
     """Fetch one mapped land point, retrying transient Earth Engine failures."""
     ee = _ee()
-    last_error: Exception | None = None
-    for attempt in range(1, EE_MAX_RETRIES + 1):
-        try:
-            values = collection.getRegion(
-                ee.Geometry.Point([float(row.lng), float(row.lat)]),
-                EE_SCALE_METERS,
-            ).getInfo()
-            frame = _hourly_frame(int(row.location_id), _raw_region_frame(values))
-            if frame.empty:
-                LOGGER.warning(
-                    "location_id=%d returned no usable ERA5-Land values at %.4f, %.4f",
-                    row.location_id,
-                    row.lat,
-                    row.lng,
-                )
-                return frame, True
-            frame["utc_offset_hours"] = float(row.utc_offset_hours)
-            return frame, False  # noqa: TRY300
-        except (RuntimeError, ValueError, KeyError, OSError) as exc:
-            last_error = exc
-            if attempt < EE_MAX_RETRIES:
-                time.sleep(EE_RETRY_DELAY_SECONDS * (2 ** (attempt - 1)))
-    LOGGER.warning(
-        "Giving up on location_id=%d after %d attempt(s): %s",
-        row.location_id,
-        EE_MAX_RETRIES,
-        last_error,
-    )
-    return era5land._empty_hourly_frame(), True  # noqa: SLF001
+    frames = []
+    point = ee.Geometry.Point([float(row.lng), float(row.lat)])
+    for chunk_index, collection in enumerate(collections, start=1):
+        last_error: BaseException | None = None
+        for attempt in range(1, EE_MAX_RETRIES + 1):
+            try:
+                values = collection.getRegion(point, EE_SCALE_METERS).getInfo()
+                frame = _hourly_frame(int(row.location_id), _raw_region_frame(values))
+                if frame.empty:
+                    # The current-year range intentionally extends beyond the latest
+                    # published ERA5-Land hour, so trailing chunks can be empty.
+                    break
+                frame["utc_offset_hours"] = float(row.utc_offset_hours)
+                frames.append(frame)
+                break
+            except _fetch_errors(ee) as exc:
+                last_error = exc
+                if attempt < EE_MAX_RETRIES:
+                    time.sleep(EE_RETRY_DELAY_SECONDS * (2 ** (attempt - 1)))
+        else:
+            LOGGER.warning(
+                "Giving up on location_id=%d chunk=%d after %d attempt(s): %s",
+                row.location_id,
+                chunk_index,
+                EE_MAX_RETRIES,
+                last_error,
+            )
+            return era5land._empty_hourly_frame(), True  # noqa: SLF001
+    if not frames:
+        LOGGER.warning(
+            "location_id=%d returned no usable ERA5-Land values at %.4f, %.4f",
+            row.location_id,
+            row.lat,
+            row.lng,
+        )
+        return era5land._empty_hourly_frame(), True  # noqa: SLF001
+    return lcd.concat_frames(frames), False
 
 
 def _fetch_batch(
-    collection: ImageCollection,
+    collections: list[ImageCollection],
     rows: list[CityRow],
     concurrency: int,
     city_shard_index: int,
@@ -156,7 +194,7 @@ def _fetch_batch(
     results: dict[int, tuple[DataFrame, bool]] = {}
     worker_count = max(1, min(concurrency, len(rows)))
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        futures = {executor.submit(_fetch_city, collection, row): row for row in rows}
+        futures = {executor.submit(_fetch_city, collections, row): row for row in rows}
         for future in tqdm(
             as_completed(futures),
             total=len(futures),
@@ -175,8 +213,12 @@ def _filled_rows(
     concurrency: int,
     city_shard_index: int,
 ) -> DataFrame | None:
+    collection = _collection(start_year, end_year)
     results = _fetch_batch(
-        _collection(start_year, end_year), rows, concurrency, city_shard_index
+        _collection_chunks(collection, start_year, end_year),
+        rows,
+        concurrency,
+        city_shard_index,
     )
     if not results or any(had_gap for _, had_gap in results.values()):
         LOGGER.warning("Earth Engine fetch was incomplete; refusing a partial write.")
