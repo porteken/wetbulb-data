@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import argparse
 import pathlib
-from typing import TYPE_CHECKING
 
 import pandas as pd
+import pytest
 
 import locations
-
-if TYPE_CHECKING:
-    import pytest
 
 CITIES_CSV_CONTENT = "location_id,city,state,lat,lng\n0,Test ville,TS,30.123,-90.456\n"
 
@@ -30,6 +27,9 @@ def test_main_derives_locations_from_cities_csv(
         ),
     )
     (tmp_path / "cities_na.csv").write_text(CITIES_CSV_CONTENT, encoding="utf-8")
+    (tmp_path / "cities_na_centers.csv").write_text(
+        CENTERS_CSV_CONTENT, encoding="utf-8"
+    )
     output_file = tmp_path / "locations.csv"
 
     locations.main()
@@ -56,6 +56,9 @@ def test_main_generates_cities_csv_when_missing(
 
     def fake_generate() -> None:
         (tmp_path / "cities_na.csv").write_text(CITIES_CSV_CONTENT, encoding="utf-8")
+        (tmp_path / "cities_na_centers.csv").write_text(
+            CENTERS_CSV_CONTENT, encoding="utf-8"
+        )
 
     monkeypatch.setattr(locations, "generate_cities_csv", fake_generate)
 
@@ -162,3 +165,24 @@ def test_apply_city_centers_without_a_center_file_is_a_passthrough(
     result = locations.apply_city_centers(frame, tmp_path / "missing.csv")
 
     assert result.iloc[0]["lat"] == 30.123
+
+
+def test_apply_city_centers_requires_center_file_when_requested(
+    tmp_path: pathlib.Path,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "id": [9, 21],
+            "city": ["San Diego", "San Francisco"],
+            "state": ["CA", "CA"],
+            "lat": [32.8304, 37.7272],
+            "lng": [-117.1209, -123.0322],
+        }
+    )
+
+    with pytest.raises(FileNotFoundError, match=r"make_city_center_map_na\.py"):
+        locations.apply_city_centers(
+            frame,
+            tmp_path / "missing.csv",
+            required=True,
+        )

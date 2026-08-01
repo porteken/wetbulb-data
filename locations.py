@@ -27,7 +27,10 @@ def locations_frame_from_cities_csv(csv_path: str | Path = CITIES_CSV) -> DataFr
 
 
 def apply_city_centers(
-    locations_frame: DataFrame, centers_path: str | Path = CENTERS_CSV
+    locations_frame: DataFrame,
+    centers_path: str | Path = CENTERS_CSV,
+    *,
+    required: bool = False,
 ) -> DataFrame:
     """Replace catalog representative points with city-center display coordinates.
 
@@ -37,6 +40,12 @@ def apply_city_centers(
     """
     path = Path(centers_path)
     if not path.exists():
+        if required:
+            message = (
+                f"required city-center map not found: {path}; run "
+                "make_city_center_map_na.py before generating North America locations"
+            )
+            raise FileNotFoundError(message)
         LOGGER.warning(
             "%s not found; map coordinates stay on catalog representative points", path
         )
@@ -81,7 +90,12 @@ def main() -> None:
         ids = sorted(locations_frame.loc[duplicate_ids, "id"].unique().tolist())
         message = f"duplicate location ids across city files: {ids}"
         raise ValueError(message)
-    locations_frame = apply_city_centers(locations_frame, args.centers_csv)
+    requires_centers = any(Path(path).name == CITIES_CSV for path in city_paths)
+    locations_frame = apply_city_centers(
+        locations_frame,
+        args.centers_csv,
+        required=requires_centers,
+    )
     locations_frame.to_csv(
         args.out,
         index=False,

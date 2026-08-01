@@ -129,6 +129,8 @@ jobs:
           enable-cache: true
       - name: Sync runtime dependencies
         run: uv sync --locked --no-dev --no-build
+      - name: Generate North America city-center coordinates
+        run: uv run --locked --no-build python make_city_center_map_na.py
       - name: Generate locations.csv from committed catalog
         run: uv run --locked --no-build python locations.py
       - name: Sync wetbulb data from S3

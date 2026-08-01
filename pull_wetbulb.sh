@@ -134,6 +134,7 @@ for step in "${STEPS[@]}"; do
       ;;
     load)
       ((CONFIRM_DB)) || { echo "load requires --confirm-db-write" >&2; exit 1; }
+      run "${PY[@]}" "${HERE}/make_city_center_map_na.py"
       run "${PY[@]}" "${HERE}/locations.py"
       run "${PY[@]}" "${HERE}/validate_location_catalog_db.py" \
         --locations-csv "${HERE}/locations.csv"
