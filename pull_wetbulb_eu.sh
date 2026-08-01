@@ -27,6 +27,7 @@ EU_MIN_MISSING_DAYS=${EU_MIN_MISSING_DAYS:-19}
 EU_DOWNLOAD_DIR=${EU_DOWNLOAD_DIR:-}
 EU_CELL_MAP_CSV=${EU_CELL_MAP_CSV:-cities_eu_era5land_cells.csv}
 EU_FORCE_STATION_BACKFILL=${EU_FORCE_STATION_BACKFILL:-0}
+EU_LOAD_WORKERS=${EU_LOAD_WORKERS:-1}
 PYTHON_RUN=${PYTHON_RUN:-uv run python}
 
 DEFAULT_STEPS=(cities crosswalk backfill gapfill)
@@ -39,6 +40,10 @@ read -ra PY <<<"${PYTHON_RUN}"
 read -ra TRIAL_YEARS <<<"${EU_TRIAL_YEARS}"
 [[ ${EU_FORCE_STATION_BACKFILL} =~ ^[01]$ ]] || {
   printf 'EU_FORCE_STATION_BACKFILL must be 0 or 1\n' >&2
+  exit 2
+}
+[[ ${EU_LOAD_WORKERS} =~ ^[1-9][0-9]*$ ]] || {
+  printf 'EU_LOAD_WORKERS must be a positive integer\n' >&2
   exit 2
 }
 STATION_FORCE_ARGS=()
@@ -203,6 +208,7 @@ step_gapfill() {
     --city-shard-index 0 --city-shard-count 1 \
     --concurrency "${EU_CDS_CONCURRENCY}" \
     --min-missing-days "${EU_MIN_MISSING_DAYS}" \
+    "${STATION_FORCE_ARGS[@]}" \
     "${cache_args[@]}"
   log "[gapfill] done"
 }
@@ -210,22 +216,6 @@ step_gapfill() {
 step_load() {
   require_file "${EU_LOCATIONS_CSV}" cities
   confirm_db_step load
-
-  log "[load] applying the era5land source-constraint migration (idempotent)"
-  run "${PY[@]}" -c "
-import psycopg
-from load import execute_sql_file
-from shared_config import resolve_database_uri
-uri = resolve_database_uri()
-if not uri:
-    raise SystemExit('database is not configured; set POSTGRES_DB_URI')
-conn = psycopg.connect(uri)
-conn.autocommit = True
-try:
-    execute_sql_file(conn, 'migrate_wetbulb_source_era5land.sql')
-finally:
-    conn.close()
-"
 
   log "[load] appending EU rows to locations"
   run "${PY[@]}" load.py \
@@ -238,22 +228,16 @@ finally:
     --skip-table forecast_interval_calibration
 
   log "[load] upserting daily wet-bulb rows from ${EU_OUT_DIR}/wetbulb_data_csv"
-  run "${PY[@]}" load_wetbulb.py --wetbulb-root "${EU_OUT_DIR}/wetbulb_data_csv"
+  run "${PY[@]}" load_wetbulb.py \
+    --wetbulb-root "${EU_OUT_DIR}/wetbulb_data_csv" \
+    --load-workers "${EU_LOAD_WORKERS}"
   log "[load] done"
 }
 
 step_views() {
   confirm_db_step views
-  log "[views] rebuilding views (drop -> create -> gmst -> eu, atomically)"
-  run "${PY[@]}" load.py \
-    --skip-table locations \
-    --skip-table wetbulb \
-    --skip-table gmst_observations \
-    --skip-table gmst_scenarios \
-    --skip-table forecast_station_groups \
-    --skip-table forecast_interval_calibration
-  log "[views] refreshing materialized views"
-  run "${PY[@]}" refresh_views.py
+  log "[views] refreshing existing materialized views"
+  run "${PY[@]}" refresh_views.py --non-concurrent
   log "[views] done"
 }
 

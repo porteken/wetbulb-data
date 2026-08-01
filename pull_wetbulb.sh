@@ -20,6 +20,7 @@ SHARD_COUNT="${CITY_SHARD_COUNT:-5}"
 START_YEAR="${START_YEAR:-2000}"
 END_YEAR="${END_YEAR:-$((10#$(date -u +%Y) - 1))}"
 FORCE_STATION_BACKFILL="${FORCE_STATION_BACKFILL:-0}"
+LOAD_WORKERS="${LOAD_WORKERS:-1}"
 PYTHON_RUN="${PYTHON_RUN:-uv run python}"
 
 read -ra PY <<<"${PYTHON_RUN}"
@@ -58,6 +59,10 @@ fi
 [[ "${SHARD_COUNT}" =~ ^[1-9][0-9]*$ ]] || { echo "invalid shard count" >&2; exit 2; }
 [[ "${FORCE_STATION_BACKFILL}" =~ ^[01]$ ]] || {
   echo "FORCE_STATION_BACKFILL must be 0 or 1" >&2
+  exit 2
+}
+[[ "${LOAD_WORKERS}" =~ ^[1-9][0-9]*$ ]] || {
+  echo "LOAD_WORKERS must be a positive integer" >&2
   exit 2
 }
 STATION_FORCE_ARGS=()
@@ -119,7 +124,8 @@ for step in "${STEPS[@]}"; do
       for ((shard=0; shard<SHARD_COUNT; shard++)); do
         run "${PY[@]}" "${HERE}/gapfill.py" --start-year "${START_YEAR}" \
           --end-year "${END_YEAR}" --city-shard-count "${SHARD_COUNT}" \
-          --city-shard-index "${shard}" --out-dir "${OUTPUT_ROOT}"
+          --city-shard-index "${shard}" --out-dir "${OUTPUT_ROOT}" \
+          "${STATION_FORCE_ARGS[@]}"
       done
       ;;
     validate)
@@ -129,11 +135,17 @@ for step in "${STEPS[@]}"; do
     load)
       ((CONFIRM_DB)) || { echo "load requires --confirm-db-write" >&2; exit 1; }
       run "${PY[@]}" "${HERE}/locations.py"
-      run "${PY[@]}" "${HERE}/load.py" --wetbulb-root "${OUTPUT_ROOT}/wetbulb_data_csv"
+      run "${PY[@]}" "${HERE}/load.py" \
+        --wetbulb-root "${OUTPUT_ROOT}/wetbulb_data_csv" \
+        --append-only --skip-drop-views --skip-create-views --ensure-schema \
+        --skip-table wetbulb
+      run "${PY[@]}" "${HERE}/load_wetbulb.py" \
+        --wetbulb-root "${OUTPUT_ROOT}/wetbulb_data_csv" \
+        --load-workers "${LOAD_WORKERS}"
       ;;
     views)
       ((CONFIRM_DB)) || { echo "views requires --confirm-db-write" >&2; exit 1; }
-      run "${PY[@]}" "${HERE}/refresh_views.py"
+      run "${PY[@]}" "${HERE}/refresh_views.py" --non-concurrent
       ;;
     *)
       echo "unknown step: ${step}" >&2

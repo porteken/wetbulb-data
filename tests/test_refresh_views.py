@@ -7,6 +7,8 @@ import sys
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
 
+import psycopg
+
 import refresh_views
 
 if TYPE_CHECKING:
@@ -102,6 +104,21 @@ class TestRefreshMaterializedViews:
         assert "REFRESH MATERIALIZED VIEW public.mv_plain" in statements
         assert "REFRESH MATERIALIZED VIEW public.mv_empty" in statements
 
+    def test_can_force_lower_overhead_nonconcurrent_refresh(self) -> None:
+        conn = FakeConnection(
+            matviews=[("mv_indexed", True)],
+            unique_indexed={"mv_indexed"},
+        )
+
+        refresh_views.refresh_materialized_views(
+            cast("Any", conn),
+            allow_concurrent=False,
+        )
+
+        assert _refresh_statements(conn) == [
+            "REFRESH MATERIALIZED VIEW public.mv_indexed"
+        ]
+
     def test_no_matviews_warns_and_returns_empty(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
@@ -163,3 +180,30 @@ class TestMain:
         refresh_views.main()
 
         assert not analyze.called
+
+    def test_reconnects_after_operational_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        connections = [MagicMock(), MagicMock()]
+        connect = MagicMock(side_effect=connections)
+        refresh = MagicMock(side_effect=[psycopg.OperationalError("SSL EOF"), []])
+        monkeypatch.setattr(
+            refresh_views,
+            "resolve_database_uri",
+            lambda: "postgresql://x",
+        )
+        monkeypatch.setattr(refresh_views.psycopg, "connect", connect)
+        monkeypatch.setattr(refresh_views, "refresh_materialized_views", refresh)
+        monkeypatch.setattr(
+            refresh_views,
+            "refresh_query_planner_statistics",
+            MagicMock(),
+        )
+        monkeypatch.setattr(refresh_views.time, "sleep", lambda _seconds: None)
+        monkeypatch.setattr(sys, "argv", ["refresh_views.py"])
+
+        refresh_views.main()
+
+        assert refresh.call_count == 2
+        assert all(connection.close.called for connection in connections)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import time
 from graphlib import TopologicalSorter
 from typing import TYPE_CHECKING, Any, LiteralString, cast
 
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
     from psycopg import Connection
 
 LOGGER = logging.getLogger(__name__)
+REFRESH_MAX_ATTEMPTS = 4
+REFRESH_RETRY_DELAY_SECONDS = 30
 
 _MATVIEWS_QUERY: LiteralString = """
 SELECT matviewname, ispopulated
@@ -72,7 +75,11 @@ def _has_unique_index(conn: Connection[Any], matview_name: str) -> bool:
         return cur.fetchone() is not None
 
 
-def refresh_materialized_views(conn: Connection[Any]) -> list[str]:
+def refresh_materialized_views(
+    conn: Connection[Any],
+    *,
+    allow_concurrent: bool = True,
+) -> list[str]:
     """Refresh every public matview in dependency order; return the order."""
     matviews = _discover_matviews(conn)
     if not matviews:
@@ -81,9 +88,10 @@ def refresh_materialized_views(conn: Connection[Any]) -> list[str]:
 
     refresh_order = _matview_refresh_order(conn, set(matviews))
     for matview_name in refresh_order:
-        concurrently = matviews[matview_name] and _has_unique_index(
-            conn,
-            matview_name,
+        concurrently = (
+            allow_concurrent
+            and matviews[matview_name]
+            and _has_unique_index(conn, matview_name)
         )
         statement = "REFRESH MATERIALIZED VIEW {}public.{}".format(
             "CONCURRENTLY " if concurrently else "",
@@ -107,6 +115,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Do not refresh planner statistics after refreshing views.",
     )
+    parser.add_argument(
+        "--non-concurrent",
+        action="store_true",
+        help="Use lower-overhead blocking refreshes for maintenance runs.",
+    )
     return parser.parse_args(argv)
 
 
@@ -122,17 +135,38 @@ def main() -> None:
         )
         return
 
-    LOGGER.info("Connecting to the database...")
-    conn: Connection[Any] = psycopg.connect(db_uri)
-    conn.autocommit = True
-    try:
-        refreshed = refresh_materialized_views(conn)
-        LOGGER.info("Refreshed %d materialized view(s).", len(refreshed))
-        if not args.skip_analyze:
-            refresh_query_planner_statistics(conn)
-    finally:
-        conn.close()
-        LOGGER.info("Database connection closed.")
+    for attempt in range(1, REFRESH_MAX_ATTEMPTS + 1):
+        LOGGER.info("Connecting to the database...")
+        conn: Connection[Any] | None = None
+        try:
+            conn = psycopg.connect(db_uri)
+            conn.autocommit = True
+            refreshed = refresh_materialized_views(
+                conn,
+                allow_concurrent=not args.non_concurrent,
+            )
+            LOGGER.info("Refreshed %d materialized view(s).", len(refreshed))
+            if not args.skip_analyze:
+                refresh_query_planner_statistics(conn)
+        except psycopg.OperationalError:
+            if attempt == REFRESH_MAX_ATTEMPTS:
+                raise
+            LOGGER.warning(
+                "Database connection failed during view refresh; retrying "
+                "with a fresh connection (%d/%d).",
+                attempt + 1,
+                REFRESH_MAX_ATTEMPTS,
+            )
+            time.sleep(REFRESH_RETRY_DELAY_SECONDS * attempt)
+        else:
+            return
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except psycopg.Error:
+                    LOGGER.warning("Database connection was already unusable.")
+                LOGGER.info("Database connection closed.")
 
 
 if __name__ == "__main__":

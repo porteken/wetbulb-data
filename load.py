@@ -6,6 +6,7 @@ import argparse
 import io
 import logging
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, LiteralString, cast
@@ -26,6 +27,10 @@ LOGGER = logging.getLogger(__name__)
 COPY_BATCH_SIZE = 50_000
 CSV_COPY_CHUNK_BYTES = 8 * 1024 * 1024
 DEFAULT_LOAD_WORKERS = 4
+LOAD_FILE_MAX_ATTEMPTS = 6
+LOAD_FILE_RETRY_DELAY_SECONDS = 5
+SQL_OPERATION_MAX_ATTEMPTS = 3
+SQL_OPERATION_RETRY_DELAY_SECONDS = 5
 DOLLAR_QUOTE_RE = re.compile(r"\$(?:[A-Za-z_]\w*)?\$")
 TABLE_NAMES = [
     "locations",
@@ -219,6 +224,37 @@ def execute_sql_files_atomically(
     )
 
 
+def execute_sql_files_with_retries(
+    db_uri: str,
+    file_paths: tuple[str | Path, ...],
+) -> None:
+    """Execute an atomic SQL bundle, reconnecting after transient SSL failures."""
+    for attempt in range(1, SQL_OPERATION_MAX_ATTEMPTS + 1):
+        sql_conn: Connection[Any] | None = None
+        try:
+            sql_conn = psycopg.connect(db_uri)
+            sql_conn.autocommit = True
+            execute_sql_files_atomically(sql_conn, file_paths)
+        except psycopg.OperationalError:
+            if attempt == SQL_OPERATION_MAX_ATTEMPTS:
+                raise
+            LOGGER.warning(
+                "Database connection failed during atomic SQL execution; "
+                "retrying the rolled-back transaction (%d/%d).",
+                attempt + 1,
+                SQL_OPERATION_MAX_ATTEMPTS,
+            )
+            time.sleep(SQL_OPERATION_RETRY_DELAY_SECONDS * attempt)
+        else:
+            return
+        finally:
+            if sql_conn is not None:
+                try:
+                    sql_conn.close()
+                except psycopg.Error:
+                    LOGGER.warning("SQL retry connection was already unusable.")
+
+
 def refresh_query_planner_statistics(conn: Connection[Any]) -> None:
     """Refresh planner statistics for the core runtime tables."""
     LOGGER.info("Refreshing query planner statistics...")
@@ -226,6 +262,42 @@ def refresh_query_planner_statistics(conn: Connection[Any]) -> None:
         for table_name in TABLE_NAMES:
             cur.execute(cast("LiteralString", f"ANALYZE public.{table_name}"))
     LOGGER.info("Finished refreshing query planner statistics.")
+
+
+def refresh_query_planner_statistics_with_retries(
+    db_uri: str,
+    *,
+    table_names: tuple[str, ...] = tuple(TABLE_NAMES),
+) -> None:
+    """ANALYZE selected tables using a fresh, retryable connection."""
+    for attempt in range(1, SQL_OPERATION_MAX_ATTEMPTS + 1):
+        analyze_conn: Connection[Any] | None = None
+        try:
+            analyze_conn = psycopg.connect(db_uri)
+            analyze_conn.autocommit = True
+            LOGGER.info("Refreshing query planner statistics...")
+            with analyze_conn.cursor() as cur:
+                for table_name in table_names:
+                    cur.execute(cast("LiteralString", f"ANALYZE public.{table_name}"))
+            LOGGER.info("Finished refreshing query planner statistics.")
+        except psycopg.OperationalError:
+            if attempt == SQL_OPERATION_MAX_ATTEMPTS:
+                raise
+            LOGGER.warning(
+                "Database connection failed during ANALYZE; retrying with a "
+                "fresh connection (%d/%d).",
+                attempt + 1,
+                SQL_OPERATION_MAX_ATTEMPTS,
+            )
+            time.sleep(SQL_OPERATION_RETRY_DELAY_SECONDS * attempt)
+        else:
+            return
+        finally:
+            if analyze_conn is not None:
+                try:
+                    analyze_conn.close()
+                except psycopg.Error:
+                    LOGGER.warning("ANALYZE connection was already unusable.")
 
 
 def _add_wetbulb_load_args(parser: argparse.ArgumentParser) -> None:
@@ -871,19 +943,42 @@ def _load_file_group(
     *,
     batch_size: int,
 ) -> None:
-    """Load a group of files on a dedicated connection (parallel worker)."""
-    conn: Connection[Any] = psycopg.connect(db_uri)
-    conn.autocommit = True
-    try:
-        bulk_insert_csv_files(
-            conn,
-            csv_paths,
-            table_name,
-            batch_size=batch_size,
-            truncate=False,
-        )
-    finally:
-        conn.close()
+    """Load each file in its own retryable transaction and connection."""
+    for csv_path in csv_paths:
+        for attempt in range(1, LOAD_FILE_MAX_ATTEMPTS + 1):
+            file_conn: Connection[Any] | None = None
+            try:
+                file_conn = psycopg.connect(db_uri)
+                file_conn.autocommit = True
+                bulk_insert_csv_files(
+                    file_conn,
+                    [csv_path],
+                    table_name,
+                    batch_size=batch_size,
+                    truncate=False,
+                )
+            except psycopg.OperationalError:
+                if attempt == LOAD_FILE_MAX_ATTEMPTS:
+                    raise
+                LOGGER.warning(
+                    "Database connection failed while loading %s; "
+                    "retrying with a fresh connection (%d/%d).",
+                    csv_path,
+                    attempt + 1,
+                    LOAD_FILE_MAX_ATTEMPTS,
+                )
+                time.sleep(LOAD_FILE_RETRY_DELAY_SECONDS * attempt)
+            else:
+                break
+            finally:
+                if file_conn is not None:
+                    try:
+                        file_conn.close()
+                    except psycopg.Error:
+                        LOGGER.warning(
+                            "Database connection was already unusable after loading %s.",
+                            csv_path,
+                        )
 
 
 def _load_table_files(
@@ -897,8 +992,7 @@ def _load_table_files(
     workers: int,
 ) -> None:
     """Load files into a table, fanning out across connections when possible."""
-    effective_workers = max(1, min(workers, len(csv_paths)))
-    if truncate or effective_workers == 1:
+    if truncate:
         bulk_insert_csv_files(
             conn,
             csv_paths,
@@ -907,6 +1001,8 @@ def _load_table_files(
             truncate=truncate,
         )
         return
+
+    effective_workers = max(1, min(workers, len(csv_paths)))
 
     file_groups = [
         csv_paths[index::effective_workers] for index in range(effective_workers)
@@ -1005,12 +1101,15 @@ def main() -> None:
 
     try:
         if should_refresh_schema or args.ensure_schema:
-            execute_sql_file(conn, "create_tables.sql")
+            execute_sql_files_with_retries(db_uri, ("create_tables.sql",))
         if "wetbulb" not in skip_tables:
             # CREATE TABLE IF NOT EXISTS cannot add provenance columns to an
             # already-deployed table, so every wet-bulb load applies the
             # idempotent ALTER migration first.
-            execute_sql_file(conn, "migrate_wetbulb_station_provenance.sql")
+            execute_sql_files_with_retries(
+                db_uri,
+                ("migrate_wetbulb_station_provenance.sql",),
+            )
 
         _load_requested_tables(
             conn,
@@ -1021,8 +1120,8 @@ def main() -> None:
         )
 
         if not args.skip_drop_views and not args.skip_create_views:
-            execute_sql_files_atomically(
-                conn,
+            execute_sql_files_with_retries(
+                db_uri,
                 (
                     "drop_views.sql",
                     "create_views.sql",
@@ -1031,12 +1130,12 @@ def main() -> None:
                 ),
             )
         elif not args.skip_drop_views:
-            execute_sql_file(conn, "drop_views.sql")
+            execute_sql_files_with_retries(db_uri, ("drop_views.sql",))
         elif not args.skip_create_views:
-            execute_sql_file(conn, "create_views.sql")
+            execute_sql_files_with_retries(db_uri, ("create_views.sql",))
 
         if should_refresh_schema:
-            refresh_query_planner_statistics(conn)
+            refresh_query_planner_statistics_with_retries(db_uri)
 
     finally:
         conn.close()

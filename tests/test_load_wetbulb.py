@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock
 
+import psycopg
 import pytest
 
 import load
@@ -102,6 +103,34 @@ def test_discovery_includes_eccc_station_batches(tmp_path: Path) -> None:
     assert discovered == [ghcnh_path, eccc_path, fill_path]
 
 
+def test_file_group_retries_each_file_with_a_fresh_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = [Path("first.parquet"), Path("second.parquet")]
+    connections = [FakeConnection(), FakeConnection(), FakeConnection()]
+    connect = MagicMock(side_effect=connections)
+    bulk_insert = MagicMock(
+        side_effect=[psycopg.OperationalError("SSL EOF"), None, None]
+    )
+    monkeypatch.setattr(load.psycopg, "connect", connect)
+    monkeypatch.setattr(load, "bulk_insert_csv_files", bulk_insert)
+    monkeypatch.setattr(load.time, "sleep", lambda _seconds: None)
+
+    load._load_file_group(
+        "postgresql://test",
+        paths,
+        "wetbulb",
+        batch_size=100,
+    )
+
+    assert [call.args[1] for call in bulk_insert.call_args_list] == [
+        [paths[0]],
+        [paths[0]],
+        [paths[1]],
+    ]
+    assert all(connection.closed for connection in connections)
+
+
 class TestParseArgs:
     def test_defaults_append_and_analyze(self) -> None:
         args = load_wetbulb._parse_args([])
@@ -126,6 +155,24 @@ def test_execute_sql_files_atomically_uses_one_transaction(tmp_path: Path) -> No
         "SELECT 1;",
         "SELECT 2;",
     ]
+
+
+def test_atomic_sql_reconnects_after_operational_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connections = [TransactionConnection(), TransactionConnection()]
+    execute = MagicMock(side_effect=[psycopg.OperationalError("SSL EOF"), None])
+    monkeypatch.setattr(load.psycopg, "connect", MagicMock(side_effect=connections))
+    monkeypatch.setattr(load, "execute_sql_files_atomically", execute)
+    monkeypatch.setattr(load.time, "sleep", lambda _seconds: None)
+
+    load.execute_sql_files_with_retries(
+        "postgresql://test",
+        ("create_views.sql",),
+    )
+
+    assert execute.call_count == 2
+    assert all(connection.closed for connection in connections)
 
 
 class TestMain:

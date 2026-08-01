@@ -13,22 +13,3 @@ application itself is
 
 The `Daily Wetbulb Update` GitHub Actions workflow refreshes the current year
 for North America and Europe every day at 20:27 UTC.
-
-Station parquet rows include the selected station ID, station distance,
-elevation difference, distinct observed-hour count, and quality classification.
-When duplicate city-days are loaded, deterministic precedence is ECCC, GHCNh,
-ISD, NLDAS, then ERA5-Land. Run `audit_station_coverage.py` against one or more
-`wetbulb_data_csv` roots to measure the remaining station-versus-grid share by
-year and city.
-
-```bash
-uv run python audit_station_coverage.py \
-  --root na=na/na-census-2025-csd-2021/wetbulb_data_csv \
-  --root eu=eu/wetbulb_data_csv \
-  --cities-csv cities_na.csv --cities-csv cities_eu.csv
-```
-
-To replace existing legacy station shards during the historical migration, run
-the regional backfills with `FORCE_STATION_BACKFILL=1` for North America and
-`EU_FORCE_STATION_BACKFILL=1` for Europe. Without those flags, completed shard
-files remain resumable and are intentionally skipped.

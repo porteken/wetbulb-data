@@ -14,7 +14,8 @@ from load import (
     _discover_wetbulb_csv_paths,
     _load_table_files,
     _validate_load_shard_args,
-    execute_sql_file,
+    execute_sql_files_with_retries,
+    refresh_query_planner_statistics_with_retries,
 )
 from shared_config import DATABASE_CONFIG_HINT, resolve_database_uri
 
@@ -95,7 +96,10 @@ def main() -> None:
                 "Run create_tables.sql (or load.py) first."
             )
             raise SystemExit(msg)
-        execute_sql_file(conn, "migrate_wetbulb_station_provenance.sql")
+        execute_sql_files_with_retries(
+            db_uri,
+            ("migrate_wetbulb_station_provenance.sql",),
+        )
 
         _load_table_files(
             conn,
@@ -108,9 +112,10 @@ def main() -> None:
         )
 
         if not args.skip_analyze:
-            LOGGER.info("Refreshing query planner statistics...")
-            with conn.cursor() as cur:
-                cur.execute("ANALYZE public.wetbulb")
+            refresh_query_planner_statistics_with_retries(
+                db_uri,
+                table_names=(TABLE_NAME,),
+            )
     finally:
         conn.close()
         LOGGER.info("Database connection closed.")
