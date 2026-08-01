@@ -880,6 +880,7 @@ def _discover_batch_parquet_paths(
     root: str,
     file_glob: str,
     prefer_direct: bool,
+    allow_direct_fallback: bool = True,
 ) -> list[Path]:
     direct_csv_path = Path(direct_csv)
     if prefer_direct and direct_csv_path.exists():
@@ -891,11 +892,20 @@ def _discover_batch_parquet_paths(
             shard_count=args.load_shard_count,
         )
 
-    csv_paths = _discover_csv_inputs(
-        direct_csv,
-        shard_root=root,
-        shard_file_name=file_glob,
-        shard_partition_key=None,
+    csv_paths = (
+        _discover_csv_inputs(
+            direct_csv,
+            shard_root=root,
+            shard_file_name=file_glob,
+            shard_partition_key=None,
+        )
+        if allow_direct_fallback
+        else _discover_shard_csv_inputs(
+            shard_root=root,
+            shard_file_name=file_glob,
+            shard_count=None,
+            shard_partition_key=None,
+        )
     )
     return _select_partition_shard_paths(
         csv_paths,
@@ -924,6 +934,7 @@ def _discover_wetbulb_csv_paths(args: argparse.Namespace) -> list[Path]:
         root=args.wetbulb_root,
         file_glob="wetbulb_eccc_batch_*.parquet",
         prefer_direct=False,
+        allow_direct_fallback=False,
     )
 
     fill_paths = _discover_batch_parquet_paths(
@@ -932,6 +943,7 @@ def _discover_wetbulb_csv_paths(args: argparse.Namespace) -> list[Path]:
         root=args.wetbulb_root,
         file_glob="wetbulb_fill_batch_*.parquet",
         prefer_direct=False,
+        allow_direct_fallback=False,
     )
     return batch_paths + eccc_paths + fill_paths
 

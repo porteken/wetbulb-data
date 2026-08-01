@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 
+from station_exclusions import DISALLOWED_GHCNH_STATION_IDS
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -166,11 +168,9 @@ def build_station_map(
         else dict.fromkeys(eligible_ids, 0.0)
     )
     station_ids = _series(stations, "GHCN_ID").astype("string")
-    eligible_mask = station_ids.isin(
-        list(coverage_by_id)
-    ) & ~station_ids.str.startswith(
-        DISALLOWED_STATION_PREFIXES,
-        na=False,
+    eligible_mask = station_ids.isin(list(coverage_by_id)) & (
+        ~station_ids.str.startswith(DISALLOWED_STATION_PREFIXES, na=False)
+        & ~station_ids.isin(DISALLOWED_GHCNH_STATION_IDS)
     )
     candidates = cast("pd.DataFrame", stations.loc[eligible_mask]).copy()
     candidates["variable_coverage"] = station_ids.loc[candidates.index].map(

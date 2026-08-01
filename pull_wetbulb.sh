@@ -135,6 +135,8 @@ for step in "${STEPS[@]}"; do
     load)
       ((CONFIRM_DB)) || { echo "load requires --confirm-db-write" >&2; exit 1; }
       run "${PY[@]}" "${HERE}/locations.py"
+      run "${PY[@]}" "${HERE}/validate_location_catalog_db.py" \
+        --locations-csv "${HERE}/locations.csv"
       run "${PY[@]}" "${HERE}/load.py" \
         --wetbulb-root "${OUTPUT_ROOT}/wetbulb_data_csv" \
         --append-only --skip-drop-views --skip-create-views --ensure-schema \

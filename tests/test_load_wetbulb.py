@@ -103,6 +103,24 @@ def test_discovery_includes_eccc_station_batches(tmp_path: Path) -> None:
     assert discovered == [ghcnh_path, eccc_path, fill_path]
 
 
+def test_discovery_does_not_repeat_direct_csv_for_absent_optional_batches(
+    tmp_path: Path,
+) -> None:
+    primary_path = _make_shard(tmp_path)
+    direct_path = tmp_path / "wetbulb.csv"
+    direct_path.touch()
+    args = load._parse_args(
+        [
+            "--wetbulb-root",
+            str(tmp_path / "wetbulb_data_csv"),
+            "--wetbulb-csv",
+            str(direct_path),
+        ]
+    )
+
+    assert load._discover_wetbulb_csv_paths(args) == [primary_path]
+
+
 def test_file_group_retries_each_file_with_a_fresh_connection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

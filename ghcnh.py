@@ -31,6 +31,7 @@ from lcd import (
 )
 from partition_io import pending_years, write_pending_year_batches
 from shards import resolve_filesystem
+from station_exclusions import DISALLOWED_GHCNH_STATION_IDS
 
 pd = cast("Any", importlib.import_module("pandas"))
 np = cast("Any", importlib.import_module("numpy"))
@@ -296,6 +297,9 @@ def _load_station_map(path: str) -> DataFrame:
         map_path,
         usecols=[column for column in [*required, *optional] if column in available],
     )
+    station_map = station_map[
+        ~station_map["ghcn_id"].isin(DISALLOWED_GHCNH_STATION_IDS)
+    ].copy()
     if "candidate_rank" not in station_map:
         station_map["candidate_rank"] = (
             station_map.groupby("location_id").cumcount() + 1
