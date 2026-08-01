@@ -79,6 +79,27 @@ def concat_frames(frames: list[DataFrame]) -> DataFrame:
     return pd.concat(relevant, ignore_index=True).reindex(columns=columns)
 
 
+def derive_station_pressure(hourly: DataFrame) -> DataFrame:
+    """Fill missing station pressure from sea-level or altimeter pressure."""
+    sea_level_derived = hourly["slp_hpa"] * np.exp(
+        -hourly["ELEVATION"]
+        / (_HYPSOMETRIC_SCALE_M_PER_K * (hourly["tair_c"] + _KELVIN_OFFSET)),
+    )
+    altimeter_derived = (
+        hourly["altimeter_hpa"]
+        * (
+            (_ICAO_SEA_LEVEL_T_K - _ICAO_LAPSE_K_PER_M * hourly["ELEVATION"])
+            / _ICAO_SEA_LEVEL_T_K
+        )
+        ** _ICAO_EXPONENT
+    )
+    return (
+        hourly["station_pressure_hpa"]
+        .fillna(sea_level_derived)
+        .fillna(altimeter_derived)
+    )
+
+
 def _get_with_retries(
     session: requests.Session,
     url: str,

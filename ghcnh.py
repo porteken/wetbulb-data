@@ -19,22 +19,17 @@ from tqdm.auto import tqdm
 
 import nldas
 from lcd import (
-    _HYPSOMETRIC_SCALE_M_PER_K,
-    _ICAO_EXPONENT,
-    _ICAO_LAPSE_K_PER_M,
-    _ICAO_SEA_LEVEL_T_K,
-    _KELVIN_OFFSET,
     _load_pending_shard,
     _station_to_hourly,
     add_common_shard_args,
     concat_frames,
+    derive_station_pressure,
 )
 from partition_io import pending_years, write_pending_year_batches
 from shards import resolve_filesystem
 from station_exclusions import DISALLOWED_GHCNH_STATION_IDS
 
 pd = cast("Any", importlib.import_module("pandas"))
-np = cast("Any", importlib.import_module("numpy"))
 pa = cast("Any", importlib.import_module("pyarrow"))
 pq = cast("Any", importlib.import_module("pyarrow.parquet"))
 _PARQUET_PARSE_ERRORS = (OSError, pa.ArrowException)
@@ -154,20 +149,7 @@ def _parse_ghcnh_parquet(
         subset="time_utc",
         keep="first",
     )
-    pressure_hpa = hourly["station_pressure_hpa"]
-    sea_level_derived = hourly["slp_hpa"] * np.exp(
-        -hourly["ELEVATION"]
-        / (_HYPSOMETRIC_SCALE_M_PER_K * (hourly["tair_c"] + _KELVIN_OFFSET)),
-    )
-    altimeter_derived = (
-        hourly["altimeter_hpa"]
-        * (
-            (_ICAO_SEA_LEVEL_T_K - _ICAO_LAPSE_K_PER_M * hourly["ELEVATION"])
-            / _ICAO_SEA_LEVEL_T_K
-        )
-        ** _ICAO_EXPONENT
-    )
-    pressure_hpa = pressure_hpa.fillna(sea_level_derived).fillna(altimeter_derived)
+    pressure_hpa = derive_station_pressure(hourly)
 
     if utc_offset_hours is None or pd.isna(utc_offset_hours):
         utc_offset_hours = round(float(lon or 0.0) / 15.0)

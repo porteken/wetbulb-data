@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, cast
 
 import pandas as pd
@@ -246,3 +247,21 @@ def test_station_map_for_years_filters_year_specific_rows() -> None:
     result = ghcnh.station_map_for_years(station_map, [2025])
 
     assert result["ghcn_id"].tolist() == ["NEW"]
+
+
+def test_load_station_map_excludes_known_humidity_outlier(tmp_path: Path) -> None:
+    station_map_path = tmp_path / "stations.csv"
+    pd.DataFrame(
+        {
+            "location_id": [1, 1],
+            "ghcn_id": ["USW00023012", "USW00023036"],
+            "lon": [-104.90, -104.75],
+            "dist_km": [2.0, 10.0],
+            "elev_m": [1645.0, 1726.1],
+            "utc_offset_hours": [-7.0, -7.0],
+        },
+    ).to_csv(station_map_path, index=False)
+
+    result = ghcnh._load_station_map(str(station_map_path))
+
+    assert result["ghcn_id"].tolist() == ["USW00023036"]

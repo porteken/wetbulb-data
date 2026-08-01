@@ -18,22 +18,17 @@ from dotenv import load_dotenv
 from tqdm.auto import tqdm
 
 from lcd import (
-    _HYPSOMETRIC_SCALE_M_PER_K,
-    _ICAO_EXPONENT,
-    _ICAO_LAPSE_K_PER_M,
-    _ICAO_SEA_LEVEL_T_K,
-    _KELVIN_OFFSET,
     _load_pending_shard,
     _station_to_hourly,
     _write_daily_shard,
     add_common_shard_args,
     concat_frames,
+    derive_station_pressure,
 )
 from partition_io import pending_years, write_pending_year_batches
 from shards import resolve_filesystem
 
 pd = cast("Any", importlib.import_module("pandas"))
-np = cast("Any", importlib.import_module("numpy"))
 
 type DataFrame = Any
 
@@ -180,20 +175,7 @@ def _parse_isd_response(
         keep="first",
     )
 
-    pressure_hpa = hourly["station_pressure_hpa"]
-    sea_level_derived = hourly["slp_hpa"] * np.exp(
-        -hourly["ELEVATION"]
-        / (_HYPSOMETRIC_SCALE_M_PER_K * (hourly["tair_c"] + _KELVIN_OFFSET)),
-    )
-    altimeter_derived = (
-        hourly["altimeter_hpa"]
-        * (
-            (_ICAO_SEA_LEVEL_T_K - _ICAO_LAPSE_K_PER_M * hourly["ELEVATION"])
-            / _ICAO_SEA_LEVEL_T_K
-        )
-        ** _ICAO_EXPONENT
-    )
-    pressure_hpa = pressure_hpa.fillna(sea_level_derived).fillna(altimeter_derived)
+    pressure_hpa = derive_station_pressure(hourly)
 
     if utc_offset_hours is None or pd.isna(utc_offset_hours):
         station_lon = float(lon) if lon is not None else None
