@@ -4,15 +4,13 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import psycopg
+import pytest
 
 import refresh_views
-
-if TYPE_CHECKING:
-    import pytest
 
 
 class FakeCursor:
@@ -130,6 +128,31 @@ class TestRefreshMaterializedViews:
         assert order == []
         assert "No materialized views" in caplog.text
 
+    def test_can_filter_matviews_by_prefix(self) -> None:
+        conn = FakeConnection(
+            matviews=[("wetbulb_stats", True), ("pet_stats", True)],
+            unique_indexed={"wetbulb_stats", "pet_stats"},
+        )
+
+        order = refresh_views.refresh_materialized_views(
+            cast("Any", conn),
+            name_prefix="wetbulb_",
+        )
+
+        assert order == ["wetbulb_stats"]
+        assert _refresh_statements(conn) == [
+            "REFRESH MATERIALIZED VIEW CONCURRENTLY public.wetbulb_stats"
+        ]
+
+
+def test_configure_refresh_session_disables_parallel_sort_workers() -> None:
+    conn = FakeConnection(matviews=[])
+
+    refresh_views.configure_refresh_session(cast("Any", conn))
+
+    assert "SET max_parallel_workers_per_gather = 0" in conn.executed_statements
+    assert "SET max_parallel_maintenance_workers = 0" in conn.executed_statements
+
 
 class TestMain:
     def test_skips_without_database_credentials(
@@ -207,3 +230,26 @@ class TestMain:
 
         assert refresh.call_count == 2
         assert all(connection.close.called for connection in connections)
+
+    def test_does_not_retry_storage_internal_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        conn = MagicMock()
+        connect = MagicMock(return_value=conn)
+        refresh = MagicMock(side_effect=psycopg.InternalError("unexpected end of tape"))
+        monkeypatch.setattr(
+            refresh_views,
+            "resolve_database_uri",
+            lambda: "postgresql://x",
+        )
+        monkeypatch.setattr(refresh_views.psycopg, "connect", connect)
+        monkeypatch.setattr(refresh_views, "refresh_materialized_views", refresh)
+        monkeypatch.setattr(sys, "argv", ["refresh_views.py"])
+
+        with caplog.at_level(logging.ERROR), pytest.raises(psycopg.InternalError):
+            refresh_views.main()
+
+        assert refresh.call_count == 1
+        assert "temporary storage" in caplog.text

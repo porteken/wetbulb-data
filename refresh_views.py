@@ -19,6 +19,14 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 REFRESH_MAX_ATTEMPTS = 4
 REFRESH_RETRY_DELAY_SECONDS = 30
+DEFAULT_MATVIEW_PREFIX = "wetbulb_"
+
+_REFRESH_SESSION_STATEMENTS: tuple[LiteralString, ...] = (
+    "SET max_parallel_workers_per_gather = 0",
+    "SET max_parallel_maintenance_workers = 0",
+    "SET work_mem = '64MB'",
+    "SET maintenance_work_mem = '128MB'",
+)
 
 _MATVIEWS_QUERY: LiteralString = """
 SELECT matviewname, ispopulated
@@ -51,11 +59,22 @@ LIMIT 1
 """
 
 
-def _discover_matviews(conn: Connection[Any]) -> dict[str, bool]:
+def _discover_matviews(
+    conn: Connection[Any],
+    *,
+    name_prefix: str | None = None,
+) -> dict[str, bool]:
     """Return public materialized views mapped to their populated state."""
     with conn.cursor() as cur:
         cur.execute(_MATVIEWS_QUERY)
-        return {row[0]: bool(row[1]) for row in cur.fetchall()}
+        matviews = {row[0]: bool(row[1]) for row in cur.fetchall()}
+    if name_prefix is None:
+        return matviews
+    return {
+        name: is_populated
+        for name, is_populated in matviews.items()
+        if name.startswith(name_prefix)
+    }
 
 
 def _matview_refresh_order(conn: Connection[Any], matviews: set[str]) -> list[str]:
@@ -79,9 +98,10 @@ def refresh_materialized_views(
     conn: Connection[Any],
     *,
     allow_concurrent: bool = True,
+    name_prefix: str | None = None,
 ) -> list[str]:
-    """Refresh every public matview in dependency order; return the order."""
-    matviews = _discover_matviews(conn)
+    """Refresh matching public matviews in dependency order; return the order."""
+    matviews = _discover_matviews(conn, name_prefix=name_prefix)
     if not matviews:
         LOGGER.warning("No materialized views found in schema public.")
         return []
@@ -103,6 +123,13 @@ def refresh_materialized_views(
     return refresh_order
 
 
+def configure_refresh_session(conn: Connection[Any]) -> None:
+    """Use a bounded, serial plan to avoid external-sort tape failures."""
+    with conn.cursor() as cur:
+        for statement in _REFRESH_SESSION_STATEMENTS:
+            cur.execute(statement)
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -120,7 +147,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Use lower-overhead blocking refreshes for maintenance runs.",
     )
+    parser.add_argument(
+        "--matview-prefix",
+        default=DEFAULT_MATVIEW_PREFIX,
+        help=(
+            "Only refresh materialized views whose names begin with this value "
+            f"(default: {DEFAULT_MATVIEW_PREFIX!r})."
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def _is_storage_refresh_error(exc: psycopg.InternalError) -> bool:
+    """Identify server errors caused by exhausted or corrupt temporary storage."""
+    message = str(exc).lower()
+    return "no space left on device" in message or "unexpected end of tape" in message
 
 
 def main() -> None:
@@ -141,13 +182,23 @@ def main() -> None:
         try:
             conn = psycopg.connect(db_uri)
             conn.autocommit = True
+            configure_refresh_session(conn)
             refreshed = refresh_materialized_views(
                 conn,
                 allow_concurrent=not args.non_concurrent,
+                name_prefix=args.matview_prefix,
             )
             LOGGER.info("Refreshed %d materialized view(s).", len(refreshed))
             if not args.skip_analyze:
                 refresh_query_planner_statistics(conn)
+        except psycopg.InternalError as exc:
+            if _is_storage_refresh_error(exc):
+                LOGGER.exception(
+                    "PostgreSQL ran out of usable temporary storage while refreshing "
+                    "the views. If legacy PET objects are present, the explicit "
+                    "'cleanup' step can reclaim about 1.1 GB before retrying 'views'."
+                )
+            raise
         except psycopg.OperationalError:
             if attempt == REFRESH_MAX_ATTEMPTS:
                 raise

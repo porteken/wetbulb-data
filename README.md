@@ -13,3 +13,21 @@ application itself is
 
 The `Daily Wetbulb Update` GitHub Actions workflow refreshes the current year
 for North America and Europe every day at 20:27 UTC.
+
+## Database maintenance
+
+Older deployments may still contain the superseded `pet` table and PET views.
+They are not used by the wet-bulb application and occupy about 1.1 GB in the
+current production database. Cleanup is deliberately opt-in and avoids
+`CASCADE`, so an unexpected new dependency stops the migration:
+
+```bash
+# North American wrapper
+./pull_wetbulb.sh --confirm-db-write cleanup views
+
+# European wrapper (the cleanup is idempotent and only needs to run once)
+./pull_wetbulb_eu.sh --yes cleanup views
+```
+
+Normal `views` runs refresh only `wetbulb_*` materialized views. This prevents
+unrelated legacy materialized views from consuming maintenance time and disk.

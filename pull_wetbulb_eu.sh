@@ -32,6 +32,7 @@ PYTHON_RUN=${PYTHON_RUN:-uv run python}
 
 DEFAULT_STEPS=(cities crosswalk backfill gapfill)
 ALL_STEPS=(cities crosswalk trial backfill gapfill load views)
+VALID_STEPS=("${ALL_STEPS[@]}" cleanup)
 
 DRY_RUN=0
 ASSUME_YES=0
@@ -234,6 +235,13 @@ step_load() {
   log "[load] done"
 }
 
+step_cleanup() {
+  confirm_db_step cleanup
+  log "[cleanup] removing obsolete PET database objects"
+  run "${PY[@]}" cleanup_legacy_pet.py --confirm-db-write
+  log "[cleanup] done"
+}
+
 step_views() {
   confirm_db_step views
   log "[views] refreshing existing materialized views"
@@ -253,11 +261,11 @@ main() {
       return 0
       ;;
     all) steps+=("${ALL_STEPS[@]}") ;;
-    cities | crosswalk | trial | backfill | gapfill | load | views)
+    cities | crosswalk | trial | backfill | gapfill | load | cleanup | views)
       steps+=("${argument}")
       ;;
     -*) die "unknown option: ${argument} (try --help)" ;;
-    *) die "unknown step: ${argument} (valid: ${ALL_STEPS[*]}, all)" ;;
+    *) die "unknown step: ${argument} (valid: ${VALID_STEPS[*]}, all)" ;;
     esac
     shift
   done
@@ -274,7 +282,9 @@ main() {
   done
   log "finished: ${steps[*]}"
 
-  if [[ " ${steps[*]} " != *" load "* ]]; then
+  if [[ " ${steps[*]} " != *" load "* &&
+        " ${steps[*]} " != *" cleanup "* &&
+        " ${steps[*]} " != *" views "* ]]; then
     log "note: nothing was written to the database; run '${0##*/} load views' when ready"
   fi
 }

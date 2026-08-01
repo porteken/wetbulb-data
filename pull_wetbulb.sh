@@ -27,7 +27,7 @@ read -ra PY <<<"${PYTHON_RUN}"
 
 usage() {
   echo "usage: $0 [--dry-run] [--confirm-db-write] [--city-shard-count N] [steps...]"
-  echo "steps: cities crosswalk trial backfill gapfill validate load views"
+  echo "steps: cities crosswalk trial backfill gapfill validate load cleanup views"
 }
 
 run() {
@@ -48,7 +48,7 @@ while (($#)); do
       SHARD_COUNT="${1:?missing shard count}"
       ;;
     -h|--help) usage; exit 0 ;;
-    cities|crosswalk|trial|backfill|gapfill|validate|load|views) STEPS+=("$1") ;;
+    cities|crosswalk|trial|backfill|gapfill|validate|load|cleanup|views) STEPS+=("$1") ;;
     *) echo "unknown option or step: $1" >&2; usage >&2; exit 2 ;;
   esac
   shift
@@ -142,6 +142,10 @@ for step in "${STEPS[@]}"; do
       run "${PY[@]}" "${HERE}/load_wetbulb.py" \
         --wetbulb-root "${OUTPUT_ROOT}/wetbulb_data_csv" \
         --load-workers "${LOAD_WORKERS}"
+      ;;
+    cleanup)
+      ((CONFIRM_DB)) || { echo "cleanup requires --confirm-db-write" >&2; exit 1; }
+      run "${PY[@]}" "${HERE}/cleanup_legacy_pet.py" --confirm-db-write
       ;;
     views)
       ((CONFIRM_DB)) || { echo "views requires --confirm-db-write" >&2; exit 1; }
