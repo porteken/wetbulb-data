@@ -93,6 +93,66 @@ def _validated_region(value: str) -> str:
     return value
 
 
+def _selected_source(wetbulb_source: str, year: int) -> str:
+    """Return the concrete observation source to run for a year."""
+    if wetbulb_source != "auto":
+        return wetbulb_source
+    return "ghcnh" if year >= GHCNH_TRANSITION_YEAR else "isd"
+
+
+def _station_map_for(selected_source: str, region: str) -> tuple[str, str]:
+    """Return the city catalog and station map for an observation worker."""
+    if region == "eu":
+        station_map = (
+            EU_GHCNH_STATION_MAP_CSV
+            if selected_source == "ghcnh"
+            else EU_STATION_MAP_CSV
+        )
+        return EU_CITIES_CSV, station_map
+
+    station_map = NA_STATION_MAP_CSV
+    if selected_source == "eccc":
+        station_map = NA_ECCC_STATION_MAP_CSV
+    elif selected_source == "ghcnh":
+        station_map = NA_GHCNH_STATION_MAP_CSV
+    return NA_CITIES_CSV, station_map
+
+
+def _station_command(
+    selected_source: str,
+    region: str,
+    out_dir: str,
+    city_shard_count: int,
+    city_shard_index: int,
+    concurrency: int,
+    year: int,
+    *,
+    force: bool,
+) -> list[str]:
+    """Build a command for a station-based observation source."""
+    cities_csv, station_map = _station_map_for(selected_source, region)
+    command = [
+        sys.executable,
+        f"{selected_source}.py",
+        "--start-year",
+        str(year),
+        "--end-year",
+        str(year),
+        "--city-shard-count",
+        str(city_shard_count),
+        "--concurrency",
+        str(concurrency),
+        "--out-dir",
+        out_dir,
+    ]
+    if city_shard_count > 1:
+        command[8:8] = ["--city-shard-index", str(city_shard_index)]
+    command.extend(["--cities-csv", cities_csv, "--station-map-csv", station_map])
+    if force:
+        command.append("--force")
+    return command
+
+
 def _command(
     wetbulb_source: str,
     region: str,
@@ -107,63 +167,18 @@ def _command(
     *,
     force: bool = False,
 ) -> list[str]:
-    selected_source = (
-        "ghcnh"
-        if wetbulb_source == "auto" and year >= GHCNH_TRANSITION_YEAR
-        else "isd"
-        if wetbulb_source == "auto"
-        else wetbulb_source
-    )
+    selected_source = _selected_source(wetbulb_source, year)
     if selected_source in {"eccc", "ghcnh", "isd", "lcd", "giovanni"}:
-        command = [
-            sys.executable,
-            f"{selected_source}.py",
-            "--start-year",
-            str(year),
-            "--end-year",
-            str(year),
-            "--city-shard-count",
-            str(city_shard_count),
-            "--concurrency",
-            str(concurrency),
-            "--out-dir",
+        return _station_command(
+            selected_source,
+            region,
             out_dir,
-        ]
-        if city_shard_count > 1:
-            command[8:8] = ["--city-shard-index", str(city_shard_index)]
-        if region == "eu":
-            station_map = (
-                EU_GHCNH_STATION_MAP_CSV
-                if selected_source == "ghcnh"
-                else EU_STATION_MAP_CSV
-            )
-            command.extend(
-                [
-                    "--cities-csv",
-                    EU_CITIES_CSV,
-                    "--station-map-csv",
-                    station_map,
-                ],
-            )
-        elif region == "na":
-            station_map = (
-                NA_ECCC_STATION_MAP_CSV
-                if selected_source == "eccc"
-                else NA_GHCNH_STATION_MAP_CSV
-                if selected_source == "ghcnh"
-                else NA_STATION_MAP_CSV
-            )
-            command.extend(
-                [
-                    "--cities-csv",
-                    NA_CITIES_CSV,
-                    "--station-map-csv",
-                    station_map,
-                ],
-            )
-        if force:
-            command.append("--force")
-        return command
+            city_shard_count,
+            city_shard_index,
+            concurrency,
+            year,
+            force=force,
+        )
 
     command = [
         sys.executable,
@@ -188,6 +203,23 @@ def _command(
     return command
 
 
+def _shard_indices(city_shard_index: int | None, city_shard_count: int) -> list[int]:
+    """Validate an optional shard selection and return the indexes to process."""
+    if city_shard_index is None:
+        return list(range(city_shard_count))
+    if 0 <= city_shard_index < city_shard_count:
+        return [city_shard_index]
+    msg = "--city-shard-index must be between 0 and --city-shard-count - 1"
+    raise argparse.ArgumentTypeError(msg)
+
+
+def _positive_values(values: list[int] | None, option: str) -> list[int] | None:
+    """Validate optional positive integer CLI values."""
+    if values is None:
+        return None
+    return [_validated_positive_integer(value, option) for value in values]
+
+
 def main(argv: list[str] | None = None) -> None:
     """Run the configured processing command for each requested year."""
     args = _parse_args(argv)
@@ -206,26 +238,13 @@ def main(argv: list[str] | None = None) -> None:
     city_shard_count = _validated_positive_integer(
         args.city_shard_count, "--city-shard-count"
     )
-    if args.city_shard_index is not None and not (
-        0 <= args.city_shard_index < city_shard_count
-    ):
-        msg = "--city-shard-index must be between 0 and --city-shard-count - 1"
-        raise argparse.ArgumentTypeError(msg)
-    shard_indices = (
-        [args.city_shard_index]
-        if args.city_shard_index is not None
-        else list(range(city_shard_count))
-    )
+    shard_indices = _shard_indices(args.city_shard_index, city_shard_count)
     concurrency = _validated_positive_integer(args.concurrency, "--concurrency")
     download_workers = _validated_positive_integer(
         args.download_workers, "--download-workers"
     )
     batch_hours = _validated_positive_integer(args.batch_hours, "--batch-hours")
-    months = (
-        [_validated_positive_integer(month, "--months") for month in args.months]
-        if args.months
-        else None
-    )
+    months = _positive_values(args.months, "--months")
     years = [_validated_positive_integer(year, "--years") for year in args.years]
     for year in years:
         for city_shard_index in shard_indices:

@@ -164,6 +164,38 @@ def _is_storage_refresh_error(exc: psycopg.InternalError) -> bool:
     return "no space left on device" in message or "unexpected end of tape" in message
 
 
+def _refresh_once(db_uri: str, args: argparse.Namespace) -> None:
+    """Refresh views once using a single database connection."""
+    conn: Connection[Any] | None = None
+    try:
+        conn = psycopg.connect(db_uri)
+        conn.autocommit = True
+        configure_refresh_session(conn)
+        refreshed = refresh_materialized_views(
+            conn,
+            allow_concurrent=not args.non_concurrent,
+            name_prefix=args.matview_prefix,
+        )
+        LOGGER.info("Refreshed %d materialized view(s).", len(refreshed))
+        if not args.skip_analyze:
+            refresh_query_planner_statistics(conn)
+    except psycopg.InternalError as exc:
+        if _is_storage_refresh_error(exc):
+            LOGGER.exception(
+                "PostgreSQL ran out of usable temporary storage while refreshing the "
+                "views. If legacy PET objects are present, the explicit 'cleanup' step "
+                "can reclaim about 1.1 GB before retrying 'views'."
+            )
+        raise
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except psycopg.Error:
+                LOGGER.warning("Database connection was already unusable.")
+            LOGGER.info("Database connection closed.")
+
+
 def main() -> None:
     """Refresh materialized views and planner statistics."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -178,46 +210,20 @@ def main() -> None:
 
     for attempt in range(1, REFRESH_MAX_ATTEMPTS + 1):
         LOGGER.info("Connecting to the database...")
-        conn: Connection[Any] | None = None
         try:
-            conn = psycopg.connect(db_uri)
-            conn.autocommit = True
-            configure_refresh_session(conn)
-            refreshed = refresh_materialized_views(
-                conn,
-                allow_concurrent=not args.non_concurrent,
-                name_prefix=args.matview_prefix,
-            )
-            LOGGER.info("Refreshed %d materialized view(s).", len(refreshed))
-            if not args.skip_analyze:
-                refresh_query_planner_statistics(conn)
-        except psycopg.InternalError as exc:
-            if _is_storage_refresh_error(exc):
-                LOGGER.exception(
-                    "PostgreSQL ran out of usable temporary storage while refreshing "
-                    "the views. If legacy PET objects are present, the explicit "
-                    "'cleanup' step can reclaim about 1.1 GB before retrying 'views'."
-                )
-            raise
+            _refresh_once(db_uri, args)
         except psycopg.OperationalError:
             if attempt == REFRESH_MAX_ATTEMPTS:
                 raise
             LOGGER.warning(
-                "Database connection failed during view refresh; retrying "
-                "with a fresh connection (%d/%d).",
+                "Database connection failed during view refresh; retrying with a fresh "
+                "connection (%d/%d).",
                 attempt + 1,
                 REFRESH_MAX_ATTEMPTS,
             )
             time.sleep(REFRESH_RETRY_DELAY_SECONDS * attempt)
         else:
             return
-        finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except psycopg.Error:
-                    LOGGER.warning("Database connection was already unusable.")
-                LOGGER.info("Database connection closed.")
 
 
 if __name__ == "__main__":

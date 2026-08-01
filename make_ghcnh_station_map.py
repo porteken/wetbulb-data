@@ -23,6 +23,7 @@ PRESSURE_VARIABLES = frozenset(
     {"station_level_pressure", "sea_level_pressure", "altimeter"},
 )
 DISALLOWED_STATION_PREFIXES = ("USL",)
+type PandasSeries = pd.Series
 LOGGER = logging.getLogger(__name__)
 _YEAR_SUFFIX_ERRORS = (IndexError, ValueError)
 
@@ -141,6 +142,11 @@ def active_station_ids(inventory_dir: Path) -> set[str]:
     return set(station_coverage_scores(inventory_dir))
 
 
+def _series(frame: pd.DataFrame, column: str) -> pd.Series:
+    """Return a DataFrame column with pandas' Series type for static checking."""
+    return cast("PandasSeries", frame[column])
+
+
 def build_station_map(
     cities: pd.DataFrame,
     stations: pd.DataFrame,
@@ -159,7 +165,7 @@ def build_station_map(
         if isinstance(eligible_ids, dict)
         else dict.fromkeys(eligible_ids, 0.0)
     )
-    station_ids = cast("pd.Series", stations["GHCN_ID"]).astype("string")
+    station_ids = _series(stations, "GHCN_ID").astype("string")
     eligible_mask = station_ids.isin(
         list(coverage_by_id)
     ) & ~station_ids.str.startswith(
@@ -173,15 +179,15 @@ def build_station_map(
     rows: list[dict[str, Any]] = []
     for city in cities.to_dict("records"):
         nearby = candidates.copy()
-        latitudes = cast("pd.Series", nearby["LATITUDE"])
-        longitudes = cast("pd.Series", nearby["LONGITUDE"])
+        latitudes = _series(nearby, "LATITUDE")
+        longitudes = _series(nearby, "LONGITUDE")
         distances = _haversine_km(
             float(city["lat"]),
             float(city["lng"]),
             latitudes,
             longitudes,
         )
-        elevations = cast("pd.Series", nearby["ELEVATION"])
+        elevations = _series(nearby, "ELEVATION")
         elevation_differences = (elevations - float(city["dem_m"])).abs()
         nearby["dist_km"] = distances
         nearby["elevation_difference_m"] = elevation_differences

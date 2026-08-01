@@ -936,6 +936,50 @@ def _discover_wetbulb_csv_paths(args: argparse.Namespace) -> list[Path]:
     return batch_paths + eccc_paths + fill_paths
 
 
+def _load_file_with_retries(
+    db_uri: str,
+    csv_path: Path,
+    table_name: str,
+    *,
+    batch_size: int,
+) -> None:
+    """Load one file, retrying each attempt with a fresh connection."""
+    for attempt in range(1, LOAD_FILE_MAX_ATTEMPTS + 1):
+        file_conn: Connection[Any] | None = None
+        try:
+            file_conn = psycopg.connect(db_uri)
+            file_conn.autocommit = True
+            bulk_insert_csv_files(
+                file_conn,
+                [csv_path],
+                table_name,
+                batch_size=batch_size,
+                truncate=False,
+            )
+        except psycopg.OperationalError:
+            if attempt == LOAD_FILE_MAX_ATTEMPTS:
+                raise
+            LOGGER.warning(
+                "Database connection failed while loading %s; retrying with a fresh "
+                "connection (%d/%d).",
+                csv_path,
+                attempt + 1,
+                LOAD_FILE_MAX_ATTEMPTS,
+            )
+            time.sleep(LOAD_FILE_RETRY_DELAY_SECONDS * attempt)
+        else:
+            return
+        finally:
+            if file_conn is not None:
+                try:
+                    file_conn.close()
+                except psycopg.Error:
+                    LOGGER.warning(
+                        "Database connection was already unusable after loading %s.",
+                        csv_path,
+                    )
+
+
 def _load_file_group(
     db_uri: str,
     csv_paths: list[Path],
@@ -945,40 +989,12 @@ def _load_file_group(
 ) -> None:
     """Load each file in its own retryable transaction and connection."""
     for csv_path in csv_paths:
-        for attempt in range(1, LOAD_FILE_MAX_ATTEMPTS + 1):
-            file_conn: Connection[Any] | None = None
-            try:
-                file_conn = psycopg.connect(db_uri)
-                file_conn.autocommit = True
-                bulk_insert_csv_files(
-                    file_conn,
-                    [csv_path],
-                    table_name,
-                    batch_size=batch_size,
-                    truncate=False,
-                )
-            except psycopg.OperationalError:
-                if attempt == LOAD_FILE_MAX_ATTEMPTS:
-                    raise
-                LOGGER.warning(
-                    "Database connection failed while loading %s; "
-                    "retrying with a fresh connection (%d/%d).",
-                    csv_path,
-                    attempt + 1,
-                    LOAD_FILE_MAX_ATTEMPTS,
-                )
-                time.sleep(LOAD_FILE_RETRY_DELAY_SECONDS * attempt)
-            else:
-                break
-            finally:
-                if file_conn is not None:
-                    try:
-                        file_conn.close()
-                    except psycopg.Error:
-                        LOGGER.warning(
-                            "Database connection was already unusable after loading %s.",
-                            csv_path,
-                        )
+        _load_file_with_retries(
+            db_uri,
+            csv_path,
+            table_name,
+            batch_size=batch_size,
+        )
 
 
 def _load_table_files(

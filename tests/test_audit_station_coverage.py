@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import argparse
+from pathlib import Path
+
 import pandas as pd
+import pytest
 
 import audit_station_coverage as audit
 
@@ -47,3 +51,19 @@ def test_city_ranking_puts_grid_only_city_first() -> None:
 
     assert result.iloc[0]["city"] == "B"
     assert result.iloc[0]["station_pct"] == 0.0
+
+
+def test_json_output_path_stays_in_the_current_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert audit._validated_json_output_path("reports/audit.json") == (
+        tmp_path / "reports" / "audit.json"
+    )
+
+    with pytest.raises(
+        argparse.ArgumentTypeError, match="within the current directory"
+    ):
+        audit._validated_json_output_path("../audit.json")

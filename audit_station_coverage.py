@@ -201,6 +201,17 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _validated_json_output_path(value: str) -> Path:
+    """Return an output path confined to the current working directory."""
+    path = Path(value)
+    workspace = Path.cwd().resolve()
+    resolved_path = (workspace / path).resolve()
+    if path.is_absolute() or not resolved_path.is_relative_to(workspace):
+        msg = "--json-out must be a relative path within the current directory"
+        raise argparse.ArgumentTypeError(msg)
+    return resolved_path
+
+
 def main() -> None:
     """Print coverage tables and optionally persist the complete audit as JSON."""
     args = _parse_args()
@@ -227,6 +238,7 @@ def main() -> None:
         f"{worst.to_string(index=False)}\n"
     )
     if args.json_out:
+        json_output_path = _validated_json_output_path(args.json_out)
         # Round-trip through pandas' JSON encoder so numpy scalar and missing
         # value types become standards-compliant builtins/nulls.
         payload = {
@@ -234,7 +246,7 @@ def main() -> None:
             "by_source": json.loads(by_source.to_json(orient="records")),
             "by_city": json.loads(cities_ranked.to_json(orient="records")),
         }
-        Path(args.json_out).write_text(
+        json_output_path.write_text(
             json.dumps(payload, indent=2, allow_nan=False),
             encoding="utf-8",
         )
