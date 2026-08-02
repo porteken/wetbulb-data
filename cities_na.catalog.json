@@ -1,16 +1,17 @@
 {
   "ca_population_vintage": 2021,
-  "catalog_sha256": "da36e9b66f332e7991936753b5545bf3d2eeaddffdd94acbc79ca06f34e41065",
-  "catalog_version": "na-census-2025-csd-2021",
-  "generated_at": "2026-07-27T03:35:29.415285+00:00",
+  "catalog_sha256": "e72a9ae26723ba2f976bd7a143c0b44d40300e10ca570f2dd7d12f22425036cc",
+  "catalog_version": "na-msa-principal-cities-2023-ca-cma-ca-2021",
+  "generated_at": "2026-08-02T04:00:08.909506+00:00",
   "grid_deg": 0.1,
-  "max_cities": 500,
+  "max_cities": 744,
   "sources": {
     "census_estimates": "https://www2.census.gov/programs-surveys/popest/datasets/2020-2025/cities/totals/sub-est2025.csv",
     "census_gazetteer": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2025_Gazetteer/2025_Gaz_place_national.zip",
     "geonames_cities": "https://download.geonames.org/export/dump/cities15000.zip",
     "geosuite_csd": "https://www12.statcan.gc.ca/census-recensement/2021/geo/aip-pia/geosuite/files-fichiers/2021_92-150-X_eng.zip",
-    "isd_history": "https://www.ncei.noaa.gov/pub/data/noaa/isd-history.csv"
+    "isd_history": "https://www.ncei.noaa.gov/pub/data/noaa/isd-history.csv",
+    "us_principal_cities": "https://www2.census.gov/programs-surveys/metro-micro/geographies/reference-files/2023/delineation-files/list2_2023.xlsx"
   },
   "us_population_vintage": 2025
 }
