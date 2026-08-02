@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -143,6 +144,33 @@ def test_select_cities_claims_unique_cells_and_stations() -> None:
     assert {year for _, year in calls} == {2000, 2025}
 
 
+def test_select_cities_can_reuse_stations_when_requested() -> None:
+    candidates = pd.DataFrame(
+        {
+            "place_id": ["US1", "US2"],
+            "city": ["One", "Two"],
+            "state": ["NY", "NY"],
+            "country": ["US", "US"],
+            "population": [2, 1],
+            "lat": [40.0, 40.2],
+            "lng": [-74.0, -74.2],
+            "dem_m": [10, 10],
+            "timezone": ["America/New_York"] * 2,
+        }
+    )
+
+    catalog, stations = cities_na.select_cities(
+        candidates,
+        _history().iloc[:1],
+        verify=lambda _ids, _year: True,
+        max_cities=2,
+        claim_unique_stations=False,
+    )
+
+    assert catalog["city"].tolist() == ["One", "Two"]
+    assert stations[["usaf", "wban"]].duplicated().sum() == 1
+
+
 def test_select_cities_fails_when_constraints_cannot_be_filled() -> None:
     candidate = pd.DataFrame(
         {
@@ -198,3 +226,90 @@ def test_write_catalog_writes_matching_manifest(
         digest == hashlib.sha256((tmp_path / "cities_na.csv").read_bytes()).hexdigest()
     )
     assert manifest["catalog_sha256"] == digest
+
+
+def test_write_catalog_allows_reused_stations(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    catalog = pd.DataFrame(
+        [
+            [0, "US1", "One", "NY", "US", 2, 40.0, -74.0, 10, "America/New_York", -5],
+            [1, "US2", "Two", "NY", "US", 1, 40.2, -74.2, 10, "America/New_York", -5],
+        ],
+        columns=cities_na.CATALOG_COLUMNS,
+    )
+    stations = pd.DataFrame(
+        [
+            [0, "000001", "00001", "00000100001", -74.0, 0.0, 10.0, -5, True],
+            [1, "000001", "00001", "00000100001", -74.0, 0.0, 10.0, -5, True],
+        ],
+        columns=cities_na.STATION_COLUMNS,
+    )
+
+    cities_na.write_catalog(
+        catalog,
+        stations,
+        out="cities_na.csv",
+        station_out="cities_na_isd_stations.csv",
+        manifest_out="cities_na.catalog.json",
+        source_urls={"source": "https://example.test"},
+    )
+
+    assert len(pd.read_csv(tmp_path / "cities_na_isd_stations.csv")) == 2
+
+
+def test_main_selects_one_city_per_grid_cell_and_allows_station_reuse(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    candidates = pd.DataFrame(
+        {
+            "place_id": ["US1", "US2", "US3"],
+            "city": ["One", "Same cell", "Two"],
+            "state": ["NY", "NY", "PA"],
+            "country": ["US", "US", "US"],
+            "population": [3, 2, 1],
+            "lat": [40.0, 40.01, 41.0],
+            "lng": [-74.0, -74.01, -75.0],
+            "dem_m": [10, 10, 20],
+            "timezone": ["America/New_York"] * 3,
+        }
+    )
+    select_kwargs: dict[str, object] = {}
+    args = SimpleNamespace(
+        census_url="https://example.test/census",
+        gazetteer_url="https://example.test/gazetteer",
+        geosuite_url="https://example.test/geosuite",
+        geonames_url="https://example.test/geonames",
+        us_principal_cities_url="https://example.test/principal-cities",
+        start_year=2000,
+        end_year=2025,
+        no_verify=True,
+        out="cities_na.csv",
+        station_out="cities_na_isd_stations.csv",
+        manifest_out="cities_na.catalog.json",
+    )
+
+    def select_stub(
+        *_args: object, **kwargs: object
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        select_kwargs.update(kwargs)
+        return pd.DataFrame({"country": ["US"]}), pd.DataFrame()
+
+    monkeypatch.setattr(cities_na, "_parse_args", lambda: args)
+    monkeypatch.setattr(cities_na.requests, "Session", object)
+    monkeypatch.setattr(cities_na, "_download", lambda *_args, **_kwargs: b"")
+    monkeypatch.setattr(
+        cities_na, "build_metro_candidates", lambda **_kwargs: candidates
+    )
+    monkeypatch.setattr(cities_na, "fetch_isd_history", lambda **_kwargs: _history())
+    monkeypatch.setattr(cities_na, "prepare_na_history", lambda history: history)
+    monkeypatch.setattr(cities_na, "select_cities", select_stub)
+    monkeypatch.setattr(cities_na, "write_catalog", lambda *_args, **_kwargs: "digest")
+
+    cities_na.main()
+
+    assert select_kwargs["max_cities"] == 2
+    assert select_kwargs["claim_unique_stations"] is False
