@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from cities_na import ERA5_LAND_GRID_DEG, MAX_CITIES
+from cities_na import ERA5_LAND_GRID_DEG
 from isd_history import MAX_ELEV_DELTA_M, MAX_STATION_DISTANCE_KM, haversine_km
 from make_city_center_map_na import MAX_CENTER_OFFSET_KM
 
@@ -46,12 +46,12 @@ def validate_catalog(base: Path = Path()) -> None:
     station_path = base / "cities_na_ghcnh_stations.csv"
     manifest_path = base / "cities_na.catalog.json"
     cities = pd.read_csv(catalog_path, dtype={"place_id": str})
-    expected_ids = list(range(MAX_CITIES))
+    expected_ids = list(range(len(cities)))
     if cities["location_id"].tolist() != expected_ids:
-        message = "cities_na.csv must contain ordered location IDs 0..499"
+        message = "cities_na.csv must contain contiguous ordered location IDs"
         raise ValueError(message)
-    if cities["place_id"].nunique() != MAX_CITIES or cities.isna().any().any():
-        message = "cities_na.csv requires 500 unique, fully resolved places"
+    if cities["place_id"].nunique() != len(cities) or cities.isna().any().any():
+        message = "cities_na.csv requires unique, fully resolved places"
         raise ValueError(message)
     if set(cities["country"]) - {"US", "CA"}:
         message = "cities_na.csv contains an unsupported country"

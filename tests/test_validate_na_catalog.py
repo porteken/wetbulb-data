@@ -14,10 +14,8 @@ import validate_na_catalog as catalog
 
 def test_catalog_and_crosswalk_with_valid_constraints_pass(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The validator accepts a catalog, manifest, and GHCNh crosswalk."""
-    monkeypatch.setattr(catalog, "MAX_CITIES", 2)
     cities = pd.DataFrame(
         {
             "location_id": [0, 1],

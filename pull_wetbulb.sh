@@ -11,7 +11,7 @@ if [[ -f .env ]]; then
   set +a
 fi
 
-CATALOG_VERSION="na-census-2025-csd-2021"
+CATALOG_VERSION="na-msa-principal-cities-2023-ca-cma-ca-2021"
 OUTPUT_ROOT="${WETBULB_NA_ROOT:-na/${CATALOG_VERSION}}"
 STEPS=()
 DRY_RUN=0

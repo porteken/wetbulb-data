@@ -13,6 +13,7 @@ dependencies = [
   "prophet",
   "requests",
   "tqdm",
+  "defusedxml>=0.7.1",
 ]
 
 [project.optional-dependencies]

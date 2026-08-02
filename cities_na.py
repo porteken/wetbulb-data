@@ -28,6 +28,7 @@ from typing import Any, cast
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
+import defusedxml.ElementTree as ET  # noqa: N817
 import requests
 
 import nldas
@@ -46,7 +47,7 @@ type StationVerifier = Callable[[list[str], int], bool]
 
 LOGGER = logging.getLogger(__name__)
 
-CATALOG_VERSION = "na-census-2025-csd-2021"
+CATALOG_VERSION = "na-msa-principal-cities-2023-ca-cma-ca-2021"
 
 CENSUS_ESTIMATES_URL = (
     "https://www2.census.gov/programs-surveys/popest/datasets/2020-2025/"
@@ -61,6 +62,10 @@ GEOSUITE_URL = (
     "geosuite/files-fichiers/2021_92-150-X_eng.zip"
 )
 GEONAMES_CITIES_URL = "https://download.geonames.org/export/dump/cities15000.zip"
+US_PRINCIPAL_CITIES_URL = (
+    "https://www2.census.gov/programs-surveys/metro-micro/geographies/"
+    "reference-files/2023/delineation-files/list2_2023.xlsx"
+)
 ISD_HISTORY_URL = "https://www.ncei.noaa.gov/pub/data/noaa/isd-history.csv"
 DOWNLOAD_HOSTS = frozenset(
     {
@@ -80,6 +85,31 @@ INCORPORATED_PLACE_SUMLEV = 162
 EXCLUDED_STATE_FIPS = frozenset({"02", "15"})
 MAX_ATTRIBUTE_DISTANCE_KM = 60.0
 NOTABLE_CSD_POPULATION = 50_000
+CANADA_METRO_COUNT = 50
+EXCLUDED_MSA_STATE_FIPS = EXCLUDED_STATE_FIPS | frozenset({"72"})
+CANADA_CMA_CORE_OVERRIDES = {
+    ("Ottawa - Gatineau", "ON"): "Ottawa",
+    ("Kitchener - Cambridge - Waterloo", "ON"): "Kitchener",
+    ("St. Catharines - Niagara", "ON"): "St. Catharines",
+    ("Abbotsford - Mission", "BC"): "Abbotsford",
+    ("Belleville - Quinte West", "ON"): "Belleville",
+}
+US_MSA_NAME_OVERRIDES = {
+    ("Athens-Clarke County unified government (balance)", "GA"): "Athens",
+    ("Augusta-Richmond County consolidated government (balance)", "GA"): "Augusta",
+    ("Boise City", "ID"): "Boise",
+    ("El Paso de Robles (Paso Robles)", "CA"): "Paso Robles",
+    ("Indianapolis city (balance)", "IN"): "Indianapolis",
+    ("Lexington-Fayette", "KY"): "Lexington",
+    ("Louisville/Jefferson County metro government (balance)", "KY"): "Louisville",
+    ("Macon-Bibb County", "GA"): "Macon",
+    ("Nashville-Davidson metropolitan government (balance)", "TN"): "Nashville",
+    ("San Buenaventura (Ventura)", "CA"): "Ventura",
+}
+GAZETTEER_CORE_OVERRIDES = {
+    ("Carson City", "NV"): "Carson City",
+    ("El Paso de Robles (Paso Robles) city", "CA"): "Paso Robles",
+}
 
 NA_HISTORY_MIN_LAT = 24.0
 NA_HISTORY_MAX_LAT = 72.0
@@ -287,7 +317,11 @@ def clean_place_name(name: str, census_geoid: str) -> str:
     return cleaned or str(name).strip()
 
 
-def load_census_places(payload: bytes) -> DataFrame:
+def load_census_places(
+    payload: bytes,
+    *,
+    summary_levels: frozenset[int] = frozenset({INCORPORATED_PLACE_SUMLEV}),
+) -> DataFrame:
     """Return incorporated CONUS places from the Census subcounty estimates file."""
     frame = pd.read_csv(io.BytesIO(payload), dtype=str, encoding="latin-1")
     sumlev = _column(frame, "SUMLEV")
@@ -300,7 +334,7 @@ def load_census_places(payload: bytes) -> DataFrame:
     frame[state] = frame[state].astype(str).str.zfill(2)
     frame[place] = frame[place].astype(str).str.zfill(5)
     frame = frame[
-        (pd.to_numeric(frame[sumlev], errors="coerce") == INCORPORATED_PLACE_SUMLEV)
+        pd.to_numeric(frame[sumlev], errors="coerce").isin(summary_levels)
         & ~frame[state].isin(EXCLUDED_STATE_FIPS)
     ].copy()
 
@@ -344,11 +378,19 @@ def load_gazetteer_points(payload: bytes, url: str) -> DataFrame:
     geoid = _column(frame, "GEOID", "GEOID20")
     lat = _column(frame, "INTPTLAT", "INTPTLAT20")
     lng = _column(frame, "INTPTLONG", "INTPTLON", "INTPTLONG20")
-    points = frame[[geoid, lat, lng]].copy()
-    points.columns = ["census_geoid", "lat", "lng"]
+    name = _column(frame, "NAME")
+    state = _column(frame, "USPS")
+    points = frame[[geoid, lat, lng, name, state]].copy()
+    points.columns = ["census_geoid", "lat", "lng", "gazetteer_name", "state"]
     points["census_geoid"] = points["census_geoid"].astype(str).str.zfill(7)
     points["lat"] = pd.to_numeric(points["lat"], errors="coerce")
     points["lng"] = pd.to_numeric(points["lng"], errors="coerce")
+    points["city"] = [
+        clean_place_name(name, geoid)
+        for name, geoid in zip(
+            points["gazetteer_name"], points["census_geoid"], strict=True
+        )
+    ]
     return points.dropna(subset=["lat", "lng"]).drop_duplicates(
         "census_geoid", keep="first"
     )
@@ -356,7 +398,9 @@ def load_gazetteer_points(payload: bytes, url: str) -> DataFrame:
 
 def build_us_places(estimates: DataFrame, gazetteer: DataFrame) -> DataFrame:
     """Return normalized US city rows with authoritative coordinates."""
-    merged = estimates.merge(gazetteer, on="census_geoid", how="inner")
+    merged = estimates.merge(
+        gazetteer[["census_geoid", "lat", "lng"]], on="census_geoid", how="inner"
+    )
     merged["place_id"] = "US" + merged["census_geoid"]
     merged["country"] = "US"
     return merged[_PLACE_COLUMNS].reset_index(drop=True)
@@ -404,6 +448,206 @@ def build_ca_places(csd: DataFrame) -> DataFrame:
     result["country"] = "CA"
     result["population"] = result["population"].astype("int64")
     return result[_PLACE_COLUMNS].reset_index(drop=True)
+
+
+def _read_xlsx_rows(payload: bytes) -> list[list[str]]:
+    """Read the small, string-only Census workbook without an extra dependency."""
+    namespace = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        shared = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+        strings = [
+            "".join(node.itertext()) for node in shared.findall(f"{namespace}si")
+        ]
+        sheet = ET.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+    rows: list[list[str]] = []
+    for row in sheet.findall(f".//{namespace}row"):
+        values: list[str] = []
+        for cell in row.findall(f"{namespace}c"):
+            value = cell.findtext(f"{namespace}v")
+            values.append(
+                strings[int(value)] if cell.get("t") == "s" and value else value or ""
+            )
+        rows.append(values)
+    return rows
+
+
+def load_us_msa_principal_city_ids(payload: bytes) -> set[str]:
+    """Return Census place IDs for 2023 OMB MSA principal cities in the CONUS."""
+    rows = _read_xlsx_rows(payload)
+    header_index = next(
+        index
+        for index, row in enumerate(rows)
+        if row[:2] == ["CBSA Code", "CBSA Title"]
+    )
+    header = rows[header_index]
+    columns = {name: index for index, name in enumerate(header)}
+    required = {
+        "Metropolitan/Micropolitan Statistical Area",
+        "FIPS State Code",
+        "FIPS Place Code",
+    }
+    if not required.issubset(columns):
+        message = "principal-city workbook has an unexpected schema"
+        raise ValueError(message)
+    result = set()
+    for row in rows[header_index + 1 :]:
+        if len(row) != len(header):
+            continue
+        if (
+            row[columns["Metropolitan/Micropolitan Statistical Area"]]
+            != "Metropolitan Statistical Area"
+        ):
+            continue
+        state = row[columns["FIPS State Code"]].zfill(2)
+        if state in EXCLUDED_MSA_STATE_FIPS:
+            continue
+        result.add("US" + state + row[columns["FIPS Place Code"]].zfill(5))
+    if not result:
+        message = "principal-city workbook contains no eligible MSA cities"
+        raise ValueError(message)
+    return result
+
+
+def load_us_msa_principal_city_names(payload: bytes) -> set[tuple[str, str]]:
+    """Return (city, state) pairs from the official MSA principal-city roster."""
+    rows = _read_xlsx_rows(payload)
+    header_index = next(
+        index
+        for index, row in enumerate(rows)
+        if row[:2] == ["CBSA Code", "CBSA Title"]
+    )
+    header = rows[header_index]
+    columns = {name: index for index, name in enumerate(header)}
+    result = set()
+    for row in rows[header_index + 1 :]:
+        if len(row) != len(header):
+            continue
+        if (
+            row[columns["Metropolitan/Micropolitan Statistical Area"]]
+            != "Metropolitan Statistical Area"
+        ):
+            continue
+        state_fips = row[columns["FIPS State Code"]].zfill(2)
+        if state_fips not in EXCLUDED_MSA_STATE_FIPS:
+            result.add((row[columns["Principal City Name"]], STATE_ABBR[state_fips]))
+    return result
+
+
+def select_ca_cma_core_cities(
+    ca_places: DataFrame, geosuite_payload: bytes
+) -> DataFrame:
+    """Return the core municipalities of Canada's 50 most-populous CMAs/CAs."""
+    with zipfile.ZipFile(io.BytesIO(geosuite_payload)) as archive:
+        name = next(
+            (item for item in archive.namelist() if item.endswith("/CMA_CA.csv")), None
+        )
+        if name is None:
+            message = "GeoSuite archive has no CMA_CA.csv table"
+            raise ValueError(message)
+        metros = pd.read_csv(archive.open(name), encoding="windows-1252", dtype=str)
+    metros["metro_population"] = pd.to_numeric(metros["CMApop_2021"], errors="coerce")
+    metros = (
+        metros.dropna(subset=["metro_population"])
+        .sort_values(
+            ["metro_population", "CMAPuid"], ascending=[False, True], kind="stable"
+        )
+        .head(CANADA_METRO_COUNT)
+        .copy()
+    )
+    metros["state"] = metros["PRuid"].astype(str).str.zfill(2).map(PROVINCE_ABBR)
+    metros["city"] = [
+        CANADA_CMA_CORE_OVERRIDES.get((name, state), name)
+        for name, state in zip(metros["CMAname"], metros["state"], strict=True)
+    ]
+    core_places = ca_places.sort_values("population", ascending=False).drop_duplicates(
+        ["city", "state"], keep="first"
+    )
+    result = metros[["city", "state"]].merge(
+        core_places, on=["city", "state"], how="left", validate="one_to_one"
+    )
+    if result["place_id"].isna().any():
+        missing = result.loc[result["place_id"].isna(), "city"].tolist()
+        message = (
+            f"Canada CMA/CA core cities missing from municipal register: {missing}"
+        )
+        raise ValueError(message)
+    return result[_PLACE_COLUMNS].reset_index(drop=True)
+
+
+def build_metro_candidates(
+    *,
+    census_payload: bytes,
+    gazetteer_payload: bytes,
+    gazetteer_url: str,
+    geosuite_payload: bytes,
+    geonames_payload: bytes,
+    us_principal_cities_payload: bytes,
+) -> DataFrame:
+    """Build the requested U.S. MSA and Canadian CMA/CA core-city catalog."""
+    gazetteer = load_gazetteer_points(gazetteer_payload, gazetteer_url)
+    gazetteer["city"] = [
+        GAZETTEER_CORE_OVERRIDES.get((name, state), city)
+        for name, state, city in zip(
+            gazetteer["gazetteer_name"],
+            gazetteer["state"],
+            gazetteer["city"],
+            strict=True,
+        )
+    ]
+    us_places = build_us_places(
+        load_census_places(census_payload, summary_levels=frozenset({61, 160, 162})),
+        gazetteer,
+    )
+    us_ids = load_us_msa_principal_city_ids(us_principal_cities_payload)
+    us_names = load_us_msa_principal_city_names(us_principal_cities_payload)
+    name_matches = pd.Series(
+        [
+            (city, state) in us_names
+            for city, state in zip(us_places["city"], us_places["state"], strict=True)
+        ],
+        index=us_places.index,
+    )
+    us_selected = us_places[us_places["place_id"].isin(us_ids) | name_matches].copy()
+    selected_names = set(zip(us_selected["city"], us_selected["state"], strict=True))
+    missing_us = {
+        (US_MSA_NAME_OVERRIDES.get((city, state), city), state)
+        for city, state in us_names - selected_names
+    }
+    fallback = gazetteer[
+        [
+            (city, state) in missing_us
+            for city, state in zip(gazetteer["city"], gazetteer["state"], strict=True)
+        ]
+    ].copy()
+    fallback["city"] = [
+        GAZETTEER_CORE_OVERRIDES.get((name, state), city)
+        for name, state, city in zip(
+            fallback["gazetteer_name"], fallback["state"], fallback["city"], strict=True
+        )
+    ]
+    fallback["place_id"] = "US" + fallback["census_geoid"]
+    fallback["country"] = "US"
+    fallback["population"] = 0
+    fallback = fallback[_PLACE_COLUMNS]
+    matched_fallback = set(zip(fallback["city"], fallback["state"], strict=True))
+    still_missing = sorted(missing_us - matched_fallback)
+    if still_missing:
+        message = f"MSA principal cities missing from Census sources: {still_missing}"
+        raise ValueError(message)
+    us_selected = pd.concat([us_selected, fallback], ignore_index=True).drop_duplicates(
+        "place_id", keep="first"
+    )
+    ca_selected = select_ca_cma_core_cities(
+        build_ca_places(load_geosuite_csd(geosuite_payload)), geosuite_payload
+    )
+    selected = pd.concat([us_selected, ca_selected], ignore_index=True)
+    selected = attach_terrain_attributes(
+        selected, load_geonames_places(geonames_payload)
+    )
+    if len(selected) != len(us_selected) + len(ca_selected):
+        message = "a requested metro core city has no GeoNames terrain match"
+        raise ValueError(message)
+    return rank_places(selected)
 
 
 def read_geonames_table(payload: bytes, columns: dict[int, str]) -> DataFrame:
@@ -664,8 +908,8 @@ def write_catalog(
     source_urls: dict[str, str],
 ) -> str:
     """Atomically write the catalog, its station map, and a provenance manifest."""
-    if list(catalog["location_id"]) != list(range(MAX_CITIES)):
-        message = f"catalog location_id must be exactly 0..{MAX_CITIES - 1}"
+    if list(catalog["location_id"]) != list(range(len(catalog))):
+        message = "catalog location_id must be exactly contiguous from zero"
         raise ValueError(message)
     if catalog["place_id"].duplicated().any():
         message = "catalog contains a duplicate place_id"
@@ -680,7 +924,7 @@ def write_catalog(
         "catalog_version": CATALOG_VERSION,
         "generated_at": datetime.now(tz=UTC).isoformat(),
         "grid_deg": ERA5_LAND_GRID_DEG,
-        "max_cities": MAX_CITIES,
+        "max_cities": len(catalog),
         "us_population_vintage": 2025,
         "ca_population_vintage": 2021,
         "sources": {key: source_urls[key] for key in sorted(source_urls)},
@@ -730,6 +974,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--gazetteer-url", default=CENSUS_GAZETTEER_URL)
     parser.add_argument("--geosuite-url", default=GEOSUITE_URL)
     parser.add_argument("--geonames-url", default=GEONAMES_CITIES_URL)
+    parser.add_argument("--us-principal-cities-url", default=US_PRINCIPAL_CITIES_URL)
     parser.add_argument("--out", default="cities_na.csv")
     parser.add_argument("--station-out", default="cities_na_isd_stations.csv")
     parser.add_argument("--manifest-out", default="cities_na.catalog.json")
@@ -759,13 +1004,17 @@ def main() -> None:
         "geosuite_csd": args.geosuite_url,
         "geonames_cities": args.geonames_url,
         "isd_history": ISD_HISTORY_URL,
+        "us_principal_cities": args.us_principal_cities_url,
     }
-    candidates = build_candidates(
+    candidates = build_metro_candidates(
         census_payload=_download(args.census_url, session=session),
         gazetteer_payload=_download(args.gazetteer_url, session=session),
         gazetteer_url=args.gazetteer_url,
         geosuite_payload=_download(args.geosuite_url, session=session),
         geonames_payload=_download(args.geonames_url, session=session),
+        us_principal_cities_payload=_download(
+            args.us_principal_cities_url, session=session
+        ),
     )
     LOGGER.info("Ranked %d candidate cities", len(candidates))
     history = prepare_na_history(fetch_isd_history(session=session))
@@ -777,6 +1026,7 @@ def main() -> None:
         verify=verify,
         start_year=args.start_year,
         end_year=args.end_year,
+        max_cities=len(candidates),
     )
     digest = write_catalog(
         catalog,
