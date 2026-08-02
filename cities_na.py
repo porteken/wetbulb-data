@@ -782,6 +782,7 @@ def select_cities(
     end_year: int = 2025,
     grid_deg: float = ERA5_LAND_GRID_DEG,
     max_cities: int = MAX_CITIES,
+    claim_unique_stations: bool = True,
 ) -> tuple[DataFrame, DataFrame]:
     """Return (catalog, station map) for cities with unique grid cells and stations."""
     claimed_cells: set[tuple[int, int]] = set()
@@ -817,7 +818,8 @@ def select_cities(
         station_row, station_key, candidate_ids, begin_verified = claim
 
         claimed_cells.add(cell)
-        claimed_stations.add(station_key)
+        if claim_unique_stations:
+            claimed_stations.add(station_key)
         location_id = len(catalog_rows)
         offset_hours = standard_utc_offset_hours(str(city.timezone))
         catalog_rows.append(
@@ -914,10 +916,6 @@ def write_catalog(
     if catalog["place_id"].duplicated().any():
         message = "catalog contains a duplicate place_id"
         raise ValueError(message)
-    if stations[["usaf", "wban"]].duplicated().any():
-        message = "station map assigns one ISD station to more than one city"
-        raise ValueError(message)
-
     body = canonical_catalog_bytes(catalog)
     digest = hashlib.sha256(body).hexdigest()
     manifest = {
@@ -1026,7 +1024,13 @@ def main() -> None:
         verify=verify,
         start_year=args.start_year,
         end_year=args.end_year,
-        max_cities=len(candidates),
+        max_cities=len(
+            {
+                _grid_cell(float(row.lat), float(row.lng), ERA5_LAND_GRID_DEG)
+                for row in candidates.itertuples()
+            }
+        ),
+        claim_unique_stations=False,
     )
     digest = write_catalog(
         catalog,
