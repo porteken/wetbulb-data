@@ -110,6 +110,8 @@ GAZETTEER_CORE_OVERRIDES = {
     ("Carson City", "NV"): "Carson City",
     ("El Paso de Robles (Paso Robles) city", "CA"): "Paso Robles",
 }
+MSA_TYPE_COLUMN = "Metropolitan/Micropolitan Statistical Area"
+FIPS_STATE_COLUMN = "FIPS State Code"
 
 NA_HISTORY_MIN_LAT = 24.0
 NA_HISTORY_MAX_LAT = 72.0
@@ -482,8 +484,8 @@ def load_us_msa_principal_city_ids(payload: bytes) -> set[str]:
     header = rows[header_index]
     columns = {name: index for index, name in enumerate(header)}
     required = {
-        "Metropolitan/Micropolitan Statistical Area",
-        "FIPS State Code",
+        MSA_TYPE_COLUMN,
+        FIPS_STATE_COLUMN,
         "FIPS Place Code",
     }
     if not required.issubset(columns):
@@ -493,12 +495,9 @@ def load_us_msa_principal_city_ids(payload: bytes) -> set[str]:
     for row in rows[header_index + 1 :]:
         if len(row) != len(header):
             continue
-        if (
-            row[columns["Metropolitan/Micropolitan Statistical Area"]]
-            != "Metropolitan Statistical Area"
-        ):
+        if row[columns[MSA_TYPE_COLUMN]] != "Metropolitan Statistical Area":
             continue
-        state = row[columns["FIPS State Code"]].zfill(2)
+        state = row[columns[FIPS_STATE_COLUMN]].zfill(2)
         if state in EXCLUDED_MSA_STATE_FIPS:
             continue
         result.add("US" + state + row[columns["FIPS Place Code"]].zfill(5))
@@ -522,12 +521,9 @@ def load_us_msa_principal_city_names(payload: bytes) -> set[tuple[str, str]]:
     for row in rows[header_index + 1 :]:
         if len(row) != len(header):
             continue
-        if (
-            row[columns["Metropolitan/Micropolitan Statistical Area"]]
-            != "Metropolitan Statistical Area"
-        ):
+        if row[columns[MSA_TYPE_COLUMN]] != "Metropolitan Statistical Area":
             continue
-        state_fips = row[columns["FIPS State Code"]].zfill(2)
+        state_fips = row[columns[FIPS_STATE_COLUMN]].zfill(2)
         if state_fips not in EXCLUDED_MSA_STATE_FIPS:
             result.add((row[columns["Principal City Name"]], STATE_ABBR[state_fips]))
     return result

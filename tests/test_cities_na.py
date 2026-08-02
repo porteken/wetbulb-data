@@ -77,6 +77,57 @@ def test_build_ca_places_requires_schema() -> None:
         cities_na.build_ca_places(source)
 
 
+def _principal_city_rows() -> list[list[str]]:
+    return [
+        ["metadata"],
+        [
+            "CBSA Code",
+            "CBSA Title",
+            cities_na.MSA_TYPE_COLUMN,
+            cities_na.FIPS_STATE_COLUMN,
+            "FIPS Place Code",
+            "Principal City Name",
+        ],
+        ["1", "Metro", "Metropolitan Statistical Area", "6", "44000", "Example"],
+        ["2", "Micro", "Micropolitan Statistical Area", "36", "51000", "Ignored"],
+        ["3", "Alaska", "Metropolitan Statistical Area", "02", "03000", "Excluded"],
+        ["incomplete"],
+    ]
+
+
+def test_load_us_msa_principal_cities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        cities_na, "_read_xlsx_rows", lambda _payload: _principal_city_rows()
+    )
+
+    assert cities_na.load_us_msa_principal_city_ids(b"workbook") == {"US0644000"}
+    assert cities_na.load_us_msa_principal_city_names(b"workbook") == {
+        ("Example", "CA")
+    }
+
+
+def test_load_us_msa_principal_city_ids_rejects_bad_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [["CBSA Code", "CBSA Title"]]
+    monkeypatch.setattr(cities_na, "_read_xlsx_rows", lambda _payload: rows)
+
+    with pytest.raises(ValueError, match="unexpected schema"):
+        cities_na.load_us_msa_principal_city_ids(b"workbook")
+
+
+def test_load_us_msa_principal_city_ids_rejects_no_eligible_cities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = _principal_city_rows()[:2]
+    monkeypatch.setattr(cities_na, "_read_xlsx_rows", lambda _payload: rows)
+
+    with pytest.raises(ValueError, match="no eligible MSA cities"):
+        cities_na.load_us_msa_principal_city_ids(b"workbook")
+
+
 def test_attach_terrain_attributes_uses_nearest_place_and_drops_distant() -> None:
     places = pd.DataFrame(
         {
