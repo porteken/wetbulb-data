@@ -20,8 +20,8 @@ NA_STATION_MAP_CSV = "cities_na_isd_stations.csv"
 NA_GHCNH_STATION_MAP_CSV = "cities_na_ghcnh_stations.csv"
 NA_ECCC_STATION_MAP_CSV = "cities_na_eccc_stations.csv"
 # GHCNh is NOAA's supported hourly archive and exposes yearly inventory data
-# needed for multi-station selection. The configured analysis record starts in 2000.
-GHCNH_TRANSITION_YEAR = 2000
+# needed for multi-station selection across the complete analysis record.
+GHCNH_TRANSITION_YEAR = 1990
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:

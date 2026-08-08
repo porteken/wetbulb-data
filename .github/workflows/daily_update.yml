@@ -62,7 +62,7 @@ jobs:
           - name: na
             cities: cities_na.csv
             station_map: cities_na_ghcnh_stations.csv
-            output_root: na/na-census-2025-csd-2021
+            output_root: na/na-msa-principal-cities-2023-ca-cma-ca-2021
             cell_map: ""
           - name: eu
             cities: cities_eu.csv
@@ -170,7 +170,7 @@ jobs:
         run: |
           mkdir -p "na_data/year=$TARGET_YEAR" "eu_data/year=$TARGET_YEAR"
           aws s3 sync \
-            "s3://$BUCKET_NAME/na/na-census-2025-csd-2021/wetbulb_data_csv/year=$TARGET_YEAR/" \
+            "s3://$BUCKET_NAME/na/na-msa-principal-cities-2023-ca-cma-ca-2021/wetbulb_data_csv/year=$TARGET_YEAR/" \
             "na_data/year=$TARGET_YEAR/" \
             --delete
           aws s3 sync \

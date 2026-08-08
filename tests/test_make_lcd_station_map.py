@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 from typing import Any, cast
 
+import pandas as pd
 import pytest
 
 import make_lcd_station_map as stationmap
@@ -249,7 +250,7 @@ class TestBuildStationMap:
         assert by_id.loc[1, "lcd_id"] == "SHORT"
         assert by_id.loc[1, "tier"] == stationmap.TIER_SHORT_ARCHIVE
 
-        assert by_id.loc[2, "lcd_id"] is None
+        assert pd.isna(by_id.loc[2, "lcd_id"])
         assert any("No Station City" in m for m in caplog.messages)
         assert any("tier-2" in m for m in caplog.messages)
 

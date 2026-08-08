@@ -74,8 +74,38 @@ _PARQUET_COLUMNS = (
     "altimeter",
     "altimeter_Quality_Code",
 )
-_REPORT_TYPES = frozenset({"EnvCan", "FM12", "FM15", "FM16"})
-_REPORT_PRIORITY = {"FM15": 0, "FM16": 1, "FM12": 2, "EnvCan": 3}
+# GHCNh preserves the report-family label from each source. Records before the
+# METAR transition commonly use Airways/Synoptic families such as SAO and SYSA;
+# excluding them discards otherwise QC-passing hourly temperature, humidity,
+# and pressure observations. These are the fixed-land surface families in
+# NOAA's documented report-type table. Daily/monthly summaries, precipitation-
+# only networks, ships, buoys, and upper-air reports remain excluded.
+_REPORT_PRIORITY = {
+    "FM15": 0,
+    "FM16": 1,
+    "SAO": 2,
+    "SAOSP": 3,
+    "SSA": 4,
+    "SAAU": 5,
+    "SYMT": 6,
+    "SYSA": 7,
+    "SYAU": 8,
+    "SYAE": 9,
+    "FM12": 10,
+    "FM94_1": 11,
+    "AUTO": 12,
+    "MESOH": 13,
+    "MESOS": 14,
+    "AUST": 15,
+    "BRAZ": 16,
+    "GREEN": 17,
+    "MEXIC": 18,
+    "SMARS": 19,
+    "WBO": 20,
+    "WNO": 21,
+    "EnvCan": 22,
+}
+_REPORT_TYPES = frozenset(_REPORT_PRIORITY)
 # These source-specific quality codes follow the ISD/FM report convention;
 # codes 2, 3, 6, and 7 identify suspect or erroneous values. Codes 1 and 5
 # denote observations that passed their applicable checks.

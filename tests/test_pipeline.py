@@ -121,7 +121,7 @@ def test_auto_source_uses_ghcnh_for_analysis_period(
     pipeline.main(
         [
             "--years",
-            "2000",
+            "1990",
             "--region",
             region,
             "--out-dir",
@@ -148,7 +148,7 @@ def test_auto_source_keeps_isd_for_pre_analysis_history(
         lambda command, **_kwargs: calls.append(command),
     )
 
-    pipeline.main(["--years", "1999"])
+    pipeline.main(["--years", "1989"])
 
     assert calls[0][1] == "isd.py"
 
@@ -163,7 +163,7 @@ def test_force_is_forwarded_to_station_worker(
         lambda command, **_kwargs: calls.append(command),
     )
 
-    pipeline.main(["--years", "2000", "--force"])
+    pipeline.main(["--years", "1990", "--force"])
 
     assert calls[0][-1] == "--force"
 

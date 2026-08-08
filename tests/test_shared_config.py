@@ -44,7 +44,7 @@ class TestBuildYearDateBounds:
         assert end.year == 2020
 
     def test_start_year_clamped_to_pull_start(self) -> None:
-        start, _ = build_year_date_bounds(2000)
+        start, _ = build_year_date_bounds(1990)
         assert start == PULL_START_DATE
 
     def test_specific_month(self) -> None:

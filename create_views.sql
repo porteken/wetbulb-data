@@ -959,13 +959,13 @@ location_id,
 year,
 season,
 source_order
-), year_2000_value AS (
+), year_1990_value AS (
 SELECT
 location_id::smallint AS location_id,
 season,
 wetbulb::real AS wetbulb
 FROM deduplicated_yearly_avg
-WHERE year = 2000
+WHERE year = 1990
 ), combined_yearly_avg_of_avg AS (
 SELECT
 a.location_id::smallint AS location_id,
@@ -995,13 +995,13 @@ location_id,
 year,
 season,
 source_order
-), year_2000_value_avg AS (
+), year_1990_value_avg AS (
 SELECT
 location_id::smallint AS location_id,
 season,
 wetbulb_avg::real AS wetbulb_avg
 FROM deduplicated_yearly_avg_of_avg
-WHERE year = 2000
+WHERE year = 1990
 )
 SELECT
 s.location_id::smallint,
@@ -1025,18 +1025,20 @@ f.lower::real AS future_lower,
 f.upper::real AS future_upper,
 f.lower_avg::real AS future_lower_avg,
 f.upper_avg::real AS future_upper_avg,
-ROUND ((s.avg_wetbulb - y2k.wetbulb)::numeric, 2)::real AS change_from_2000,
-ROUND ((s.avg_wetbulb_avg - y2k_avg.wetbulb_avg)::numeric,
-2)::real AS change_from_2000_avg
+ROUND ((s.avg_wetbulb - y1990.wetbulb)::numeric,
+2)::real AS change_from_1990,
+ROUND ((s.avg_wetbulb_avg - y1990_avg.wetbulb_avg)::numeric,
+2)::real AS change_from_1990_avg
 FROM public.wetbulb_year_stats AS s
 JOIN public.locations AS l ON l.id = s.location_id
 LEFT JOIN public.wetbulb_forecast AS f ON f.location_id = s.location_id
 AND f.year = 2100::smallint
 AND f.season = s.season
-LEFT JOIN year_2000_value AS y2k ON y2k.location_id = s.location_id
-AND y2k.season = s.season
-LEFT JOIN year_2000_value_avg AS y2k_avg ON y2k_avg.location_id = s.location_id
-AND y2k_avg.season = s.season
+LEFT JOIN year_1990_value AS y1990 ON y1990.location_id = s.location_id
+AND y1990.season = s.season
+LEFT JOIN year_1990_value_avg AS y1990_avg
+ON y1990_avg.location_id = s.location_id
+AND y1990_avg.season = s.season
 WHERE
 s.location_id BETWEEN 0 AND 999 ;
 

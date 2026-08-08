@@ -235,9 +235,9 @@ CREATE UNIQUE INDEX wetbulb_forecast_max_location_year_season_uidx
 ON public.wetbulb_forecast_max (location_id, year, season) ;
 
 CREATE VIEW public.wetbulb_city_rankings_view AS
-WITH year_2000 AS (
+WITH year_1990 AS (
 SELECT location_id, season, avg_wetbulb, avg_wetbulb_avg
-FROM public.wetbulb_year_stats WHERE year = 2000
+FROM public.wetbulb_year_stats WHERE year = 1990
 )
 SELECT
 s.location_id,
@@ -261,13 +261,13 @@ f.lower AS future_lower,
 f.upper AS future_upper,
 f.lower_avg AS future_lower_avg,
 f.upper_avg AS future_upper_avg,
-ROUND ((s.avg_wetbulb - y.avg_wetbulb)::numeric, 2)::real AS change_from_2000,
+ROUND ((s.avg_wetbulb - y.avg_wetbulb)::numeric, 2)::real AS change_from_1990,
 ROUND ((s.avg_wetbulb_avg - y.avg_wetbulb_avg)::numeric,
-2)::real AS change_from_2000_avg
+2)::real AS change_from_1990_avg
 FROM public.wetbulb_year_stats AS s
 JOIN public.locations AS l ON l.id = s.location_id
 LEFT JOIN public.wetbulb_forecast AS f
 ON f.location_id = s.location_id AND f.year = 2100 AND f.season = s.season
-LEFT JOIN year_2000 AS y
+LEFT JOIN year_1990 AS y
 ON y.location_id = s.location_id AND y.season = s.season
 WHERE s.location_id BETWEEN 0 AND 999 ;

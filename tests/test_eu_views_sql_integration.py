@@ -42,7 +42,7 @@ def test_rankings_views_split_at_location_id_1000() -> None:
                 SELECT location_id, day::date, 20.0, 18.0, 'isd'
                 FROM (VALUES (1), (1000)) AS locations (location_id)
                 CROSS JOIN generate_series(
-                    '2000-01-01'::date, '2000-12-31'::date, '1 day'::interval
+                    '1990-01-01'::date, '1990-12-31'::date, '1 day'::interval
                 ) AS day
                 """
             )
@@ -68,8 +68,22 @@ def test_rankings_views_split_at_location_id_1000() -> None:
                 "ORDER BY location_id",
             )
             eu_ids = {row[0] for row in cur.fetchall()}
+            cur.execute(
+                "SELECT change_from_1990, change_from_1990_avg "
+                "FROM public.wetbulb_city_rankings_view "
+                "WHERE location_id = 1 AND year = 1990 AND season = 'Annual'",
+            )
+            na_change = cur.fetchone()
+            cur.execute(
+                "SELECT change_from_1990, change_from_1990_avg "
+                "FROM public.wetbulb_eu_city_rankings_view "
+                "WHERE location_id = 1000 AND year = 1990 AND season = 'Annual'",
+            )
+            eu_change = cur.fetchone()
 
         assert us_ids == {1}
         assert eu_ids == {1000}
+        assert na_change == (0.0, 0.0)
+        assert eu_change == (0.0, 0.0)
     finally:
         conn.close()

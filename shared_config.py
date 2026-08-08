@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping
 
-PULL_START_DATE = date(2000, 1, 1)
+PULL_START_DATE = date(1990, 1, 1)
 SHARED_AREA: tuple[float, float, float, float] = (49.25, -124.5, 24.25, -66.5)
 DECEMBER = 12
 MRT_INTERMEDIATE_LAG_DAYS = 5

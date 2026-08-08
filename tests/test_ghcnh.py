@@ -79,7 +79,7 @@ def test_parse_filters_reports_quality_and_prefers_fm15() -> None:
             },
             {
                 "DATE": "2026-01-01T03:00:00",
-                "temperature_Report_Type": "FM94_1",
+                "temperature_Report_Type": "SOD",
             },
         ],
     )
@@ -93,6 +93,25 @@ def test_parse_filters_reports_quality_and_prefers_fm15() -> None:
 
     assert len(result) == 1
     assert result.iloc[0]["tair_c"] == pytest.approx(20.0)
+
+
+@pytest.mark.parametrize(
+    "report_type",
+    ["SAO", "SAOSP", "SSA", "SAAU", "SYMT", "SYSA", "SYAU", "SYAE"],
+)
+def test_parse_accepts_historical_airways_and_synoptic_reports(
+    report_type: str,
+) -> None:
+    payload = _parquet_payload([{"temperature_Report_Type": report_type}])
+
+    result = ghcnh._parse_ghcnh_parquet(
+        payload,
+        lon=-73.88,
+        utc_offset_hours=-5,
+        drop_incomplete_latest_day=False,
+    )
+
+    assert len(result) == 1
 
 
 def test_parse_derives_station_pressure_from_sea_level_pressure() -> None:

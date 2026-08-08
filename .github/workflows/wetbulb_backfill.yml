@@ -1,4 +1,4 @@
-name: Wetbulb Backfill (NOAA ISD)
+name: Wetbulb Backfill (NOAA GHCNh)
 
 
 on:
@@ -6,7 +6,7 @@ on:
     inputs:
       start_year:
         description: "First year to backfill"
-        default: "2000"
+        default: "1990"
       end_year:
         description: "Last year to backfill (blank = last complete year)"
         default: ""
@@ -34,6 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       end_year: ${{ steps.resolve.outputs.end_year }}
+      year_matrix: ${{ steps.resolve.outputs.year_matrix }}
       shard_matrix: ${{ steps.resolve.outputs.shard_matrix }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -44,6 +45,7 @@ jobs:
       - name: Resolve end year and shard matrix
         id: resolve
         env:
+          START_YEAR: ${{ inputs.start_year }}
           END_YEAR_INPUT: ${{ inputs.end_year }}
           SHARD_COUNT: ${{ inputs.city_shard_count }}
         run: |
@@ -51,8 +53,19 @@ jobs:
           if [ -z "$END_YEAR" ]; then
             END_YEAR=$(python3 -c "import nldas; print(nldas.NLDAS_END_YEAR)")
           fi
-          echo "end_year=$END_YEAR" >> "$GITHUB_OUTPUT"
-          python3 -c "import json,os; print('shard_matrix=' + json.dumps(list(range(int(os.environ['SHARD_COUNT'])))))" >> "$GITHUB_OUTPUT"
+          if ! [[ "$START_YEAR" =~ ^[0-9]{4}$ ]] || ! [[ "$END_YEAR" =~ ^[0-9]{4}$ ]]; then
+            echo "start_year and end_year must be four-digit years" >&2
+            exit 2
+          fi
+          if ((START_YEAR > END_YEAR)); then
+            echo "start_year must not be later than end_year" >&2
+            exit 2
+          fi
+          {
+            echo "end_year=$END_YEAR"
+            python3 -c "import json,os; print('year_matrix=' + json.dumps(list(range(int(os.environ['START_YEAR']), int(os.environ['END_YEAR_INPUT'] or '$END_YEAR') + 1))))"
+            python3 -c "import json,os; print('shard_matrix=' + json.dumps(list(range(int(os.environ['SHARD_COUNT'])))))"
+          } >> "$GITHUB_OUTPUT"
 
   clear-wetbulb-output:
     if: ${{ inputs.clear_prefix }}
@@ -69,7 +82,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
-        run: python3 clear_s3_prefix.py --bucket wetbulb-parquet-files --prefix na/na-census-2025-csd-2021/wetbulb_data_csv/ --max-workers 8
+        run: python3 clear_s3_prefix.py --bucket wetbulb-parquet-files --prefix na/na-msa-principal-cities-2023-ca-cma-ca-2021/wetbulb_data_csv/ --max-workers 8
 
   fetch:
     needs: [prepare, clear-wetbulb-output]
@@ -79,10 +92,14 @@ jobs:
       (needs.clear-wetbulb-output.result == 'success' || needs.clear-wetbulb-output.result == 'skipped')
     strategy:
       fail-fast: false
+      # Keep the same aggregate fetch concurrency as the old five-shard job,
+      # while bounding every runner to one year so it stays below six hours.
+      max-parallel: 5
       matrix:
+        year: ${{ fromJson(needs.prepare.outputs.year_matrix) }}
         shard: ${{ fromJson(needs.prepare.outputs.shard_matrix) }}
     runs-on: ubuntu-latest
-    name: Fetch wetbulb city shard ${{ matrix.shard }}
+    name: Fetch ${{ matrix.year }} city shard ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - name: Set up Python
@@ -95,23 +112,23 @@ jobs:
           enable-cache: true
       - name: Sync runtime dependencies
         run: uv sync --locked --no-dev --no-build
-      - name: Fetch NOAA ISD wet-bulb (writes straight to S3)
+      - name: Fetch NOAA GHCNh wet-bulb (writes straight to S3)
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
-          START_YEAR: ${{ inputs.start_year }}
-          END_YEAR: ${{ needs.prepare.outputs.end_year }}
           SHARD_COUNT: ${{ inputs.city_shard_count }}
           CONCURRENCY: ${{ inputs.concurrency }}
         run: |
-          uv run --locked --no-build python isd.py \
-            --start-year "$START_YEAR" \
-            --end-year "$END_YEAR" \
+          uv run --locked --no-build python ghcnh.py \
+            --start-year "${{ matrix.year }}" \
+            --end-year "${{ matrix.year }}" \
+            --cities-csv cities_na.csv \
+            --station-map-csv cities_na_ghcnh_stations.csv \
             --city-shard-index ${{ matrix.shard }} \
             --city-shard-count "$SHARD_COUNT" \
             --concurrency "$CONCURRENCY" \
-            --out-dir s3://wetbulb-parquet-files/na/na-census-2025-csd-2021
+            --out-dir s3://wetbulb-parquet-files/na/na-msa-principal-cities-2023-ca-cma-ca-2021
 
   load-to-db:
     if: ${{ !inputs.skip_db_load }}
@@ -140,7 +157,7 @@ jobs:
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
         run: |
           mkdir -p wetbulb_data_csv
-          aws s3 sync s3://wetbulb-parquet-files/na/na-census-2025-csd-2021/wetbulb_data_csv/ ./wetbulb_data_csv/ --delete
+          aws s3 sync s3://wetbulb-parquet-files/na/na-msa-principal-cities-2023-ca-cma-ca-2021/wetbulb_data_csv/ ./wetbulb_data_csv/ --delete
       - name: Load wetbulb into Postgres (full rebuild)
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
@@ -159,11 +176,11 @@ jobs:
           script: |
             const title = `Wetbulb backfill failed: ${new Date().toISOString().slice(0, 10)}`;
             const body = [
-              `The ISD wetbulb backfill workflow failed.`,
+              `The GHCNh wetbulb backfill workflow failed.`,
               ``,
               `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               ``,
-              `isd.py resumes via existing S3 output, so re-running the workflow only refetches missing years.`,
+              `ghcnh.py resumes via existing S3 output, so re-running the workflow only refetches missing year/shards.`,
             ].join("\n");
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,

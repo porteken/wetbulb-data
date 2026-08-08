@@ -273,7 +273,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--snapshot-dir", default=DEFAULT_SNAPSHOT)
     parser.add_argument("--cities-csv", default=EU_CITIES_CSV)
     parser.add_argument("--station-map-csv", default=EU_STATION_MAP_CSV)
-    parser.add_argument("--start-year", type=int, default=2000)
+    parser.add_argument("--start-year", type=int, default=nldas.NLDAS_START_YEAR)
     parser.add_argument("--end-year", type=int, default=2025)
     parser.add_argument("--out-dir", default="eu")
     parser.add_argument("--min-missing-days", type=int, default=19)

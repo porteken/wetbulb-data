@@ -86,7 +86,7 @@ def _arco_style_end_year() -> int:
     return now.year - 1
 
 
-NLDAS_START_YEAR = 2000
+NLDAS_START_YEAR = 1990
 NLDAS_END_YEAR = _arco_style_end_year()
 
 

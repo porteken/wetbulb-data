@@ -16,10 +16,10 @@ EU_CITIES_CSV=${EU_CITIES_CSV:-cities_eu.csv}
 EU_LOCATIONS_CSV=${EU_LOCATIONS_CSV:-locations_eu.csv}
 EU_STATION_MAP_CSV=${EU_STATION_MAP_CSV:-cities_eu_isd_stations.csv}
 EU_GHCNH_STATION_MAP_CSV=${EU_GHCNH_STATION_MAP_CSV:-cities_eu_ghcnh_stations.csv}
-EU_START_YEAR=${EU_START_YEAR:-2000}
+EU_START_YEAR=${EU_START_YEAR:-1990}
 EU_END_YEAR=${EU_END_YEAR:-2025}
 EU_CROSSWALK_START_YEAR=${EU_CROSSWALK_START_YEAR:-1991}
-EU_TRIAL_YEARS=${EU_TRIAL_YEARS:-2000 2012 2025}
+EU_TRIAL_YEARS=${EU_TRIAL_YEARS:-1990 2012 2025}
 EU_ISD_CONCURRENCY=${EU_ISD_CONCURRENCY:-8}
 EU_CDS_CONCURRENCY=${EU_CDS_CONCURRENCY:-2}
 EU_CITY_SHARDS=${EU_CITY_SHARDS:-1}
@@ -134,7 +134,7 @@ step_trial() {
   local year
   for year in "${TRIAL_YEARS[@]}"; do
     local worker=isd.py station_map=${EU_STATION_MAP_CSV} source=ISD
-    if ((year >= 2000)); then
+    if ((year >= 1990)); then
       worker=ghcnh.py
       station_map=${EU_GHCNH_STATION_MAP_CSV}
       source=GHCNh
@@ -161,7 +161,7 @@ step_backfill() {
   local year
   for ((year = EU_START_YEAR; year <= EU_END_YEAR; year++)); do
     local worker=isd.py station_map=${EU_STATION_MAP_CSV} source=ISD
-    if ((year >= 2000)); then
+    if ((year >= 1990)); then
       worker=ghcnh.py
       station_map=${EU_GHCNH_STATION_MAP_CSV}
       source=GHCNh
