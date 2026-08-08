@@ -123,6 +123,45 @@ def test_discovery_does_not_repeat_direct_csv_for_absent_optional_batches(
     assert load._discover_wetbulb_csv_paths(args) == [primary_path]
 
 
+def test_discovery_filters_wetbulb_year_partitions(tmp_path: Path) -> None:
+    root = tmp_path / "wetbulb_data_csv"
+    paths = []
+    for year in (1999, 2000, 2025, 2026):
+        year_root = root / f"year={year}"
+        year_root.mkdir(parents=True)
+        path = year_root / "wetbulb_batch_0000_00.parquet"
+        path.touch()
+        paths.append(path)
+    args = load._parse_args(
+        [
+            "--wetbulb-root",
+            str(root),
+            "--wetbulb-start-year",
+            "2000",
+            "--wetbulb-end-year",
+            "2025",
+        ]
+    )
+
+    assert load._discover_wetbulb_csv_paths(args) == paths[1:3]
+
+
+def test_discovery_rejects_reversed_wetbulb_year_range(tmp_path: Path) -> None:
+    args = load._parse_args(
+        [
+            "--wetbulb-root",
+            str(tmp_path / "wetbulb_data_csv"),
+            "--wetbulb-start-year",
+            "2025",
+            "--wetbulb-end-year",
+            "2000",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="must not be after"):
+        load._discover_wetbulb_csv_paths(args)
+
+
 def test_file_group_retries_each_file_with_a_fresh_connection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -183,6 +222,8 @@ class TestParseArgs:
         assert args.truncate is False
         assert args.skip_analyze is False
         assert args.load_shard_count == 1
+        assert args.wetbulb_start_year is None
+        assert args.wetbulb_end_year is None
 
 
 def test_execute_sql_files_atomically_uses_one_transaction(tmp_path: Path) -> None:

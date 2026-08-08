@@ -307,6 +307,16 @@ def _add_wetbulb_load_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--wetbulb-csv", default="wetbulb.csv")
     parser.add_argument("--wetbulb-root", default="wetbulb_data_csv")
     parser.add_argument(
+        "--wetbulb-start-year",
+        type=int,
+        help="Only load wetbulb partitions at or after this year.",
+    )
+    parser.add_argument(
+        "--wetbulb-end-year",
+        type=int,
+        help="Only load wetbulb partitions at or before this year.",
+    )
+    parser.add_argument(
         "--prefer-wetbulb-csv",
         action="store_true",
         help=(
@@ -909,6 +919,30 @@ def _discover_batch_parquet_paths(
             shard_partition_key=None,
         )
     )
+    start_year = args.wetbulb_start_year
+    end_year = args.wetbulb_end_year
+    if start_year is not None or end_year is not None:
+        filtered_paths: list[Path] = []
+        for csv_path in csv_paths:
+            marker = _extract_partition_marker(csv_path, Path(root), "year")
+            if marker is None:
+                msg = (
+                    "Cannot apply a wetbulb year range to an unpartitioned input: "
+                    f"{csv_path}"
+                )
+                raise ValueError(msg)
+            try:
+                year = int(marker)
+            except ValueError as exc:
+                msg = f"Invalid wetbulb year partition {marker!r}: {csv_path}"
+                raise ValueError(msg) from exc
+            if start_year is not None and year < start_year:
+                continue
+            if end_year is not None and year > end_year:
+                continue
+            filtered_paths.append(csv_path)
+        csv_paths = filtered_paths
+
     return _select_partition_shard_paths(
         csv_paths,
         root_path=Path(root),
@@ -920,6 +954,13 @@ def _discover_batch_parquet_paths(
 
 def _discover_wetbulb_csv_paths(args: argparse.Namespace) -> list[Path]:
     """Return primary station batches plus grid gap-fill batches."""
+    if (
+        args.wetbulb_start_year is not None
+        and args.wetbulb_end_year is not None
+        and args.wetbulb_start_year > args.wetbulb_end_year
+    ):
+        msg = "wetbulb_start_year must not be after wetbulb_end_year"
+        raise ValueError(msg)
     batch_paths = _discover_batch_parquet_paths(
         args,
         direct_csv=args.wetbulb_csv,

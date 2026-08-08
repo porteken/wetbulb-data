@@ -237,6 +237,8 @@ step_load() {
   log "[load] upserting daily wet-bulb rows from ${EU_OUT_DIR}/wetbulb_data_csv"
   run "${PY[@]}" load_wetbulb.py \
     --wetbulb-root "${EU_OUT_DIR}/wetbulb_data_csv" \
+    --wetbulb-start-year "${EU_START_YEAR}" \
+    --wetbulb-end-year "${EU_END_YEAR}" \
     --load-workers "${EU_LOAD_WORKERS}"
   log "[load] done"
 }
