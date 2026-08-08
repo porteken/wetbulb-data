@@ -577,7 +577,7 @@ def _file_copy_column_names(table_name: str, file_path: Path) -> list[str]:
 
 
 def _copy_parquet_file_in_batches(
-    conn: Connection[Any],
+    conn: object,
     table_name: str,
     parquet_path: Path,
     *,
@@ -597,7 +597,10 @@ def _copy_parquet_file_in_batches(
 
     total_rows = 0
     write_options = pacsv.WriteOptions(include_header=False)
-    with conn.cursor() as cur, cur.copy(copy_statement) as copy:
+    with (
+        cast("Connection[Any]", conn).cursor() as cur,
+        cur.copy(copy_statement) as copy,
+    ):
         for batch in parquet_file.iter_batches(batch_size=batch_size):
             sink = io.BytesIO()
             pacsv.write_csv(batch, sink, write_options=write_options)
@@ -607,7 +610,7 @@ def _copy_parquet_file_in_batches(
 
 
 def _copy_csv_file_in_batches(
-    conn: Connection[Any],
+    conn: object,
     table_name: str,
     csv_path: Path,
     *,
@@ -616,7 +619,10 @@ def _copy_csv_file_in_batches(
 ) -> int:
     """Stream a plain CSV file into a table with a single COPY statement."""
     _ = batch_size
-    with conn.cursor() as cur, csv_path.open("r", encoding="utf-8", newline="") as f:
+    with (
+        cast("Connection[Any]", conn).cursor() as cur,
+        csv_path.open("r", encoding="utf-8", newline="") as f,
+    ):
         header = next(f, None)
         if header is None:
             LOGGER.warning("CSV file %s is empty. Skipping.", csv_path)
@@ -646,7 +652,7 @@ def _validated_load_path(path: Path, *, base_dir: Path | None = None) -> Path:
 
 
 def _create_staging_table(
-    conn: Connection[Any],
+    conn: object,
     table_name: str,
     column_names: list[str],
 ) -> str:
@@ -659,13 +665,13 @@ def _create_staging_table(
         sql.SQL(", ").join(sql.Identifier(col) for col in column_names),
         sql.Identifier("public", table_name),
     )
-    with conn.cursor() as cur:
+    with cast("Connection[Any]", conn).cursor() as cur:
         cur.execute(create_statement)
     return staging_name
 
 
 def _upsert_from_staging(
-    conn: Connection[Any],
+    conn: object,
     table_name: str,
     staging_name: str,
     column_names: list[str],
@@ -698,7 +704,7 @@ def _upsert_from_staging(
             select_columns=select_columns_sql,
             staging=sql.Identifier(staging_name),
         )
-        with conn.cursor() as cur:
+        with cast("Connection[Any]", conn).cursor() as cur:
             cur.execute(insert_statement)
             return max(cur.rowcount, 0)
 
@@ -756,13 +762,13 @@ def _upsert_from_staging(
         staging=sql.Identifier(staging_name),
         conflict_action=conflict_action,
     )
-    with conn.cursor() as cur:
+    with cast("Connection[Any]", conn).cursor() as cur:
         cur.execute(upsert_statement)
         return max(cur.rowcount, 0)
 
 
 def _copy_file(
-    conn: Connection[Any],
+    conn: object,
     table_name: str,
     file_path: Path,
     *,

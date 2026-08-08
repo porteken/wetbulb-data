@@ -56,7 +56,7 @@ def _empty_hourly_frame() -> DataFrame:
 
 
 def _get_json_with_retries(
-    session: requests.Session,
+    session: object,
     params: dict[str, Any],
     *,
     station_id: int,
@@ -64,7 +64,7 @@ def _get_json_with_retries(
 ) -> dict[str, Any] | None:
     for attempt in range(1, ECCC_MAX_RETRIES + 1):
         try:
-            response = session.get(
+            response = cast("requests.Session", session).get(
                 ECCC_HOURLY_URL,
                 params=params,
                 timeout=ECCC_REQUEST_TIMEOUT_SECONDS,
@@ -89,7 +89,7 @@ def fetch_station_year(
     year: int,
     *,
     utc_offset_hours: float,
-    session: requests.Session | None = None,
+    session: object | None = None,
 ) -> tuple[DataFrame, bool]:
     """Return one ECCC station-year and whether a transient fetch gap occurred."""
     http = session or requests.Session()

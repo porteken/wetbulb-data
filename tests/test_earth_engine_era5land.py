@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
+import pytest
 
 import earth_engine_era5land as gee
 
@@ -40,6 +42,32 @@ def test_initialize_accepts_json_secret(monkeypatch: Any) -> None:
     credentials, project = stub.initialized
     assert credentials[0] == "weather@example.invalid"
     assert project == "weather-project"
+
+
+def test_initialize_uses_ambient_credentials_and_validates_secret(
+    monkeypatch: Any,
+) -> None:
+    stub = _StubEe()
+    monkeypatch.setattr(gee, "_ee", lambda: stub)
+    monkeypatch.delenv(gee.EE_CREDENTIALS_ENV, raising=False)
+
+    gee.initialize_earth_engine(project="ambient-project")
+    assert stub.initialized == (None, "ambient-project")
+    with pytest.raises(ValueError, match="client_email"):
+        gee.initialize_earth_engine('{"project_id": "only-project"}')
+
+
+def test_collection_and_empty_frame_helpers(monkeypatch: Any) -> None:
+    selected = SimpleNamespace(
+        filterDate=lambda *_args: selected, select=lambda _bands: selected
+    )
+    monkeypatch.setattr(
+        gee, "_ee", lambda: SimpleNamespace(ImageCollection=lambda _name: selected)
+    )
+
+    assert gee._collection(2020, 2020) is selected
+    assert gee._raw_region_frame([]).empty
+    assert gee._hourly_frame(1, pd.DataFrame()).empty
 
 
 def test_hourly_frame_converts_earth_engine_schema() -> None:
@@ -141,3 +169,190 @@ def test_fetch_city_retries_earth_engine_exception(monkeypatch: Any) -> None:
     assert result.calls == 2
     assert not had_gap
     assert len(frame) == 1
+
+
+def test_fetch_city_returns_gap_after_all_attempts(monkeypatch: Any) -> None:
+    class EarthEngineError(Exception):
+        pass
+
+    collection = SimpleNamespace(
+        getRegion=lambda *_args: SimpleNamespace(
+            getInfo=lambda: (_ for _ in ()).throw(EarthEngineError())
+        )
+    )
+    ee = SimpleNamespace(
+        Geometry=SimpleNamespace(Point=lambda coordinates: coordinates),
+        ee_exception=SimpleNamespace(EEException=EarthEngineError),
+    )
+    monkeypatch.setattr(gee, "_ee", lambda: ee)
+    monkeypatch.setattr(gee, "EE_MAX_RETRIES", 1)
+    row = SimpleNamespace(location_id=5, lat=40.0, lng=-75.0, utc_offset_hours=-5)
+
+    frame, had_gap = gee._fetch_city([collection], row)
+
+    assert frame.empty
+    assert had_gap
+
+
+def test_fetch_city_marks_empty_earth_engine_results_as_gap(monkeypatch: Any) -> None:
+    collection = SimpleNamespace(
+        getRegion=lambda *_args: SimpleNamespace(getInfo=lambda: [["time"]])
+    )
+    ee = SimpleNamespace(
+        Geometry=SimpleNamespace(Point=lambda coordinates: coordinates)
+    )
+    monkeypatch.setattr(gee, "_ee", lambda: ee)
+    row = SimpleNamespace(location_id=5, lat=40.0, lng=-75.0, utc_offset_hours=-5)
+
+    frame, had_gap = gee._fetch_city([collection], row)
+
+    assert frame.empty
+    assert had_gap
+
+
+def test_fetch_batch_and_filled_rows_writeable_result(monkeypatch: Any) -> None:
+    row = SimpleNamespace(location_id=5, lat=40.0, lng=-75.0, utc_offset_hours=-5)
+    frame = pd.DataFrame({"location_id": [5]})
+    monkeypatch.setattr(gee, "_fetch_city", lambda *_args: (frame, False))
+    assert gee._fetch_batch([], [row], 1, 0) == {5: (frame, False)}
+
+    hourly = pd.DataFrame({"location_id": [5]})
+    daily = pd.DataFrame({"location_id": [5], "date": pd.to_datetime(["2020-01-01"])})
+    missing = pd.DataFrame({"location_id": [5], "date": pd.to_datetime(["2020-01-01"])})
+    monkeypatch.setattr(gee, "_collection", lambda *_args: object())
+    monkeypatch.setattr(gee, "_collection_chunks", lambda *_args: [object()])
+    monkeypatch.setattr(gee, "_fetch_batch", lambda *_args: {5: (hourly, False)})
+    monkeypatch.setattr(gee.lcd, "concat_frames", lambda _frames: hourly)
+    monkeypatch.setattr(
+        gee.nldas, "compute_daily_wetbulb", lambda *_args, **_kwargs: daily
+    )
+
+    result = gee._filled_rows([row], missing, 2020, 2020, 1, 0)
+
+    assert result is not None
+    assert result.loc[0, "source"] == gee.era5land.ERA5LAND_SOURCE
+
+
+@pytest.mark.parametrize(
+    ("result", "daily"),
+    [
+        ({5: (pd.DataFrame(), True)}, pd.DataFrame()),
+        ({5: (pd.DataFrame(), False)}, pd.DataFrame()),
+    ],
+)
+def test_filled_rows_returns_none_for_incomplete_or_empty_daily_data(
+    monkeypatch: pytest.MonkeyPatch,
+    result: dict[int, tuple[pd.DataFrame, bool]],
+    daily: pd.DataFrame,
+) -> None:
+    missing = pd.DataFrame({"location_id": [5], "date": pd.to_datetime(["2020-01-01"])})
+    monkeypatch.setattr(gee, "_collection", lambda *_args: object())
+    monkeypatch.setattr(gee, "_collection_chunks", lambda *_args: [object()])
+    monkeypatch.setattr(gee, "_fetch_batch", lambda *_args: result)
+    monkeypatch.setattr(gee.lcd, "concat_frames", lambda _frames: pd.DataFrame())
+    monkeypatch.setattr(
+        gee.nldas, "compute_daily_wetbulb", lambda *_args, **_kwargs: daily
+    )
+
+    assert gee._filled_rows([], missing, 2020, 2020, 1, 0) is None
+
+
+def test_filled_rows_returns_none_when_no_days_match_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daily = pd.DataFrame({"location_id": [5], "date": pd.to_datetime(["2020-01-02"])})
+    missing = pd.DataFrame({"location_id": [5], "date": pd.to_datetime(["2020-01-01"])})
+    monkeypatch.setattr(gee, "_collection", lambda *_args: object())
+    monkeypatch.setattr(gee, "_collection_chunks", lambda *_args: [object()])
+    monkeypatch.setattr(
+        gee, "_fetch_batch", lambda *_args: {5: (pd.DataFrame(), False)}
+    )
+    monkeypatch.setattr(gee.lcd, "concat_frames", lambda _frames: pd.DataFrame())
+    monkeypatch.setattr(
+        gee.nldas, "compute_daily_wetbulb", lambda *_args, **_kwargs: daily
+    )
+
+    assert gee._filled_rows([], missing, 2020, 2020, 1, 0) is None
+
+
+def test_process_and_main_forward_gapfill_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shard = pd.DataFrame({"location_id": [5], "lng": [-75.0]})
+    missing = pd.DataFrame({"location_id": [5], "date": pd.to_datetime(["2020-01-01"])})
+    monkeypatch.setattr(
+        gee,
+        "resolve_gapfill_targets",
+        lambda *_args, **_kwargs: (shard, "fs", "base", [2020], None, missing),
+    )
+    monkeypatch.setattr(gee.nldas, "load_nldas_city_shard", lambda *_args: shard)
+    monkeypatch.setattr(
+        gee.era5land,
+        "load_utc_offsets",
+        lambda _path: pd.DataFrame(columns=["location_id", "utc_offset_hours"]),
+    )
+    monkeypatch.setattr(
+        gee.era5land, "apply_cell_overrides", lambda frame, _path: frame
+    )
+    monkeypatch.setattr(gee, "_gap_years_by_location", lambda _missing: {5: [2020]})
+    filled = pd.DataFrame({"location_id": [5], "date": ["2020-01-01"]})
+    monkeypatch.setattr(gee, "_filled_rows", lambda *_args: filled)
+    calls: list[tuple[Any, ...]] = []
+    monkeypatch.setattr(
+        gee, "write_pending_year_batches", lambda *args, **_kwargs: calls.append(args)
+    )
+    gee.process_earth_engine_gapfill(2020, 2020, "out", 0, 1, 1)
+    assert calls
+
+    process = []
+    monkeypatch.setattr(sys, "argv", ["earth_engine_era5land.py"])
+    monkeypatch.setattr(gee, "initialize_earth_engine", lambda *_args: None)
+    monkeypatch.setattr(
+        gee,
+        "process_earth_engine_gapfill",
+        lambda *args, **_kwargs: process.append(args),
+    )
+    gee.main()
+    assert process
+
+
+@pytest.mark.parametrize(
+    "resolved",
+    [None, (pd.DataFrame(), "fs", "base", [2020], None, pd.DataFrame())],
+)
+def test_process_returns_when_no_gapfill_targets(
+    monkeypatch: pytest.MonkeyPatch, resolved: Any
+) -> None:
+    monkeypatch.setattr(
+        gee, "resolve_gapfill_targets", lambda *_args, **_kwargs: resolved
+    )
+    monkeypatch.setattr(
+        gee.nldas, "load_nldas_city_shard", lambda *_args: pd.DataFrame()
+    )
+
+    gee.process_earth_engine_gapfill(2020, 2020, "out", 0, 1, 1)
+
+
+def test_process_returns_when_gapfill_fetch_produces_no_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shard = pd.DataFrame({"location_id": [5], "lng": [-75.0]})
+    missing = pd.DataFrame({"location_id": [5], "date": pd.to_datetime(["2020-01-01"])})
+    monkeypatch.setattr(
+        gee,
+        "resolve_gapfill_targets",
+        lambda *_args, **_kwargs: (shard, "fs", "base", [2020], None, missing),
+    )
+    monkeypatch.setattr(gee.nldas, "load_nldas_city_shard", lambda *_args: shard)
+    monkeypatch.setattr(
+        gee.era5land,
+        "load_utc_offsets",
+        lambda _path: pd.DataFrame(columns=["location_id", "utc_offset_hours"]),
+    )
+    monkeypatch.setattr(
+        gee.era5land, "apply_cell_overrides", lambda frame, _path: frame
+    )
+    monkeypatch.setattr(gee, "_gap_years_by_location", lambda _missing: {5: [2020]})
+    monkeypatch.setattr(gee, "_filled_rows", lambda *_args: None)
+
+    gee.process_earth_engine_gapfill(2020, 2020, "out", 0, 1, 1)
