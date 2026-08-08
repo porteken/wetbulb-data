@@ -684,15 +684,15 @@ def _run_smoke(args: argparse.Namespace) -> None:
             session, token_manager, var_id, args.lat, args.lon, args.start, args.end
         )
         if text is None:
-            print(f"{canonical} ({var_id}): request failed")
+            sys.stdout.write(f"{canonical} ({var_id}): request failed\n")
             continue
         headers, df = _parse_timeseries_csv(text)
-        print(f"--- {canonical} ({var_id}) ---")
-        print(
+        sys.stdout.write(f"--- {canonical} ({var_id}) ---\n")
+        sys.stdout.write(
             f"resolved cell: ({headers.get('lat')}, {headers.get('lon')}) "
-            f"unit={headers.get('unit')} fill={headers.get('undef')}",
+            f"unit={headers.get('unit')} fill={headers.get('undef')}\n"
         )
-        print(df.head())
+        sys.stdout.write(f"{df.head()}\n")
 
 
 def _parse_args() -> argparse.Namespace:
