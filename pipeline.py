@@ -132,14 +132,40 @@ def _station_command(
     force: bool,
 ) -> list[str]:
     """Build a command for a station-based observation source."""
+    return _station_range_command(
+        selected_source,
+        region,
+        out_dir,
+        city_shard_count,
+        city_shard_index,
+        concurrency,
+        year,
+        year,
+        force=force,
+    )
+
+
+def _station_range_command(
+    selected_source: str,
+    region: str,
+    out_dir: str,
+    city_shard_count: int,
+    city_shard_index: int,
+    concurrency: int,
+    start_year: int,
+    end_year: int,
+    *,
+    force: bool,
+) -> list[str]:
+    """Build one station-worker command spanning a contiguous year range."""
     cities_csv, station_map = _station_map_for(selected_source, region)
     command = [
         sys.executable,
         f"{selected_source}.py",
         "--start-year",
-        str(year),
+        str(start_year),
         "--end-year",
-        str(year),
+        str(end_year),
         "--city-shard-count",
         str(city_shard_count),
         "--concurrency",
@@ -153,6 +179,26 @@ def _station_command(
     if force:
         command.append("--force")
     return command
+
+
+def _source_year_runs(
+    wetbulb_source: str, years: list[int]
+) -> list[tuple[str, int, int]]:
+    """Group contiguous GHCNh years so overlap calibration sees full backfills."""
+    runs: list[tuple[str, int, int]] = []
+    for year in sorted(set(years)):
+        source = _selected_source(wetbulb_source, year)
+        if (
+            runs
+            and source == "ghcnh"
+            and runs[-1][0] == source
+            and year == runs[-1][2] + 1
+        ):
+            prior_source, start_year, _end_year = runs[-1]
+            runs[-1] = prior_source, start_year, year
+        else:
+            runs.append((source, year, year))
+    return runs
 
 
 def _command(
@@ -248,11 +294,25 @@ def main(argv: list[str] | None = None) -> None:
     batch_hours = _validated_positive_integer(args.batch_hours, "--batch-hours")
     months = _positive_values(args.months, "--months")
     years = [_validated_positive_integer(year, "--years") for year in args.years]
-    for year in years:
+    for selected_source, start_year, end_year in _source_year_runs(
+        wetbulb_source, years
+    ):
         for city_shard_index in shard_indices:
-            subprocess.run(
-                _command(
-                    wetbulb_source,
+            if selected_source == "ghcnh":
+                command = _station_range_command(
+                    selected_source,
+                    region,
+                    out_dir,
+                    city_shard_count,
+                    city_shard_index,
+                    concurrency,
+                    start_year,
+                    end_year,
+                    force=args.force,
+                )
+            else:
+                command = _command(
+                    selected_source,
                     region,
                     out_dir,
                     city_shard_count,
@@ -261,9 +321,11 @@ def main(argv: list[str] | None = None) -> None:
                     download_workers,
                     batch_hours,
                     months,
-                    year,
+                    start_year,
                     force=args.force,
-                ),
+                )
+            subprocess.run(
+                command,
                 check=True,
                 shell=False,
             )

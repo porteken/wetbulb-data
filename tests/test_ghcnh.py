@@ -351,6 +351,7 @@ def test_select_best_station_days_uses_fallback_without_mixing() -> None:
             "observed_hours": [24, 20, 24],
             "source": ["ghcnh"] * 3,
             "station_id": ["PRIMARY", "PRIMARY", "SECONDARY"],
+            "reference_station_id": ["PRIMARY"] * 3,
             "station_distance_km": [5.0, 5.0, 2.0],
             "station_elevation_difference_m": [1.0, 1.0, 1.0],
             "station_quality": ["complete"] * 3,
@@ -363,6 +364,90 @@ def test_select_best_station_days_uses_fallback_without_mixing() -> None:
 
     assert list(result["station_id"]) == ["PRIMARY", "PRIMARY"]
     assert list(result["wetbulb"]) == [10.0, 20.0]
+
+
+def test_assign_reference_stations_uses_stable_recent_preference() -> None:
+    rows = []
+    for year in range(1990, 2026):
+        old_rank, new_rank = (1, 2) if year < 2000 else (2, 1)
+        rows.extend(
+            [
+                {
+                    "location_id": 515,
+                    "ghcn_id": "OLD",
+                    "year": year,
+                    "candidate_rank": old_rank,
+                    "variable_coverage": 100.0,
+                    "dist_km": 22.0,
+                    "elevation_difference_m": 102.0,
+                },
+                {
+                    "location_id": 515,
+                    "ghcn_id": "NEW",
+                    "year": year,
+                    "candidate_rank": new_rank,
+                    "variable_coverage": 100.0,
+                    "dist_km": 16.0,
+                    "elevation_difference_m": 59.0,
+                },
+            ]
+        )
+
+    result = ghcnh.assign_reference_stations(pd.DataFrame(rows))
+
+    assert result["reference_station_id"].unique().tolist() == ["NEW"]
+
+
+def test_homogenize_station_candidates_corrects_monthly_fallback() -> None:
+    dates = pd.date_range("2020-09-01", periods=30)
+    reference = pd.DataFrame(
+        {
+            "location_id": 1,
+            "date": dates,
+            "wetbulb": 20.0,
+            "wetbulb_avg": 15.0,
+            "station_id": "REFERENCE",
+            "reference_station_id": "REFERENCE",
+        }
+    )
+    secondary = reference.copy()
+    secondary["station_id"] = "SECONDARY"
+    secondary["wetbulb"] = 22.0
+    secondary["wetbulb_avg"] = 16.0
+
+    result = ghcnh.homogenize_station_candidates(
+        pd.concat([reference, secondary], ignore_index=True)
+    )
+    corrected = result[result["station_id"] == "SECONDARY"]
+
+    assert len(corrected) == 30
+    assert corrected["wetbulb"].tolist() == [20.0] * 30
+    assert corrected["wetbulb_avg"].tolist() == [15.0] * 30
+    assert corrected["wetbulb_adjustment"].tolist() == [-2.0] * 30
+    assert corrected["homogenization_method"].unique().tolist() == ["monthly_overlap"]
+    assert corrected["homogenization_overlap_days"].unique().tolist() == [30]
+
+
+def test_homogenize_station_candidates_rejects_unpaired_secondary() -> None:
+    reference = pd.DataFrame(
+        {
+            "location_id": [1],
+            "date": pd.to_datetime(["2025-01-01"]),
+            "wetbulb": [10.0],
+            "wetbulb_avg": [8.0],
+            "station_id": ["REFERENCE"],
+            "reference_station_id": ["REFERENCE"],
+        }
+    )
+    secondary = reference.copy()
+    secondary["station_id"] = "SECONDARY"
+    secondary["date"] = pd.to_datetime(["1990-01-01"])
+
+    result = ghcnh.homogenize_station_candidates(
+        pd.concat([reference, secondary], ignore_index=True)
+    )
+
+    assert result["station_id"].tolist() == ["REFERENCE"]
 
 
 def test_station_map_for_years_filters_year_specific_rows() -> None:

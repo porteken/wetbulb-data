@@ -225,3 +225,31 @@ def test_shard_indices_rejects_an_out_of_range_index() -> None:
 
 def test_optional_positive_values_preserves_an_omitted_option() -> None:
     assert pipeline._positive_values(None, "--months") is None
+
+
+def test_contiguous_ghcnh_years_run_as_one_calibration_period(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        pipeline.subprocess, "run", lambda command, **_k: calls.append(command)
+    )
+
+    pipeline.main(["--years", "1990", "1991", "1992", "--force"])
+
+    assert len(calls) == 1
+    assert calls[0][calls[0].index("--start-year") + 1] == "1990"
+    assert calls[0][calls[0].index("--end-year") + 1] == "1992"
+
+
+def test_noncontiguous_ghcnh_years_remain_separate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        pipeline.subprocess, "run", lambda command, **_k: calls.append(command)
+    )
+
+    pipeline.main(["--years", "1990", "1992"])
+
+    assert len(calls) == 2

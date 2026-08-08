@@ -39,6 +39,11 @@ AUDIT_COLUMNS = (
     "observed_hours",
     "station_quality",
     "station_id",
+    "reference_station_id",
+    "homogenization_method",
+    "homogenization_overlap_days",
+    "wetbulb_adjustment",
+    "wetbulb_avg_adjustment",
 )
 
 

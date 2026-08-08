@@ -58,6 +58,9 @@ GHCNH_RETRY_DELAY_SECONDS = 5
 GHCNH_DEFAULT_CONCURRENCY = 8
 GHCNH_MIN_DAILY_HOURS = 20
 GHCNH_RELIABLE_DAILY_HOURS = 20
+GHCNH_REFERENCE_LOOKBACK_YEARS = 10
+GHCNH_MIN_MONTHLY_OVERLAP_DAYS = 20
+GHCNH_MIN_GLOBAL_OVERLAP_DAYS = 60
 STATION_MAP_PATH = "cities_na_ghcnh_stations.csv"
 
 _HOURLY_FRAME_COLUMNS = ("time", "tair_c", "dewpoint_c", "pressure_hpa")
@@ -419,6 +422,173 @@ def station_map_for_years(station_map: DataFrame, years: list[int]) -> DataFrame
     return station_map[mask].copy()
 
 
+def assign_reference_stations(station_map: DataFrame) -> DataFrame:
+    """Attach one stable reference station to every mapped location.
+
+    Year-specific inventory coverage is useful for finding candidates, but it
+    must not redefine a city's climate baseline every year.  Prefer stations
+    that rank first most often in the latest catalog decade, then use physical
+    proximity as a deterministic tie breaker.  The rule automatically applies
+    to newly generated city catalogs.
+    """
+    if station_map.empty:
+        result = station_map.copy()
+        result["reference_station_id"] = pd.Series(dtype="string")
+        return result
+    frame = station_map.copy()
+    frame["candidate_rank"] = pd.to_numeric(
+        frame["candidate_rank"], errors="coerce"
+    ).fillna(999)
+    if "year" in frame:
+        years = pd.to_numeric(frame["year"], errors="coerce")
+        latest_year = years.max()
+        if pd.notna(latest_year):
+            recent = frame[
+                years >= int(latest_year) - GHCNH_REFERENCE_LOOKBACK_YEARS + 1
+            ].copy()
+        else:
+            recent = frame.copy()
+    else:
+        recent = frame.copy()
+    recent["_rank_one"] = (recent["candidate_rank"] == 1).astype(int)
+    for column in ("variable_coverage", "dist_km", "elevation_difference_m"):
+        recent[column] = pd.to_numeric(recent[column], errors="coerce")
+    scores = (
+        recent.groupby(["location_id", "ghcn_id"], as_index=False)
+        .agg(
+            rank_one_years=("_rank_one", "sum"),
+            available_years=("ghcn_id", "size"),
+            mean_coverage=("variable_coverage", "mean"),
+            distance_km=("dist_km", "median"),
+            elevation_difference_m=("elevation_difference_m", "median"),
+        )
+        .sort_values(
+            [
+                "location_id",
+                "rank_one_years",
+                "available_years",
+                "mean_coverage",
+                "distance_km",
+                "elevation_difference_m",
+                "ghcn_id",
+            ],
+            ascending=[True, False, False, False, True, True, True],
+            na_position="last",
+            kind="stable",
+        )
+    )
+    references = scores.drop_duplicates("location_id").rename(
+        columns={"ghcn_id": "reference_station_id"}
+    )[["location_id", "reference_station_id"]]
+    return frame.merge(references, on="location_id", how="left")
+
+
+def homogenize_station_candidates(candidates: DataFrame) -> DataFrame:
+    """Put secondary-station daily values onto each city's reference baseline.
+
+    Corrections are robust median reference-minus-secondary differences from
+    same-day observations.  Calendar-month estimates preserve seasonality;
+    an all-month estimate is used only when monthly overlap is insufficient.
+    Secondary rows without enough overlap are deliberately removed so an
+    uncalibrated station change cannot silently alter a long-term trend.
+    """
+    if candidates.empty:
+        return candidates.copy()
+    required = {"reference_station_id", "station_id", "date", "location_id"}
+    if not required.issubset(candidates.columns):
+        missing = sorted(required - set(candidates.columns))
+        msg = f"station homogenization is missing columns: {missing}"
+        raise ValueError(msg)
+    output: list[DataFrame] = []
+    for (_location_id, reference_id), city_group in candidates.groupby(
+        ["location_id", "reference_station_id"], sort=False, dropna=False
+    ):
+        if pd.isna(reference_id):
+            continue
+        city = city_group.copy()
+        city["date"] = pd.to_datetime(city["date"])
+        reference = city[city["station_id"] == reference_id].copy()
+        if reference.empty:
+            LOGGER.warning(
+                "location_id=%s reference station %s has no usable days; "
+                "rejecting uncalibrated secondary stations",
+                _location_id,
+                reference_id,
+            )
+            continue
+        reference["homogenization_method"] = "reference"
+        reference["homogenization_overlap_days"] = 0
+        reference["wetbulb_adjustment"] = 0.0
+        reference["wetbulb_avg_adjustment"] = 0.0
+        output.append(reference)
+        reference_values = reference[["date", "wetbulb", "wetbulb_avg"]].rename(
+            columns={
+                "wetbulb": "_reference_wetbulb",
+                "wetbulb_avg": "_reference_wetbulb_avg",
+            }
+        )
+        for station_id, secondary_group in city[
+            city["station_id"] != reference_id
+        ].groupby("station_id", sort=False):
+            secondary = secondary_group.copy()
+            paired = secondary.merge(reference_values, on="date", how="inner")
+            if paired.empty:
+                continue
+            paired["_month"] = paired["date"].dt.month
+            paired["_wetbulb_delta"] = paired["_reference_wetbulb"] - paired["wetbulb"]
+            paired["_wetbulb_avg_delta"] = (
+                paired["_reference_wetbulb_avg"] - paired["wetbulb_avg"]
+            )
+            global_count = len(paired)
+            global_wetbulb = paired["_wetbulb_delta"].median()
+            global_wetbulb_avg = paired["_wetbulb_avg_delta"].median()
+            monthly = paired.groupby("_month").agg(
+                overlap_days=("date", "size"),
+                wetbulb_adjustment=("_wetbulb_delta", "median"),
+                wetbulb_avg_adjustment=("_wetbulb_avg_delta", "median"),
+            )
+            secondary["_month"] = secondary["date"].dt.month
+            merged_secondary = secondary.merge(
+                monthly, left_on="_month", right_index=True, how="left"
+            )
+            monthly_ok = (
+                merged_secondary["overlap_days"] >= GHCNH_MIN_MONTHLY_OVERLAP_DAYS
+            )
+            global_ok = global_count >= GHCNH_MIN_GLOBAL_OVERLAP_DAYS
+            if global_ok:
+                merged_secondary.loc[~monthly_ok, "overlap_days"] = global_count
+                merged_secondary.loc[~monthly_ok, "wetbulb_adjustment"] = global_wetbulb
+                merged_secondary.loc[~monthly_ok, "wetbulb_avg_adjustment"] = (
+                    global_wetbulb_avg
+                )
+            calibrated = monthly_ok | global_ok
+            if not calibrated.any():
+                LOGGER.warning(
+                    "location_id=%s station %s has only %d overlap days with "
+                    "reference %s; rejecting it as an uncalibrated fallback",
+                    _location_id,
+                    station_id,
+                    global_count,
+                    reference_id,
+                )
+                continue
+            secondary = merged_secondary[calibrated].copy()
+            secondary["homogenization_method"] = "monthly_overlap"
+            secondary.loc[
+                ~monthly_ok[calibrated],
+                "homogenization_method",
+            ] = "global_overlap"
+            secondary["homogenization_overlap_days"] = secondary["overlap_days"].astype(
+                int
+            )
+            secondary["wetbulb"] += secondary["wetbulb_adjustment"]
+            secondary["wetbulb_avg"] += secondary["wetbulb_avg_adjustment"]
+            output.append(secondary.drop(columns=["_month", "overlap_days"]))
+    if not output:
+        return candidates.iloc[0:0].copy()
+    return concat_frames(output)
+
+
 def _candidate_key(row: CandidateRow) -> CandidateKey:
     return row.ghcn_id, row.lon, row.utc_offset_hours
 
@@ -476,6 +646,7 @@ def _candidate_daily_frame(row: CandidateRow, station_df: DataFrame) -> DataFram
         return daily
     daily["source"] = "ghcnh"
     daily["station_id"] = str(row.ghcn_id)
+    daily["reference_station_id"] = str(row.reference_station_id)
     daily["station_distance_km"] = row.dist_km
     daily["station_elevation_difference_m"] = row.elevation_difference_m
     daily["station_quality"] = daily["observed_hours"].map(
@@ -487,7 +658,7 @@ def _candidate_daily_frame(row: CandidateRow, station_df: DataFrame) -> DataFram
 
 
 def select_best_station_days(candidates: DataFrame) -> DataFrame:
-    """Choose one physical station per city-day without mixing hourly rows."""
+    """Prefer the stable reference, then choose a calibrated fallback day."""
     if candidates.empty:
         return candidates
     ranked = candidates.copy()
@@ -499,22 +670,23 @@ def select_best_station_days(candidates: DataFrame) -> DataFrame:
         ranked["station_distance_km"],
         errors="coerce",
     )
+    ranked["_is_reference"] = ranked["station_id"] == ranked["reference_station_id"]
     ranked = ranked.sort_values(
         [
             "location_id",
             "date",
-            "_candidate_rank",
+            "_is_reference",
             "observed_hours",
             "_variable_coverage",
             "station_distance_km",
             "station_id",
         ],
-        ascending=[True, True, True, False, False, True, True],
+        ascending=[True, True, False, False, False, True, True],
         kind="stable",
     )
     return (
         ranked.drop_duplicates(["location_id", "date"], keep="first")
-        .drop(columns=["_candidate_rank", "_variable_coverage"])
+        .drop(columns=["_candidate_rank", "_variable_coverage", "_is_reference"])
         .reset_index(drop=True)
     )
 
@@ -547,7 +719,9 @@ def process_ghcnh(
     if loaded is None:
         return
     shard_df, years, filesystem, base_path, wetbulb_root = loaded
-    station_map = station_map_for_years(_load_station_map(station_map_csv), years)
+    station_map = station_map_for_years(
+        assign_reference_stations(_load_station_map(station_map_csv)), years
+    )
     shard_df = shard_df.merge(station_map, on="location_id", how="left")
     unmapped_ids = set(shard_df.loc[shard_df["ghcn_id"].isna(), "location_id"])
     if unmapped_ids:
@@ -582,7 +756,10 @@ def process_ghcnh(
     usable = [frame for frame in daily_frames if not frame.empty]
     if not usable:
         return
-    selected = select_best_station_days(concat_frames(usable))
+    homogenized = homogenize_station_candidates(concat_frames(usable))
+    if homogenized.empty:
+        return
+    selected = select_best_station_days(homogenized)
     writable_years = [year for year in years if year not in gapped_years]
     if gapped_years:
         LOGGER.warning(

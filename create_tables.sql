@@ -22,8 +22,14 @@ station_distance_km real,
 station_elevation_difference_m real,
 observed_hours smallint,
 station_quality text,
+reference_station_id text,
+homogenization_method text,
+homogenization_overlap_days integer,
+wetbulb_adjustment real,
+wetbulb_avg_adjustment real,
 CONSTRAINT wetbulb_source_check CHECK (source IN ('eccc', 'ghcnh', 'isd', 'nldas', 'lcd', 'giovanni', 'era5land')),
-CONSTRAINT wetbulb_station_quality_check CHECK (station_quality IS NULL OR station_quality IN ('complete', 'sparse'))
+CONSTRAINT wetbulb_station_quality_check CHECK (station_quality IS NULL OR station_quality IN ('complete', 'sparse')),
+CONSTRAINT wetbulb_homogenization_method_check CHECK (homogenization_method IS NULL OR homogenization_method IN ('reference', 'monthly_overlap', 'global_overlap'))
 ) ;
 
 CREATE UNIQUE INDEX IF NOT EXISTS wetbulb_location_date_uidx
