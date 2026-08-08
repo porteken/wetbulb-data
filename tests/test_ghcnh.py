@@ -341,6 +341,80 @@ def test_fetch_station_year_marks_exhausted_request_as_transient(
     assert gap is True
 
 
+def test_fetch_station_year_reuses_completed_year_cache(tmp_path: Path) -> None:
+    payload = _parquet_payload([{"DATE": "2025-01-01T00:00:00"}])
+    first_session = cast("Any", _FakeSession([_FakeResponse(200, payload)]))
+
+    first, first_gap = ghcnh.fetch_station_year(
+        "USW00014732",
+        2025,
+        lon=-73.88,
+        utc_offset_hours=-5,
+        drop_incomplete_latest_day=False,
+        session=first_session,
+        cache_dir=tmp_path,
+    )
+    second, second_gap = ghcnh.fetch_station_year(
+        "USW00014732",
+        2025,
+        lon=-73.88,
+        utc_offset_hours=-5,
+        drop_incomplete_latest_day=False,
+        session=cast("Any", _FakeSession([])),
+        cache_dir=tmp_path,
+    )
+
+    assert not first.empty
+    assert first.equals(second)
+    assert first_gap is second_gap is False
+    assert (tmp_path / "2025" / "USW00014732.parquet").exists()
+
+
+def test_fetch_station_year_caches_historical_not_found(tmp_path: Path) -> None:
+    first_session = cast("Any", _FakeSession([_FakeResponse(404)]))
+
+    ghcnh.fetch_station_year(
+        "MISSING",
+        2025,
+        lon=0,
+        utc_offset_hours=0,
+        drop_incomplete_latest_day=False,
+        session=first_session,
+        cache_dir=tmp_path,
+    )
+    frame, gap = ghcnh.fetch_station_year(
+        "MISSING",
+        2025,
+        lon=0,
+        utc_offset_hours=0,
+        drop_incomplete_latest_day=False,
+        session=cast("Any", _FakeSession([])),
+        cache_dir=tmp_path,
+    )
+
+    assert frame.empty
+    assert gap is False
+    assert (tmp_path / "2025" / "MISSING.missing").exists()
+
+
+def test_fetch_stations_batch_schedules_station_years_independently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int]] = []
+
+    def fake_fetch(station_id: str, year: int, **_kwargs: Any) -> tuple[Any, bool]:
+        calls.append((station_id, year))
+        return pd.DataFrame({"time": [pd.Timestamp(f"{year}-01-01")]}), False
+
+    monkeypatch.setattr(ghcnh, "fetch_station_year", fake_fetch)
+    candidates = [("A", 0.0, 0.0), ("B", 1.0, 0.0)]
+
+    result = ghcnh._fetch_stations_batch(candidates, [2024, 2025], 2, 0)
+
+    assert sorted(calls) == [("A", 2024), ("A", 2025), ("B", 2024), ("B", 2025)]
+    assert all(len(frame) == 2 and not gaps for frame, gaps in result.values())
+
+
 def test_select_best_station_days_uses_fallback_without_mixing() -> None:
     candidates = pd.DataFrame(
         {

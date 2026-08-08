@@ -7,13 +7,15 @@ from __future__ import annotations
 import argparse
 import importlib
 import logging
+import os
 import random
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import requests
 from dotenv import load_dotenv
@@ -30,6 +32,9 @@ from lcd import (
 from partition_io import pending_years, write_pending_year_batches
 from shards import resolve_filesystem
 from station_exclusions import DISALLOWED_GHCNH_STATION_IDS
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 pd = cast("Any", importlib.import_module("pandas"))
 pa = cast("Any", importlib.import_module("pyarrow"))
@@ -56,6 +61,7 @@ GHCNH_REQUEST_TIMEOUT_SECONDS = 90
 GHCNH_MAX_RETRIES = 3
 GHCNH_RETRY_DELAY_SECONDS = 5
 GHCNH_DEFAULT_CONCURRENCY = 8
+GHCNH_CACHE_DIRECTORY = "ghcnh_cache"
 GHCNH_MIN_DAILY_HOURS = 20
 GHCNH_RELIABLE_DAILY_HOURS = 20
 GHCNH_REFERENCE_LOOKBACK_YEARS = 10
@@ -321,15 +327,40 @@ def fetch_station_year(
     utc_offset_hours: float | None,
     drop_incomplete_latest_day: bool,
     session: requests.Session | None = None,
+    cache_dir: Path | None = None,
 ) -> tuple[DataFrame, bool]:
     """Return one station-year frame and whether a transient fetch gap occurred."""
+    cache_path = None
+    missing_path = None
+    # Completed NOAA yearly files are immutable. The current year's file is still
+    # growing, so deliberately bypass the persistent cache for it.
+    if cache_dir is not None and year < datetime.now(tz=UTC).year:
+        cache_path = cache_dir / str(year) / f"{station_id}.parquet"
+        missing_path = cache_path.with_suffix(".missing")
+        if cache_path.exists():
+            return (
+                _parse_ghcnh_parquet(
+                    cache_path.read_bytes(),
+                    lon=lon,
+                    utc_offset_hours=utc_offset_hours,
+                    drop_incomplete_latest_day=drop_incomplete_latest_day,
+                ),
+                False,
+            )
+        if missing_path.exists():
+            return _empty_hourly_frame(), False
+
     http = session or requests.Session()
     url = GHCNH_URL_TEMPLATE.format(year=year, station_id=station_id)
     response = _get_with_retries(http, url, station_id=station_id, year=year)
     if response is None:
         return _empty_hourly_frame(), True
     if response.status_code == requests.codes.not_found:
+        if missing_path is not None:
+            _write_cache_file(missing_path, b"")
         return _empty_hourly_frame(), False
+    if cache_path is not None:
+        _write_cache_file(cache_path, response.content)
     return (
         _parse_ghcnh_parquet(
             response.content,
@@ -341,32 +372,17 @@ def fetch_station_year(
     )
 
 
-def _fetch_station_series(
-    session: requests.Session,
-    station_id: str,
-    years: list[int],
-    lon: float | None,
-    utc_offset_hours: float | None,
-) -> tuple[DataFrame, set[int]]:
-    frames: list[DataFrame] = []
-    gapped_years: set[int] = set()
-    current_year = datetime.now(tz=UTC).year
-    for year in years:
-        frame, gap = fetch_station_year(
-            station_id,
-            year,
-            lon=lon,
-            utc_offset_hours=utc_offset_hours,
-            drop_incomplete_latest_day=year == current_year,
-            session=session,
-        )
-        if gap:
-            gapped_years.add(year)
-        elif not frame.empty:
-            frames.append(frame)
-    if not frames:
-        return _empty_hourly_frame(), gapped_years
-    return concat_frames(frames), gapped_years
+def _write_cache_file(path: Path, payload: bytes) -> None:
+    """Atomically publish one cache entry, tolerating concurrent workers."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(
+        f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+    )
+    try:
+        temp_path.write_bytes(payload)
+        temp_path.replace(path)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 def _load_station_map(path: str) -> DataFrame:
@@ -594,32 +610,59 @@ def _candidate_key(row: CandidateRow) -> CandidateKey:
 
 
 def _fetch_stations_batch(
-    candidates: list[CandidateKey],
+    candidates: Sequence[CandidateKey],
     years: list[int],
     worker_count: int,
     city_shard_index: int,
+    cache_dir: Path | None = None,
 ) -> dict[CandidateKey, tuple[DataFrame, set[int]]]:
-    results: dict[CandidateKey, tuple[DataFrame, set[int]]] = {}
-    session = requests.Session()
+    frames: dict[CandidateKey, list[DataFrame]] = {
+        candidate: [] for candidate in candidates
+    }
+    gaps: dict[CandidateKey, set[int]] = {candidate: set() for candidate in candidates}
+    thread_state = threading.local()
+
+    def fetch(candidate: CandidateKey, year: int) -> tuple[DataFrame, bool]:
+        session = getattr(thread_state, "session", None)
+        if session is None:
+            session = requests.Session()
+            thread_state.session = session
+        return fetch_station_year(
+            candidate[0],
+            year,
+            lon=candidate[1],
+            utc_offset_hours=candidate[2],
+            drop_incomplete_latest_day=year == datetime.now(tz=UTC).year,
+            session=session,
+            cache_dir=cache_dir,
+        )
+
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = {
-            executor.submit(
-                _fetch_station_series,
-                session,
-                candidate[0],
-                years,
-                candidate[1],
-                candidate[2],
-            ): candidate
+            executor.submit(fetch, candidate, year): (candidate, year)
             for candidate in candidates
+            for year in years
         }
         for future in tqdm(
             as_completed(futures),
             total=len(futures),
-            desc=f"GHCNh->wetbulb city_shard {city_shard_index}",
+            desc=f"GHCNh station-years city_shard {city_shard_index}",
         ):
-            results[futures[future]] = future.result()
-    return results
+            candidate, year = futures[future]
+            frame, gap = future.result()
+            if gap:
+                gaps[candidate].add(year)
+            elif not frame.empty:
+                frames[candidate].append(frame)
+    return {
+        candidate: (
+            concat_frames(candidate_frames)
+            if candidate_frames
+            else _empty_hourly_frame(),
+            gaps[candidate],
+        )
+        for candidate, candidate_frames in frames.items()
+    }
 
 
 def _candidate_daily_frame(row: CandidateRow, station_df: DataFrame) -> DataFrame:
@@ -744,6 +787,7 @@ def process_ghcnh(
         years,
         worker_count,
         city_shard_index,
+        Path(out_dir) / GHCNH_CACHE_DIRECTORY,
     )
 
     daily_frames: list[DataFrame] = []
