@@ -246,8 +246,6 @@ def main() -> None:
     )
     if args.json_out:
         json_output_path = _validated_json_output_path(args.json_out)
-        # Round-trip through pandas' JSON encoder so numpy scalar and missing
-        # value types become standards-compliant builtins/nulls.
         payload = {
             "by_year": json.loads(yearly.to_json(orient="records")),
             "by_source": json.loads(by_source.to_json(orient="records")),

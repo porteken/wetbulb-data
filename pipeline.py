@@ -21,8 +21,6 @@ NA_CITIES_CSV = "cities_na.csv"
 NA_STATION_MAP_CSV = "cities_na_isd_stations.csv"
 NA_GHCNH_STATION_MAP_CSV = "cities_na_ghcnh_stations.csv"
 NA_ECCC_STATION_MAP_CSV = "cities_na_eccc_stations.csv"
-# GHCNh is NOAA's supported hourly archive and exposes yearly inventory data
-# needed for multi-station selection across the complete analysis record.
 GHCNH_TRANSITION_YEAR = 1990
 
 

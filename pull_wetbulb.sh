@@ -4,7 +4,6 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${HERE}"
 
-# Values supplied with the command invocation take precedence over .env.
 CALLER_START_YEAR="${START_YEAR-}"
 CALLER_END_YEAR="${END_YEAR-}"
 if [[ -f .env ]]; then
@@ -17,8 +16,9 @@ fi
 [[ -z "${CALLER_END_YEAR}" ]] || END_YEAR="${CALLER_END_YEAR}"
 unset CALLER_START_YEAR CALLER_END_YEAR
 
-CATALOG_VERSION="na-msa-principal-cities-2023-ca-cma-ca-2021"
+CATALOG_VERSION="na-msa-principal-cities-2023-ca-cma-ca-2021-deduplicated-v1"
 OUTPUT_ROOT="${WETBULB_NA_ROOT:-na/${CATALOG_VERSION}}"
+ALL_STEPS=(cities crosswalk backfill gapfill validate bootstrap views)
 STEPS=()
 DRY_RUN=0
 CONFIRM_DB=0
@@ -33,7 +33,7 @@ read -ra PY <<<"${PYTHON_RUN}"
 
 usage() {
   echo "usage: $0 [--dry-run] [--confirm-db-write] [--city-shard-count N] [steps...]"
-  echo "steps: cities crosswalk trial backfill gapfill validate load cleanup views"
+  echo "steps: cities crosswalk trial backfill gapfill validate bootstrap load cleanup views all"
 }
 
 run() {
@@ -54,7 +54,8 @@ while (($#)); do
       SHARD_COUNT="${1:?missing shard count}"
       ;;
     -h|--help) usage; exit 0 ;;
-    cities|crosswalk|trial|backfill|gapfill|validate|load|cleanup|views) STEPS+=("$1") ;;
+    all) STEPS+=("${ALL_STEPS[@]}") ;;
+    cities|crosswalk|trial|backfill|gapfill|validate|bootstrap|load|cleanup|views) STEPS+=("$1") ;;
     *) echo "unknown option or step: $1" >&2; usage >&2; exit 2 ;;
   esac
   shift
@@ -110,8 +111,7 @@ for step in "${STEPS[@]}"; do
     backfill)
       check_catalog
       for ((shard=0; shard<SHARD_COUNT; shard++)); do
-        # shellcheck disable=SC2312  # word splitting here is intentional: turns
-        # the year range into separate --years arguments.
+        # shellcheck disable=SC2312
         run "${PY[@]}" "${HERE}/pipeline.py" --years $(seq "${START_YEAR}" "${END_YEAR}") \
           --city-shard-count "${SHARD_COUNT}" --city-shard-index "${shard}" \
           --out-dir "${OUTPUT_ROOT}" "${STATION_FORCE_ARGS[@]}"
@@ -137,6 +137,13 @@ for step in "${STEPS[@]}"; do
     validate)
       check_catalog
       run "${PY[@]}" "${HERE}/validate_na_catalog.py" --root "${HERE}"
+      ;;
+    bootstrap)
+      ((CONFIRM_DB)) || { echo "bootstrap requires --confirm-db-write" >&2; exit 1; }
+      run "${PY[@]}" "${HERE}/make_city_center_map_na.py"
+      run "${PY[@]}" "${HERE}/locations.py"
+      run "${PY[@]}" "${HERE}/load.py" \
+        --wetbulb-root "${OUTPUT_ROOT}/wetbulb_data_csv"
       ;;
     load)
       ((CONFIRM_DB)) || { echo "load requires --confirm-db-write" >&2; exit 1; }

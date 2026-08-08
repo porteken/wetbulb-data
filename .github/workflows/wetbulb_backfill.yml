@@ -92,8 +92,6 @@ jobs:
       (needs.clear-wetbulb-output.result == 'success' || needs.clear-wetbulb-output.result == 'skipped')
     strategy:
       fail-fast: false
-      # Keep the same aggregate fetch concurrency as the old five-shard job,
-      # while bounding every runner to one year so it stays below six hours.
       max-parallel: 5
       matrix:
         year: ${{ fromJson(needs.prepare.outputs.year_matrix) }}

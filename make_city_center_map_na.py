@@ -68,8 +68,6 @@ _GEONAMES_COLUMNS = {
 
 _SAINT_PREFIXES = ("st ", "ste ")
 
-# Amalgamated municipalities that carry no settlement of their own name; markers
-# belong on the seat town rather than on the centroid of the merged region.
 SEAT_SETTLEMENTS = {
     "CA3536020": "Chatham",
     "CA3518017": "Bowmanville",

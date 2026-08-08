@@ -9,6 +9,8 @@ from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 from urllib.parse import quote, urlencode
 
+from dotenv import load_dotenv
+
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping
@@ -67,6 +69,8 @@ def resolve_database_uri(
     direct_env_vars: tuple[str, ...] = PRIMARY_DATABASE_URI_ENV_VARS,
 ) -> str | None:
     """Resolve the active Postgres database URI from direct or component env vars."""
+    if environ is None:
+        load_dotenv(override=False)
     resolved_environ = _resolve_environ(environ)
     for env_name in direct_env_vars:
         if env_value := resolved_environ.get(env_name):

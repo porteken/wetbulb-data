@@ -20,8 +20,6 @@ LOGGER = logging.getLogger(__name__)
 
 CITIES_NA_CSV = "cities_na.csv"
 
-# Deliberately wider than the current city catalog so nearby coastal and
-# cross-border stations are retained as candidates.
 NORTH_AMERICA_HISTORY_MIN_LAT = 15.0
 NORTH_AMERICA_HISTORY_MAX_LAT = 65.0
 NORTH_AMERICA_HISTORY_MIN_LON = -140.0

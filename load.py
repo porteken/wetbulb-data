@@ -1182,9 +1182,6 @@ def main() -> None:
         if should_refresh_schema or args.ensure_schema:
             execute_sql_files_with_retries(db_uri, ("create_tables.sql",))
         if "wetbulb" not in skip_tables:
-            # CREATE TABLE IF NOT EXISTS cannot add provenance columns to an
-            # already-deployed table, so every wet-bulb load applies the
-            # idempotent ALTER migration first.
             execute_sql_files_with_retries(
                 db_uri,
                 ("migrate_wetbulb_station_provenance.sql",),

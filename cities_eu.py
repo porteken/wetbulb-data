@@ -52,7 +52,6 @@ _GEONAMES_COLUMNS = {
 
 EU_COUNTRY_CODES = frozenset(
     {
-        # EU-27
         "AT",
         "BE",
         "BG",

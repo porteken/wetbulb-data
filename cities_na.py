@@ -49,7 +49,54 @@ type StationVerifier = Callable[[list[str], int], bool]
 
 LOGGER = logging.getLogger(__name__)
 
-CATALOG_VERSION = "na-msa-principal-cities-2023-ca-cma-ca-2021"
+CATALOG_VERSION = "na-msa-principal-cities-2023-ca-cma-ca-2021-deduplicated-v1"
+
+DUPLICATE_DATA_PLACE_IDS = frozenset(
+    {
+        "US0101852",
+        "US0617610",
+        "US0625380",
+        "US0649670",
+        "US0651182",
+        "US0657792",
+        "US0670000",
+        "US0804000",
+        "US0922700",
+        "US0982660",
+        "US1216725",
+        "US1224125",
+        "US1235875",
+        "US1239067",
+        "US1245025",
+        "US1253150",
+        "US1324768",
+        "US1368040",
+        "US1765078",
+        "US1983910",
+        "US2102368",
+        "US2546330",
+        "US2659140",
+        "US2688940",
+        "US3626759",
+        "US3675484",
+        "US3763120",
+        "US3948244",
+        "US3974608",
+        "US4101000",
+        "US4105350",
+        "US4708540",
+        "US4739560",
+        "US4806128",
+        "US5066175",
+        "US5103000",
+        "US5116608",
+        "US5303180",
+        "US5355785",
+        "US5357535",
+        "US5367167",
+        "US5554875",
+    }
+)
 
 CENSUS_ESTIMATES_URL = (
     "https://www2.census.gov/programs-surveys/popest/datasets/2020-2025/"
@@ -645,6 +692,7 @@ def build_metro_candidates(
     if len(selected) != len(us_selected) + len(ca_selected):
         message = "a requested metro core city has no GeoNames terrain match"
         raise ValueError(message)
+    selected = selected[~selected["place_id"].isin(DUPLICATE_DATA_PLACE_IDS)]
     return rank_places(selected)
 
 

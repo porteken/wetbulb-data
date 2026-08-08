@@ -103,9 +103,6 @@ def build_station_map(
                 "span_years",
                 "eccc_station_id",
             ],
-            # A long-retired station should not displace a currently reporting
-            # station. Among equally recent stations, physical proximity is a
-            # better proxy for the city's conditions than record length.
             ascending=[False, True, True, False, True],
         )
         recent_slots = max(1, (max_candidates_per_city + 1) // 2)

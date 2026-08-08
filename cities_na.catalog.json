@@ -1,10 +1,10 @@
 {
   "ca_population_vintage": 2021,
-  "catalog_sha256": "e72a9ae26723ba2f976bd7a143c0b44d40300e10ca570f2dd7d12f22425036cc",
-  "catalog_version": "na-msa-principal-cities-2023-ca-cma-ca-2021",
-  "generated_at": "2026-08-02T04:00:08.909506+00:00",
+  "catalog_sha256": "f16509bab455b8460980a05eec16d4336f5b6601a08708afd071ba0fca25fbcd",
+  "catalog_version": "na-msa-principal-cities-2023-ca-cma-ca-2021-deduplicated-v1",
+  "generated_at": "2026-08-08T20:49:47.884146+00:00",
   "grid_deg": 0.1,
-  "max_cities": 744,
+  "max_cities": 702,
   "sources": {
     "census_estimates": "https://www2.census.gov/programs-surveys/popest/datasets/2020-2025/cities/totals/sub-est2025.csv",
     "census_gazetteer": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2025_Gazetteer/2025_Gaz_place_national.zip",

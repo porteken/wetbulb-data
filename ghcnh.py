@@ -85,12 +85,6 @@ _PARQUET_COLUMNS = (
     "altimeter",
     "altimeter_Quality_Code",
 )
-# GHCNh preserves the report-family label from each source. Records before the
-# METAR transition commonly use Airways/Synoptic families such as SAO and SYSA;
-# excluding them discards otherwise QC-passing hourly temperature, humidity,
-# and pressure observations. These are the fixed-land surface families in
-# NOAA's documented report-type table. Daily/monthly summaries, precipitation-
-# only networks, ships, buoys, and upper-air reports remain excluded.
 _REPORT_PRIORITY = {
     "FM15": 0,
     "FM16": 1,
@@ -117,9 +111,6 @@ _REPORT_PRIORITY = {
     "EnvCan": 22,
 }
 _REPORT_TYPES = frozenset(_REPORT_PRIORITY)
-# These source-specific quality codes follow the ISD/FM report convention;
-# codes 2, 3, 6, and 7 identify suspect or erroneous values. Codes 1 and 5
-# denote observations that passed their applicable checks.
 _REJECT_QC_CODES = frozenset({"2", "3", "6", "7"})
 _MIN_AIR_TEMPERATURE_C = -80.0
 _MAX_AIR_TEMPERATURE_C = 60.0
@@ -332,8 +323,6 @@ def fetch_station_year(
     """Return one station-year frame and whether a transient fetch gap occurred."""
     cache_path = None
     missing_path = None
-    # Completed NOAA yearly files are immutable. The current year's file is still
-    # growing, so deliberately bypass the persistent cache for it.
     if cache_dir is not None and year < datetime.now(tz=UTC).year:
         cache_path = cache_dir / str(year) / f"{station_id}.parquet"
         missing_path = cache_path.with_suffix(".missing")

@@ -11,7 +11,6 @@ on:
         type: boolean
         default: false
   schedule:
-    # Avoid the top of the hour and allow NOAA's daily GHCNh refresh to settle.
     - cron: "27 20 * * *"
 
 concurrency:
@@ -55,7 +54,6 @@ jobs:
     needs: resolve-target
     strategy:
       fail-fast: false
-      # 4 jobs x 8 workers stays below Earth Engine's standard 40-request quota.
       max-parallel: 4
       matrix:
         region:
@@ -124,7 +122,6 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
-          # Existing service-account JSON; the project ID is read from the document.
           GOOGLE_EARTH_ENGINE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
           TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
         run: |

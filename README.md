@@ -14,4 +14,27 @@ application itself is
 The `Daily Wetbulb Update` GitHub Actions workflow refreshes the current year
 for North America and Europe every day at 20:27 UTC.
 
+## Rebuilding a reset database
+
+The North American catalog permanently excludes the 42 lower-population cities whose
+completed 2000–2025 daily series exactly duplicated a larger city. A full regeneration
+therefore produces 702 North American locations with contiguous IDs `0` through `701`;
+European IDs remain unchanged.
+
+After creating a fresh PostgreSQL add-on and updating `.env`, rebuild North America and
+bootstrap the empty database with:
+
+```bash
+START_YEAR=1990 END_YEAR=2025 ./pull_wetbulb.sh --confirm-db-write all
+```
+
+Then append Europe and refresh the combined materialized views:
+
+```bash
+EU_START_YEAR=1990 EU_END_YEAR=2025 ./pull_wetbulb_eu.sh --yes all
+```
+
+The `bootstrap` step used by the first command truncates and recreates database contents;
+it is intended only for an empty or deliberately reset database. Routine updates should
+continue to use the incremental `load` step.
 

@@ -157,8 +157,6 @@ def _fetch_city(
                 values = collection.getRegion(point, EE_SCALE_METERS).getInfo()
                 frame = _hourly_frame(int(row.location_id), _raw_region_frame(values))
                 if frame.empty:
-                    # The current-year range intentionally extends beyond the latest
-                    # published ERA5-Land hour, so trailing chunks can be empty.
                     break
                 frame["utc_offset_hours"] = float(row.utc_offset_hours)
                 frames.append(frame)
