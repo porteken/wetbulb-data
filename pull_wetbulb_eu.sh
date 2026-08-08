@@ -4,12 +4,18 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${HERE}"
 
+# Values supplied with the command invocation take precedence over .env.
+CALLER_EU_START_YEAR="${EU_START_YEAR-}"
+CALLER_EU_END_YEAR="${EU_END_YEAR-}"
 if [[ -f .env ]]; then
   set -a
   # shellcheck disable=SC1091
   . .env
   set +a
 fi
+[[ -z "${CALLER_EU_START_YEAR}" ]] || EU_START_YEAR="${CALLER_EU_START_YEAR}"
+[[ -z "${CALLER_EU_END_YEAR}" ]] || EU_END_YEAR="${CALLER_EU_END_YEAR}"
+unset CALLER_EU_START_YEAR CALLER_EU_END_YEAR
 
 EU_OUT_DIR=${EU_OUT_DIR:-eu}
 EU_CITIES_CSV=${EU_CITIES_CSV:-cities_eu.csv}

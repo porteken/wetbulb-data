@@ -4,12 +4,18 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${HERE}"
 
+# Values supplied with the command invocation take precedence over .env.
+CALLER_START_YEAR="${START_YEAR-}"
+CALLER_END_YEAR="${END_YEAR-}"
 if [[ -f .env ]]; then
   set -a
   # shellcheck disable=SC1091
   . .env
   set +a
 fi
+[[ -z "${CALLER_START_YEAR}" ]] || START_YEAR="${CALLER_START_YEAR}"
+[[ -z "${CALLER_END_YEAR}" ]] || END_YEAR="${CALLER_END_YEAR}"
+unset CALLER_START_YEAR CALLER_END_YEAR
 
 CATALOG_VERSION="na-msa-principal-cities-2023-ca-cma-ca-2021"
 OUTPUT_ROOT="${WETBULB_NA_ROOT:-na/${CATALOG_VERSION}}"
