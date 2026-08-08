@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Explicitly remove the obsolete PET schema to reclaim database storage."""
 
 from __future__ import annotations

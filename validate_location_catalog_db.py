@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Refuse to reuse populated database location IDs for different cities."""
 
 from __future__ import annotations

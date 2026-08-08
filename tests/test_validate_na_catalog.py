@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for North America catalog invariant validation."""
 
 from __future__ import annotations

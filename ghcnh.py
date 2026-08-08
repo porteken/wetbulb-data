@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Fetch NOAA GHCNh station observations and compute daily wet-bulb temperature."""
 
 from __future__ import annotations

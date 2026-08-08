@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Rebuild the EU ERA5-Land gap-fill parquet from snapshotted CDS downloads.
 
 The live `era5land.py` run holds every city in memory and writes only at the

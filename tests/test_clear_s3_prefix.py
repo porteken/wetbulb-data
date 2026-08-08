@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for batched S3 prefix deletion helpers."""
 
 from __future__ import annotations

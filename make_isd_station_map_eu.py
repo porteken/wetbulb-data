@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Generate `cities_eu_isd_stations.csv`: each EU city's ISD station candidate."""
 
 from __future__ import annotations

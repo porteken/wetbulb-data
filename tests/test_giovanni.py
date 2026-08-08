@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the Giovanni Time Series API wet-bulb worker helpers."""
 
 from __future__ import annotations

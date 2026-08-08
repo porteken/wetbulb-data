@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the NOAA LCD v2 wet-bulb worker (default wetbulb pipeline source)."""
 
 from __future__ import annotations

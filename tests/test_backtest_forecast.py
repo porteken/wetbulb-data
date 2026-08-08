@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for leakage-safe backtest interval calibration."""
 
 from __future__ import annotations

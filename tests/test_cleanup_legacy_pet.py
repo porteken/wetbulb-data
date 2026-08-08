@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for explicit legacy PET cleanup."""
 
 from __future__ import annotations

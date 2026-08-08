@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Generate `cities_na_centers.csv`: each NA city's downtown display coordinate.
 
 The catalog stores the Census/StatCan representative point of a municipal polygon,

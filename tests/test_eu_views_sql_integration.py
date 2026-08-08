@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Disposable-PostgreSQL integration test for the US/EU rankings-view split."""
 
 from __future__ import annotations

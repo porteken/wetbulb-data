@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the numeric GMST forecast reference model."""
 
 from __future__ import annotations

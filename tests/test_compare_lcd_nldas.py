@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the LCD-vs-NLDAS wet-bulb comparison report."""
 
 from __future__ import annotations

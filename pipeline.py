@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Orchestrate the wet-bulb data pipeline."""
 
 from __future__ import annotations

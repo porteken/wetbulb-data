@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Generate `cities_isd_stations.csv`: each city's ordered ISD station-id candidates."""
 
 from __future__ import annotations

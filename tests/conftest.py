@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Shared fixtures for the wet-bulb pipeline tests."""
 
 from __future__ import annotations

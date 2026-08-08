@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for EU city data processing."""
 
 from __future__ import annotations

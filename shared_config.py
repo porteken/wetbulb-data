@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Shared configuration for weather, MRT, and database scripts."""
 
 from __future__ import annotations

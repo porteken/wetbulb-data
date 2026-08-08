@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Fill Canadian station gaps from ECCC's official hourly climate archive."""
 
 from __future__ import annotations

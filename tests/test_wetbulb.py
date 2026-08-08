@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the Stull and Davies-Jones wet-bulb temperature approximations."""
 
 from __future__ import annotations

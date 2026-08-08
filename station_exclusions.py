@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Known observation stations excluded from wet-bulb candidate selection."""
 
 # Denver Central Park (USW00023012) reports summer dew points roughly 9 C above

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Compute wet-bulb temperature via the Stull (2011) and Davies-Jones (2008) methods."""
 
 from __future__ import annotations

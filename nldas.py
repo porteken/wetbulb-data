@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Download NLDAS-2 hourly forcing data and compute daily wet-bulb temperature."""
 
 from __future__ import annotations

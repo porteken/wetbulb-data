@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Map city catalogs to nearby GHCNh stations with current-year observations."""
 
 from __future__ import annotations

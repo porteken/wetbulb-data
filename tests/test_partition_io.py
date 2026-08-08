@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for shared parquet partition write/resume helpers."""
 
 from __future__ import annotations

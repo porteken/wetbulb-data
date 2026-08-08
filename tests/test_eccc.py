@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 from __future__ import annotations
 
 from typing import Any, cast

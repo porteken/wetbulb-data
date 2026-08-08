@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the database location-catalog identity guard."""
 
 from __future__ import annotations

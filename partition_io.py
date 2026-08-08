@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Shared parquet partition write/resume helpers for pipeline workers."""
 
 from __future__ import annotations

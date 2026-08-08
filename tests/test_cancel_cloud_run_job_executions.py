@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for Cloud Run job cancellation."""
 
 from __future__ import annotations

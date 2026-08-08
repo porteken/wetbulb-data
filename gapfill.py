@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Fill (location_id, date) gaps the ISD station pipeline could not produce."""
 
 from __future__ import annotations

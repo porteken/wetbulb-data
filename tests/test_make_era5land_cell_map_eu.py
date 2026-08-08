@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the EU ERA5-Land land-cell snapping map builder."""
 
 from __future__ import annotations

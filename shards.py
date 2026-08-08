@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Utilities for managing partitioned dataset shards."""
 
 from __future__ import annotations

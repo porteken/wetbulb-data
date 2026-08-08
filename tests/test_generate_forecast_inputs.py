@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for forecast-input CLI argument handling and GMST input generation."""
 
 from __future__ import annotations

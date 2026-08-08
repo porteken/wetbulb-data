@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Generate the database-ready locations CSV from the North America catalog."""
 
 from __future__ import annotations

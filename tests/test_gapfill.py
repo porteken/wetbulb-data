@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the NLDAS-2 gap-filler."""
 
 from __future__ import annotations

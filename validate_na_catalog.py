@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Validate committed North America catalog and GHCNh crosswalk invariants."""
 
 from __future__ import annotations

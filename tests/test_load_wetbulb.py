@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the standalone wetbulb loader."""
 
 from __future__ import annotations

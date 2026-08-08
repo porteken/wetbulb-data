@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Rolling-origin ship gate for climate-informed wet-bulb forecasts."""
 
 from __future__ import annotations

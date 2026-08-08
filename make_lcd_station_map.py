@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Generate `cities_lcd_stations.csv`: each city's nearest usable LCD station."""
 
 from __future__ import annotations

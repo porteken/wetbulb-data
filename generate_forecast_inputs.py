@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Generate pinned GMST and exact-ISD station-group inputs for PostgreSQL."""
 
 from __future__ import annotations

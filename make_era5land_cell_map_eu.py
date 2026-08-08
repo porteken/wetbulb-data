@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Map coastal EU cities onto a nearby ERA5-Land grid cell that actually has land.
 
 ERA5-Land is a land-only reanalysis, so a city whose centre falls in a cell the

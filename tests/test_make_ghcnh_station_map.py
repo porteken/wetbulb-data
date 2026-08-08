@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the current GHCNh city crosswalk."""
 
 from __future__ import annotations

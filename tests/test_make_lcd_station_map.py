@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for make_lcd_station_map.py."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Build the combined North America catalog of the 500 largest US and Canadian cities.
 
 Cities come from authoritative municipal registers -- Census incorporated places for the

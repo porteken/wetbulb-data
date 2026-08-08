@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the NOAA GHCNh wet-bulb worker."""
 
 from __future__ import annotations

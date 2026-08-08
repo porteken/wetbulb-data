@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Load wetbulb parquet/CSV data into the database without touching other tables."""
 
 from __future__ import annotations

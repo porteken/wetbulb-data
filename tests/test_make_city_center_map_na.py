@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the North America city-center display coordinate mapper."""
 
 from __future__ import annotations

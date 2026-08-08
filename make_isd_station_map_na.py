@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Generate `cities_na_isd_stations.csv` directly from the global ISD inventory."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Reference implementation of the climate-informed wet-bulb forecast model."""
 
 from __future__ import annotations

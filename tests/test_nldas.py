@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the NLDAS-2 wet-bulb worker helpers."""
 
 from __future__ import annotations

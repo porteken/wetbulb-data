@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Shared helpers for matching cities to NCEI ISD stations."""
 
 from __future__ import annotations

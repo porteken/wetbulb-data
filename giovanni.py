@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Fetch NLDAS-2 point time series from the Giovanni Time Series API."""
 
 from __future__ import annotations

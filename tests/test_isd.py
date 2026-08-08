@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the NOAA ISD Global Hourly wet-bulb worker (default wetbulb pipeline source)."""
 
 from __future__ import annotations

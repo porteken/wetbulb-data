@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for rebuilding the EU ERA5-Land gap-fill from a download snapshot."""
 
 from __future__ import annotations

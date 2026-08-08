@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Refresh materialized views in dependency order without dropping them."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Fill station gaps with Google Earth Engine's ERA5-Land hourly collection."""
 
 from __future__ import annotations

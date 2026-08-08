@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Build the 500 largest eligible European cities for the wet-bulb pipeline.
 
 GeoNames administrative features are excluded: only populated places (feature class

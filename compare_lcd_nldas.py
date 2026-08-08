@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Compare LCD-station-derived daily wet-bulb against the existing NLDAS-derived rows."""
 
 from __future__ import annotations

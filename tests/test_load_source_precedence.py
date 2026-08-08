@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Disposable-PostgreSQL integration tests for `load._upsert_from_staging` precedence."""
 
 from __future__ import annotations

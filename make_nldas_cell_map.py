@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Generate `cities_nldas_cells.csv`: each city's land-snapped NLDAS-2 cell."""
 
 from __future__ import annotations

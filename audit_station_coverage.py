@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Audit station-versus-grid coverage in wet-bulb parquet roots."""
 
 from __future__ import annotations

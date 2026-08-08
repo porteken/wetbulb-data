@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Map Canadian cities to ranked ECCC hourly climate-station candidates."""
 
 from __future__ import annotations

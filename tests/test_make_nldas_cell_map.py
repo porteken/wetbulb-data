@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for make_nldas_cell_map.py."""
 
 from __future__ import annotations

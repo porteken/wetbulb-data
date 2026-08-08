@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for the direct North America global-ISD station mapper."""
 
 from __future__ import annotations

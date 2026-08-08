@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Tests for dependency-ordered materialized view refresh."""
 
 from __future__ import annotations

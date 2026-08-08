@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Delete S3 objects under a prefix in batches."""
 
 from __future__ import annotations

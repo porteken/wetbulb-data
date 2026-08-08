@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Fail unless every configured city has a non-null row for every expected day."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Load parquet data into the database and manage views."""
 
 from __future__ import annotations
