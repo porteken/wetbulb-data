@@ -27,6 +27,7 @@ START_YEAR="${START_YEAR:-1990}"
 END_YEAR="${END_YEAR:-$((10#$(date -u +%Y) - 1))}"
 FORCE_STATION_BACKFILL="${FORCE_STATION_BACKFILL:-0}"
 LOAD_WORKERS="${LOAD_WORKERS:-1}"
+NA_PARALLEL_SHARDS="${NA_PARALLEL_SHARDS:-0}"
 PYTHON_RUN="${PYTHON_RUN:-uv run python}"
 
 read -ra PY <<<"${PYTHON_RUN}"
@@ -72,6 +73,10 @@ fi
   echo "LOAD_WORKERS must be a positive integer" >&2
   exit 2
 }
+[[ "${NA_PARALLEL_SHARDS}" =~ ^[01]$ ]] || {
+  echo "NA_PARALLEL_SHARDS must be 0 or 1" >&2
+  exit 2
+}
 STATION_FORCE_ARGS=()
 ((FORCE_STATION_BACKFILL)) && STATION_FORCE_ARGS=(--force)
 
@@ -89,6 +94,49 @@ check_catalog() {
   if ((!DRY_RUN)); then
     printf '%s\n' "${expected}" >"${recorded}"
   fi
+}
+
+run_backfill_shard() {
+  local shard=$1
+  local year
+  local years=()
+  for ((year=10#${START_YEAR}; year<=10#${END_YEAR}; year++)); do
+    years+=("${year}")
+  done
+  run "${PY[@]}" "${HERE}/pipeline.py" --years "${years[@]}" \
+    --city-shard-count "${SHARD_COUNT}" --city-shard-index "${shard}" \
+    --out-dir "${OUTPUT_ROOT}" "${STATION_FORCE_ARGS[@]}"
+  run "${PY[@]}" "${HERE}/eccc.py" --start-year "${START_YEAR}" \
+    --end-year "${END_YEAR}" --city-shard-count "${SHARD_COUNT}" \
+    --city-shard-index "${shard}" --out-dir "${OUTPUT_ROOT}" \
+    "${STATION_FORCE_ARGS[@]}"
+}
+
+run_gapfill_shard() {
+  local shard=$1
+  run "${PY[@]}" "${HERE}/gapfill.py" --start-year "${START_YEAR}" \
+    --end-year "${END_YEAR}" --city-shard-count "${SHARD_COUNT}" \
+    --city-shard-index "${shard}" --out-dir "${OUTPUT_ROOT}" \
+    "${STATION_FORCE_ARGS[@]}"
+}
+
+run_city_shards() {
+  local worker=$1
+  local pids=() rc=0 shard
+  if ((!NA_PARALLEL_SHARDS)); then
+    for ((shard=0; shard<SHARD_COUNT; shard++)); do
+      "${worker}" "${shard}"
+    done
+    return
+  fi
+  for ((shard=0; shard<SHARD_COUNT; shard++)); do
+    "${worker}" "${shard}" &
+    pids+=("$!")
+  done
+  for pid in "${pids[@]}"; do
+    wait "${pid}" || rc=1
+  done
+  ((rc == 0))
 }
 
 for step in "${STEPS[@]}"; do
@@ -110,16 +158,7 @@ for step in "${STEPS[@]}"; do
       ;;
     backfill)
       check_catalog
-      for ((shard=0; shard<SHARD_COUNT; shard++)); do
-        # shellcheck disable=SC2312
-        run "${PY[@]}" "${HERE}/pipeline.py" --years $(seq "${START_YEAR}" "${END_YEAR}") \
-          --city-shard-count "${SHARD_COUNT}" --city-shard-index "${shard}" \
-          --out-dir "${OUTPUT_ROOT}" "${STATION_FORCE_ARGS[@]}"
-        run "${PY[@]}" "${HERE}/eccc.py" --start-year "${START_YEAR}" \
-          --end-year "${END_YEAR}" --city-shard-count "${SHARD_COUNT}" \
-          --city-shard-index "${shard}" --out-dir "${OUTPUT_ROOT}" \
-          "${STATION_FORCE_ARGS[@]}"
-      done
+      run_city_shards run_backfill_shard
       ;;
     gapfill)
       check_catalog
@@ -127,12 +166,7 @@ for step in "${STEPS[@]}"; do
         echo "gapfill requires EARTHDATA_USERNAME and EARTHDATA_PASSWORD" >&2
         exit 1
       }
-      for ((shard=0; shard<SHARD_COUNT; shard++)); do
-        run "${PY[@]}" "${HERE}/gapfill.py" --start-year "${START_YEAR}" \
-          --end-year "${END_YEAR}" --city-shard-count "${SHARD_COUNT}" \
-          --city-shard-index "${shard}" --out-dir "${OUTPUT_ROOT}" \
-          "${STATION_FORCE_ARGS[@]}"
-      done
+      run_city_shards run_gapfill_shard
       ;;
     validate)
       check_catalog
