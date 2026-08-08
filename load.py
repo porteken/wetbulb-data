@@ -16,14 +16,12 @@ from typing import TYPE_CHECKING, Any, LiteralString, cast
 import psycopg
 import pyarrow.csv as pacsv
 import pyarrow.parquet as pq
-from psycopg import sql
+from psycopg import Connection, sql
 
 from shared_config import DATABASE_CONFIG_HINT, resolve_database_uri
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-    from psycopg import Connection
 
 LOGGER = logging.getLogger(__name__)
 COPY_BATCH_SIZE = 50_000
@@ -34,6 +32,7 @@ LOAD_FILE_RETRY_DELAY_SECONDS = 5
 SQL_OPERATION_MAX_ATTEMPTS = 3
 SQL_OPERATION_RETRY_DELAY_SECONDS = 5
 DOLLAR_QUOTE_RE = re.compile(r"\$(?:[A-Za-z_]\w*)?\$")
+CONNECTION_TYPE = Connection[Any]
 TABLE_NAMES = [
     "locations",
     "wetbulb",
@@ -61,6 +60,10 @@ SOURCE_RANK: dict[str, int] = {
     "nldas": 3,
     "era5land": 4,
 }
+
+
+def _connection(conn: object) -> Connection[Any]:
+    return cast("CONNECTION_TYPE", conn)
 
 
 def _source_rank_expression(column: sql.Composable) -> sql.Composed:
@@ -598,7 +601,7 @@ def _copy_parquet_file_in_batches(
     total_rows = 0
     write_options = pacsv.WriteOptions(include_header=False)
     with (
-        cast("Connection[Any]", conn).cursor() as cur,
+        _connection(conn).cursor() as cur,
         cur.copy(copy_statement) as copy,
     ):
         for batch in parquet_file.iter_batches(batch_size=batch_size):
@@ -620,7 +623,7 @@ def _copy_csv_file_in_batches(
     """Stream a plain CSV file into a table with a single COPY statement."""
     _ = batch_size
     with (
-        cast("Connection[Any]", conn).cursor() as cur,
+        _connection(conn).cursor() as cur,
         csv_path.open("r", encoding="utf-8", newline="") as f,
     ):
         header = next(f, None)
@@ -665,7 +668,7 @@ def _create_staging_table(
         sql.SQL(", ").join(sql.Identifier(col) for col in column_names),
         sql.Identifier("public", table_name),
     )
-    with cast("Connection[Any]", conn).cursor() as cur:
+    with _connection(conn).cursor() as cur:
         cur.execute(create_statement)
     return staging_name
 
@@ -704,7 +707,7 @@ def _upsert_from_staging(
             select_columns=select_columns_sql,
             staging=sql.Identifier(staging_name),
         )
-        with cast("Connection[Any]", conn).cursor() as cur:
+        with _connection(conn).cursor() as cur:
             cur.execute(insert_statement)
             return max(cur.rowcount, 0)
 
@@ -762,7 +765,7 @@ def _upsert_from_staging(
         staging=sql.Identifier(staging_name),
         conflict_action=conflict_action,
     )
-    with cast("Connection[Any]", conn).cursor() as cur:
+    with _connection(conn).cursor() as cur:
         cur.execute(upsert_statement)
         return max(cur.rowcount, 0)
 
