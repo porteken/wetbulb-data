@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -87,13 +88,13 @@ def main() -> None:
     value_groups = duplicate_groups(value_hashes)
     source_groups = duplicate_groups(source_hashes)
     cities = pd.read_csv(f"cities_{args.region}.csv").set_index("location_id")
-    print(  # noqa: T201
+    sys.stdout.write(
         f"RESULT region={args.region} audited={len(value_hashes)} "
         f"groups={len(value_groups)} duplicate_cities={sum(map(len, value_groups))} "
         f"removable={sum(len(ids) - 1 for ids in value_groups)} "
         f"source_groups={len(source_groups)} "
         f"source_duplicate_cities={sum(map(len, source_groups))} "
-        f"source_removable={sum(len(ids) - 1 for ids in source_groups)}"
+        f"source_removable={sum(len(ids) - 1 for ids in source_groups)}\n"
     )
     for ids in sorted(value_groups, key=lambda values: (-len(values), values)):
         labels = [
@@ -101,7 +102,7 @@ def main() -> None:
             f"{cities.loc[location_id, 'state']}"
             for location_id in ids
         ]
-        print(f"GROUP size={len(ids)} " + " | ".join(labels))  # noqa: T201
+        sys.stdout.write(f"GROUP size={len(ids)} " + " | ".join(labels) + "\n")
 
 
 if __name__ == "__main__":

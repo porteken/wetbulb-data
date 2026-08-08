@@ -210,13 +210,13 @@ class TestApplyCellOverrides:
 
     def test_no_map_leaves_coordinates_untouched(self) -> None:
         shard = self._shard()
-        result = era5land._apply_cell_overrides(shard, None)
+        result = era5land.apply_cell_overrides(shard, None)
         assert result["lat"].tolist() == shard["lat"].tolist()
         assert result["lng"].tolist() == shard["lng"].tolist()
 
     def test_missing_file_falls_back_to_city_centres(self, tmp_path: Path) -> None:
         shard = self._shard()
-        result = era5land._apply_cell_overrides(shard, str(tmp_path / "absent.csv"))
+        result = era5land.apply_cell_overrides(shard, str(tmp_path / "absent.csv"))
         assert result["lat"].tolist() == shard["lat"].tolist()
 
     def test_overrides_only_the_listed_city(self, tmp_path: Path) -> None:
@@ -225,7 +225,7 @@ class TestApplyCellOverrides:
             cell_map, index=False
         )
 
-        result = era5land._apply_cell_overrides(self._shard(), str(cell_map)).set_index(
+        result = era5land.apply_cell_overrides(self._shard(), str(cell_map)).set_index(
             "location_id"
         )
 
@@ -416,14 +416,14 @@ class TestFetchGapsBatch:
 
 class TestLoadUtcOffsets:
     def test_missing_file_returns_empty_typed_frame(self, tmp_path: Path) -> None:
-        result = era5land._load_utc_offsets(str(tmp_path / "missing.csv"))
+        result = era5land.load_utc_offsets(str(tmp_path / "missing.csv"))
         assert result.empty
         assert list(result.columns) == ["location_id", "utc_offset_hours"]
 
     def test_loads_existing_file(self, tmp_path: Path) -> None:
         path = tmp_path / "cities_eu_isd_stations.csv"
         path.write_text("location_id,utc_offset_hours\n1000,1\n")
-        result = era5land._load_utc_offsets(str(path))
+        result = era5land.load_utc_offsets(str(path))
         assert list(result["location_id"]) == [1000]
         assert list(result["utc_offset_hours"]) == [1]
 
@@ -509,7 +509,7 @@ class TestProcessEra5landGapfill:
         monkeypatch.setattr(era5land, "cds_client", object)
         monkeypatch.setattr(
             era5land,
-            "_load_utc_offsets",
+            "load_utc_offsets",
             lambda _path: pd.DataFrame(
                 {"location_id": [1000], "utc_offset_hours": [0]}
             ),

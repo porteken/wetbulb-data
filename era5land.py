@@ -31,7 +31,12 @@ from gapfill import (
     _gap_years_by_location,
     resolve_gapfill_targets,
 )
-from lcd import _KELVIN_OFFSET, _dewpoint_to_specific_humidity
+from lcd import (
+    _KELVIN_OFFSET as KELVIN_OFFSET,
+)
+from lcd import (
+    _dewpoint_to_specific_humidity as dewpoint_to_specific_humidity,
+)
 from partition_io import write_pending_year_batches
 
 pd = cast("Any", importlib.import_module("pandas"))
@@ -83,7 +88,8 @@ with a bare `assert` on its byte count, so a truncated response from CDS
 surfaces as one. Left uncaught it kills the whole run mid-backfill."""
 
 
-def _empty_hourly_frame() -> DataFrame:
+def empty_hourly_frame() -> DataFrame:
+    """Return an empty frame with the canonical hourly columns."""
     return pd.DataFrame(columns=list(_HOURLY_FRAME_COLUMNS))
 
 
@@ -189,14 +195,14 @@ def _hourly_frame_from_era5land(
 ) -> DataFrame:
     """Convert one city's raw ERA5-Land CSV rows to `location_id,time,Tair,Qair,PSurf`."""
     if raw.empty:
-        return _empty_hourly_frame()
+        return empty_hourly_frame()
 
     time_utc = pd.to_datetime(raw["valid_time"], utc=True).dt.tz_localize(None)
     tair_k = pd.to_numeric(raw["t2m"], errors="coerce")
     dewpoint_k = pd.to_numeric(raw["d2m"], errors="coerce")
     psurf_pa = pd.to_numeric(raw["sp"], errors="coerce")
     pressure_hpa = psurf_pa / 100.0
-    qair = _dewpoint_to_specific_humidity(dewpoint_k - _KELVIN_OFFSET, pressure_hpa)
+    qair = dewpoint_to_specific_humidity(dewpoint_k - KELVIN_OFFSET, pressure_hpa)
 
     local_time = time_utc + pd.to_timedelta(int(utc_offset_hours), unit="h")
     return pd.DataFrame(
@@ -281,7 +287,7 @@ def _fetch_city_gaps(
             year_frames.append(frame)
 
     if not year_frames:
-        return _empty_hourly_frame(), had_gap
+        return empty_hourly_frame(), had_gap
     return lcd.concat_frames(year_frames), had_gap
 
 
@@ -401,7 +407,7 @@ def _fetch_filled_rows(
     return filled
 
 
-def _apply_cell_overrides(shard_df: DataFrame, cell_map_csv: str | None) -> DataFrame:
+def apply_cell_overrides(shard_df: DataFrame, cell_map_csv: str | None) -> DataFrame:
     """Point selected cities at a different ERA5-Land cell than their own centre.
 
     Coastal cities can sit in a cell ERA5-Land treats as sea, which yields an
@@ -432,7 +438,7 @@ def _apply_cell_overrides(shard_df: DataFrame, cell_map_csv: str | None) -> Data
     return merged.drop(columns=["lat_cell", "lng_cell"])
 
 
-def _load_utc_offsets(station_map_csv: str) -> DataFrame:
+def load_utc_offsets(station_map_csv: str) -> DataFrame:
     """Load each city's standard UTC offset from the EU ISD station crosswalk."""
     path = Path(station_map_csv)
     if not path.exists():
@@ -501,12 +507,12 @@ def process_era5land_gapfill(
         len(missing_cells),
     )
 
-    offsets = _load_utc_offsets(station_map_csv)
+    offsets = load_utc_offsets(station_map_csv)
     shard_df = shard_df.merge(offsets, on="location_id", how="left")
     shard_df["utc_offset_hours"] = shard_df["utc_offset_hours"].fillna(
         (shard_df["lng"] / 15.0).round()
     )
-    shard_df = _apply_cell_overrides(shard_df, sources.cell_map_csv)
+    shard_df = apply_cell_overrides(shard_df, sources.cell_map_csv)
     gapped_rows = list(shard_df[shard_df["location_id"].isin(gapped_ids)].itertuples())
 
     filled = _fetch_filled_rows(

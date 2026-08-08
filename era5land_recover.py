@@ -25,7 +25,7 @@ from era5land import (
     EU_CITIES_CSV,
     EU_STATION_MAP_CSV,
     _hourly_frame_from_era5land,
-    _load_utc_offsets,
+    load_utc_offsets,
     read_era5land_download,
 )
 from gapfill import GAPFILL_FILE_PREFIX, _gap_years_by_location, resolve_gapfill_targets
@@ -117,7 +117,7 @@ def _resolve_gapped_rows(
         return None
 
     gap_years_by_location = _gap_years_by_location(missing_cells)
-    offsets = _load_utc_offsets(station_map_csv)
+    offsets = load_utc_offsets(station_map_csv)
     shard_df = shard_df.merge(offsets, on="location_id", how="left")
     shard_df["utc_offset_hours"] = shard_df["utc_offset_hours"].fillna(
         (shard_df["lng"] / 15.0).round()

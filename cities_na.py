@@ -30,8 +30,8 @@ from typing import Any, cast
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
-import defusedxml.ElementTree as ET  # noqa: N817
 import requests
+from defusedxml import ElementTree
 
 import nldas
 from isd_history import (
@@ -505,11 +505,11 @@ def _read_xlsx_rows(payload: bytes) -> list[list[str]]:
     """Read the small, string-only Census workbook without an extra dependency."""
     namespace = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-        shared = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+        shared = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
         strings = [
             "".join(node.itertext()) for node in shared.findall(f"{namespace}si")
         ]
-        sheet = ET.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+        sheet = ElementTree.fromstring(archive.read("xl/worksheets/sheet1.xml"))
     rows: list[list[str]] = []
     for row in sheet.findall(f".//{namespace}row"):
         values: list[str] = []

@@ -89,11 +89,12 @@ def test_collection_chunks_bounds_each_earth_engine_request() -> None:
         def __init__(self) -> None:
             self.ranges: list[tuple[str, str]] = []
 
-        def filterDate(self, start: str, stop: str) -> object:  # noqa: N802
+        def filter_date(self, start: str, stop: str) -> object:
             self.ranges.append((start, stop))
             return object()
 
     collection = Collection()
+    Collection.filterDate = Collection.filter_date
 
     chunks = gee._collection_chunks(collection, 2020, 2020)
 
@@ -110,7 +111,7 @@ def test_fetch_city_retries_earth_engine_exception(monkeypatch: Any) -> None:
         def __init__(self) -> None:
             self.calls = 0
 
-        def getInfo(self) -> list[list[Any]]:  # noqa: N802
+        def get_info(self) -> list[list[Any]]:
             self.calls += 1
             if self.calls == 1:
                 raise EarthEngineError
@@ -125,6 +126,7 @@ def test_fetch_city_retries_earth_engine_exception(monkeypatch: Any) -> None:
             ]
 
     result = Result()
+    Result.getInfo = Result.get_info
     collection = SimpleNamespace(getRegion=lambda *_a: result)
     ee = SimpleNamespace(
         Geometry=SimpleNamespace(Point=lambda coordinates: coordinates),

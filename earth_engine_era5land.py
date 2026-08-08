@@ -122,7 +122,7 @@ def _raw_region_frame(values: list[list[Any]]) -> DataFrame:
 def _hourly_frame(location_id: int, raw: DataFrame) -> DataFrame:
     """Convert Earth Engine getRegion output into the shared hourly schema."""
     if raw.empty:
-        return era5land._empty_hourly_frame()  # noqa: SLF001
+        return era5land.empty_hourly_frame()
     renamed = raw.rename(
         columns={
             "temperature_2m": "Tair",
@@ -132,8 +132,8 @@ def _hourly_frame(location_id: int, raw: DataFrame) -> DataFrame:
     )
     for column in ("Tair", "dewpoint", "PSurf"):
         renamed[column] = pd.to_numeric(renamed[column], errors="coerce")
-    renamed["Qair"] = era5land._dewpoint_to_specific_humidity(  # noqa: SLF001
-        renamed["dewpoint"] - era5land._KELVIN_OFFSET,  # noqa: SLF001
+    renamed["Qair"] = era5land.dewpoint_to_specific_humidity(
+        renamed["dewpoint"] - era5land.KELVIN_OFFSET,
         renamed["PSurf"] / 100.0,
     )
     renamed["location_id"] = location_id
@@ -173,7 +173,7 @@ def _fetch_city(
                 EE_MAX_RETRIES,
                 last_error,
             )
-            return era5land._empty_hourly_frame(), True  # noqa: SLF001
+            return era5land.empty_hourly_frame(), True
     if not frames:
         LOGGER.warning(
             "location_id=%d returned no usable ERA5-Land values at %.4f, %.4f",
@@ -181,7 +181,7 @@ def _fetch_city(
             row.lat,
             row.lng,
         )
-        return era5land._empty_hourly_frame(), True  # noqa: SLF001
+        return era5land.empty_hourly_frame(), True
     return lcd.concat_frames(frames), False
 
 
@@ -273,14 +273,12 @@ def process_earth_engine_gapfill(
         LOGGER.info("No station gaps to fill.")
         return
 
-    offsets = era5land._load_utc_offsets(station_map_csv)  # noqa: SLF001
+    offsets = era5land.load_utc_offsets(station_map_csv)
     shard_df = shard_df.merge(offsets, on="location_id", how="left")
     shard_df["utc_offset_hours"] = shard_df["utc_offset_hours"].fillna(
         (shard_df["lng"] / 15.0).round()
     )
-    shard_df = era5land._apply_cell_overrides(  # noqa: SLF001
-        shard_df, cell_map_csv
-    )
+    shard_df = era5land.apply_cell_overrides(shard_df, cell_map_csv)
     gapped_ids = set(_gap_years_by_location(missing_cells))
     rows = list(shard_df[shard_df["location_id"].isin(gapped_ids)].itertuples())
     filled = _filled_rows(

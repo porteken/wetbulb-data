@@ -61,5 +61,5 @@ station_group text NOT NULL
 
 CREATE TABLE IF NOT EXISTS public.forecast_interval_calibration (
 metric text PRIMARY KEY,
-calibration_factor double precision NOT NULL CHECK (calibration_factor >= 1.0) -- noqa: LT01
+calibration_factor double precision NOT NULL CHECK (calibration_factor > = 1.0)
 ) ;

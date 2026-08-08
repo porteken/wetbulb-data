@@ -217,7 +217,7 @@ class _RecoverHarness:
         monkeypatch.setattr(gapfill, "_filter_material_gaps", lambda cells, _n: cells)
         monkeypatch.setattr(
             recover_mod,
-            "_load_utc_offsets",
+            "load_utc_offsets",
             lambda _path: pd.DataFrame(
                 {"location_id": [1000], "utc_offset_hours": [0.0]}
             ),

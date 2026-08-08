@@ -26,10 +26,9 @@ EU_END_YEAR=${EU_END_YEAR:-2025}
 EU_CROSSWALK_START_YEAR=${EU_CROSSWALK_START_YEAR:-1991}
 EU_TRIAL_YEARS=${EU_TRIAL_YEARS:-1990 2012 2025}
 EU_ISD_CONCURRENCY=${EU_ISD_CONCURRENCY:-8}
-EU_CDS_CONCURRENCY=${EU_CDS_CONCURRENCY:-2}
+EU_EARTH_ENGINE_CONCURRENCY=${EU_EARTH_ENGINE_CONCURRENCY:-8}
 EU_CITY_SHARDS=${EU_CITY_SHARDS:-1}
 EU_MIN_MISSING_DAYS=${EU_MIN_MISSING_DAYS:-19}
-EU_DOWNLOAD_DIR=${EU_DOWNLOAD_DIR:-}
 EU_CELL_MAP_CSV=${EU_CELL_MAP_CSV:-cities_eu_era5land_cells.csv}
 EU_FORCE_STATION_BACKFILL=${EU_FORCE_STATION_BACKFILL:-0}
 EU_LOAD_WORKERS=${EU_LOAD_WORKERS:-1}
@@ -186,36 +185,30 @@ step_backfill() {
 step_gapfill() {
   require_file "${EU_STATION_MAP_CSV}" crosswalk
   if ((DRY_RUN)); then
-    log "  [dry-run] would require cdsapi installed and CDSAPI_URL/CDSAPI_KEY set"
+    log "  [dry-run] would require earthengine-api and Google Earth Engine credentials"
   else
-    "${PY[@]}" -c 'import importlib.util,sys; sys.exit(0 if importlib.util.find_spec("cdsapi") else 1)' ||
-      die "cdsapi is not installed -- run: uv sync --extra era5"
-    : "${CDSAPI_URL:?CDSAPI_URL must be set (see .env); the ERA5-Land licence must also be accepted on your CDS account}"
-    : "${CDSAPI_KEY:?CDSAPI_KEY must be set (see .env)}"
+    "${PY[@]}" -c 'import importlib.util,sys; sys.exit(0 if importlib.util.find_spec("ee") else 1)' ||
+      die "earthengine-api is not installed -- run: uv sync --extra earth-engine"
   fi
 
-  local cache_args=()
-  if [[ -n ${EU_DOWNLOAD_DIR} ]]; then
-    cache_args=(--download-dir "${EU_DOWNLOAD_DIR}")
-    log "[gapfill] reusing downloads cached in ${EU_DOWNLOAD_DIR}"
-  fi
+  local cell_map_args=()
   if [[ -n ${EU_CELL_MAP_CSV} && -f ${EU_CELL_MAP_CSV} ]]; then
-    cache_args+=(--cell-map-csv "${EU_CELL_MAP_CSV}")
+    cell_map_args=(--cell-map-csv "${EU_CELL_MAP_CSV}")
     log "[gapfill] applying ERA5-Land land-cell overrides from ${EU_CELL_MAP_CSV}"
   fi
 
   log "[gapfill] ERA5-Land ${EU_START_YEAR}-${EU_END_YEAR}," \
-    "min-missing-days=${EU_MIN_MISSING_DAYS}, ${EU_CDS_CONCURRENCY} concurrent CDS request(s)"
-  run "${PY[@]}" era5land.py \
+    "min-missing-days=${EU_MIN_MISSING_DAYS}, ${EU_EARTH_ENGINE_CONCURRENCY} concurrent Earth Engine request(s)"
+  run "${PY[@]}" earth_engine_era5land.py \
     --cities-csv "${EU_CITIES_CSV}" \
     --station-map-csv "${EU_STATION_MAP_CSV}" \
     --start-year "${EU_START_YEAR}" --end-year "${EU_END_YEAR}" \
     --out-dir "${EU_OUT_DIR}" \
     --city-shard-index 0 --city-shard-count 1 \
-    --concurrency "${EU_CDS_CONCURRENCY}" \
+    --concurrency "${EU_EARTH_ENGINE_CONCURRENCY}" \
     --min-missing-days "${EU_MIN_MISSING_DAYS}" \
     "${STATION_FORCE_ARGS[@]}" \
-    "${cache_args[@]}"
+    "${cell_map_args[@]}"
   log "[gapfill] done"
 }
 
