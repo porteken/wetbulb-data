@@ -69,7 +69,8 @@ VALUES
 (CASE WHEN input_statistic = 'max' THEN 'max_wetbulb_avg' ELSE 'avg_wetbulb_avg' END,
  CASE WHEN q.days_present_avg >= q.required_days THEN q.average_value END)
 ) AS v (metric, value)
-WHERE q.year >= 2000 AND v.value IS NOT NULL
+WHERE q.year BETWEEN 1990 AND EXTRACT(YEAR FROM CURRENT_DATE)::integer - 1
+AND v.value IS NOT NULL
 ), fit_base AS (
 SELECT
 v.location_id,
@@ -202,12 +203,6 @@ DROP VIEW IF EXISTS public.wetbulb_city_rankings_view CASCADE ;
 DROP MATERIALIZED VIEW IF EXISTS public.wetbulb_forecast_max CASCADE ;
 DROP MATERIALIZED VIEW IF EXISTS public.wetbulb_forecast CASCADE ;
 
-CREATE MATERIALIZED VIEW public.wetbulb_forecast_scenarios AS
-SELECT * FROM public.wetbulb_gmst_forecast ('mean') ;
-
-CREATE UNIQUE INDEX wetbulb_forecast_scenarios_uidx
-ON public.wetbulb_forecast_scenarios (location_id, year, season, scenario) ;
-
 CREATE MATERIALIZED VIEW public.wetbulb_forecast_max_scenarios AS
 SELECT * FROM public.wetbulb_gmst_forecast ('max') ;
 
@@ -218,7 +213,7 @@ CREATE MATERIALIZED VIEW public.wetbulb_forecast AS
 SELECT
 location_id, year, season, wetbulb, lower, upper, wetbulb_avg, lower_avg,
 upper_avg, model_type, full_years_used, warming_rate, acceleration
-FROM public.wetbulb_forecast_scenarios
+FROM public.wetbulb_gmst_forecast ('mean')
 WHERE scenario = 'ssp245' ;
 
 CREATE UNIQUE INDEX wetbulb_forecast_location_year_season_uidx

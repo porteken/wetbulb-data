@@ -383,6 +383,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Do not recreate SQL views after loading data.",
     )
     parser.add_argument(
+        "--include-forecast-scenarios",
+        action="store_true",
+        help=(
+            "Also create the optional wetbulb_forecast_scenarios materialized "
+            "view and its index."
+        ),
+    )
+    parser.add_argument(
         "--ensure-schema",
         action="store_true",
         help=(
@@ -1191,19 +1199,25 @@ def main() -> None:
         )
 
         if not args.skip_drop_views and not args.skip_create_views:
+            view_sql_files = [
+                "drop_views.sql",
+                "create_views.sql",
+                "create_gmst_views.sql",
+            ]
+            if args.include_forecast_scenarios:
+                view_sql_files.append("create_gmst_scenario_views.sql")
+            view_sql_files.append("create_eu_views.sql")
             execute_sql_files_with_retries(
                 db_uri,
-                (
-                    "drop_views.sql",
-                    "create_views.sql",
-                    "create_gmst_views.sql",
-                    "create_eu_views.sql",
-                ),
+                tuple(view_sql_files),
             )
         elif not args.skip_drop_views:
             execute_sql_files_with_retries(db_uri, ("drop_views.sql",))
         elif not args.skip_create_views:
-            execute_sql_files_with_retries(db_uri, ("create_views.sql",))
+            view_sql_files = ["create_views.sql"]
+            if args.include_forecast_scenarios:
+                view_sql_files.append("create_gmst_scenario_views.sql")
+            execute_sql_files_with_retries(db_uri, tuple(view_sql_files))
 
         if should_refresh_schema:
             refresh_query_planner_statistics_with_retries(db_uri)

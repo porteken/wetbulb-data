@@ -75,6 +75,31 @@ def _refresh_statements(conn: FakeConnection) -> list[str]:
 
 
 class TestRefreshMaterializedViews:
+    def test_skips_optional_scenario_view_by_default(self) -> None:
+        conn = FakeConnection(
+            matviews=[
+                ("wetbulb_forecast", True),
+                ("wetbulb_forecast_scenarios", True),
+            ],
+            unique_indexed={"wetbulb_forecast", "wetbulb_forecast_scenarios"},
+        )
+
+        order = refresh_views.refresh_materialized_views(cast("Any", conn))
+
+        assert order == ["wetbulb_forecast"]
+
+    def test_can_include_optional_scenario_view(self) -> None:
+        conn = FakeConnection(
+            matviews=[("wetbulb_forecast_scenarios", True)],
+            unique_indexed={"wetbulb_forecast_scenarios"},
+        )
+
+        order = refresh_views.refresh_materialized_views(
+            cast("Any", conn), include_optional=True
+        )
+
+        assert order == ["wetbulb_forecast_scenarios"]
+
     def test_refreshes_dependencies_first(self) -> None:
         conn = FakeConnection(
             matviews=[("mv_b", True), ("mv_a", True)],

@@ -22,6 +22,7 @@ LOGGER = logging.getLogger(__name__)
 REFRESH_MAX_ATTEMPTS = 4
 REFRESH_RETRY_DELAY_SECONDS = 30
 DEFAULT_MATVIEW_PREFIX = "wetbulb_"
+OPTIONAL_MATVIEWS = frozenset({"wetbulb_forecast_scenarios"})
 
 _REFRESH_SESSION_STATEMENTS: tuple[LiteralString, ...] = (
     "SET max_parallel_workers_per_gather = 0",
@@ -101,9 +102,16 @@ def refresh_materialized_views(
     *,
     allow_concurrent: bool = True,
     name_prefix: str | None = None,
+    include_optional: bool = False,
 ) -> list[str]:
     """Refresh matching public matviews in dependency order; return the order."""
     matviews = _discover_matviews(conn, name_prefix=name_prefix)
+    if not include_optional:
+        matviews = {
+            name: is_populated
+            for name, is_populated in matviews.items()
+            if name not in OPTIONAL_MATVIEWS
+        }
     if not matviews:
         LOGGER.warning("No materialized views found in schema public.")
         return []
@@ -157,6 +165,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"(default: {DEFAULT_MATVIEW_PREFIX!r})."
         ),
     )
+    parser.add_argument(
+        "--include-forecast-scenarios",
+        action="store_true",
+        help="Also refresh the optional wetbulb_forecast_scenarios view.",
+    )
     return parser.parse_args(argv)
 
 
@@ -177,6 +190,7 @@ def _refresh_once(db_uri: str, args: argparse.Namespace) -> None:
             conn,
             allow_concurrent=not args.non_concurrent,
             name_prefix=args.matview_prefix,
+            include_optional=args.include_forecast_scenarios,
         )
         LOGGER.info("Refreshed %d materialized view(s).", len(refreshed))
         if not args.skip_analyze:

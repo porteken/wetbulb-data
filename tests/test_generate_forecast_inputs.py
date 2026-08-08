@@ -6,12 +6,19 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
 import generate_forecast_inputs
+
+
+def test_forecast_year_bounds_follow_the_previous_calendar_year() -> None:
+    current_year = datetime.now(tz=UTC).year
+    assert current_year - 1 == generate_forecast_inputs.OBSERVATION_END_YEAR
+    assert current_year == generate_forecast_inputs.FORECAST_START_YEAR
 
 
 def test_safe_cli_path_rejects_paths_outside_the_working_directory() -> None:
@@ -72,17 +79,19 @@ def test_interpolate_blends_between_two_known_years() -> None:
 
 
 def test_build_scenarios_covers_all_ar6_scenarios_through_2100() -> None:
-    years = list(range(2000, 2026))
+    years = list(range(1990, generate_forecast_inputs.OBSERVATION_END_YEAR + 1))
     observations = pd.DataFrame(
-        {"year": years, "anomaly": [0.01 * (year - 2000) for year in years]}
+        {"year": years, "anomaly": [0.01 * (year - 1990) for year in years]}
     )
 
     scenarios = generate_forecast_inputs.build_scenarios(observations)
 
     assert set(scenarios["scenario"]) == {"ssp126", "ssp245", "ssp370"}
-    assert scenarios["year"].min() == 2026
+    assert scenarios["year"].min() == generate_forecast_inputs.FORECAST_START_YEAR
     assert scenarios["year"].max() == 2100
-    assert len(scenarios) == 3 * (2100 - 2026 + 1)
+    assert len(scenarios) == 3 * (
+        2100 - generate_forecast_inputs.FORECAST_START_YEAR + 1
+    )
     assert (scenarios["sigma_g"] >= 0).all()
     assert scenarios["sigma_g"].min() == scenarios["sigma_g"].max()
 

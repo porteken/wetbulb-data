@@ -92,6 +92,7 @@ def test_complete_gmst_ddl_matches_reference_forecast() -> None:
                 PROJECT_ROOT / "drop_views.sql",
                 PROJECT_ROOT / "create_views.sql",
                 PROJECT_ROOT / "create_gmst_views.sql",
+                PROJECT_ROOT / "create_gmst_scenario_views.sql",
             ),
         )
 

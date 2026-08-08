@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -21,11 +22,14 @@ HADCRUT_URL = (
     f"HadCRUT.{HADCRUT_VERSION}/analysis/diagnostics/"
     f"HadCRUT.{HADCRUT_VERSION}.analysis.summary_series.global.annual.csv"
 )
-OBSERVATION_END_YEAR = 2025
+OBSERVATION_END_YEAR = datetime.now(tz=UTC).year - 1
 BASELINE_START_YEAR = 1850
 BASELINE_END_YEAR = 1900
-ANCHOR_START_YEAR = 2015
-ANCHOR_END_YEAR = 2025
+ANCHOR_YEARS = 11
+ANCHOR_END_YEAR = OBSERVATION_END_YEAR
+ANCHOR_START_YEAR = ANCHOR_END_YEAR - ANCHOR_YEARS + 1
+ANCHOR_MID_YEAR = (ANCHOR_START_YEAR + ANCHOR_END_YEAR) // 2
+FORECAST_START_YEAR = OBSERVATION_END_YEAR + 1
 
 AR6_TABLE_SPM1 = {
     "ssp126": {
@@ -89,14 +93,14 @@ def _interpolate(points: dict[int, float], year: int) -> float:
 
 
 def build_scenarios(observations: pd.DataFrame) -> pd.DataFrame:
-    """Interpolate annual forced paths anchored to the 2015-2025 observed mean."""
+    """Interpolate forced paths anchored to the latest 11 complete years."""
     anchor = float(
         observations.loc[
             observations["year"].between(ANCHOR_START_YEAR, ANCHOR_END_YEAR),
             "anomaly",
         ].mean()
     )
-    recent = observations.loc[observations["year"].between(2000, 2025)]
+    recent = observations.loc[observations["year"].between(1990, OBSERVATION_END_YEAR)]
     anomaly = cast("pd.Series", recent["anomaly"])
     trend = anomaly.rolling(5, center=True, min_periods=3).mean()
     annual_variability = float(
@@ -107,7 +111,7 @@ def build_scenarios(observations: pd.DataFrame) -> pd.DataFrame:
     for scenario, assessments in AR6_TABLE_SPM1.items():
         fields = ("anomaly", "anomaly_lo", "anomaly_hi")
         points_by_field = {
-            field: {2020: anchor}
+            field: {ANCHOR_MID_YEAR: anchor}
             | {year: values[index] for year, values in assessments.items()}
             for index, field in enumerate(fields)
         }
@@ -120,7 +124,7 @@ def build_scenarios(observations: pd.DataFrame) -> pd.DataFrame:
                 "anomaly_hi": _interpolate(points_by_field["anomaly_hi"], year),
                 "sigma_g": annual_variability,
             }
-            for year in range(2026, 2101)
+            for year in range(FORECAST_START_YEAR, 2101)
         )
     return pd.DataFrame(rows)
 
