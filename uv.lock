@@ -1600,7 +1600,12 @@ name = "wetbulb-data"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "dask" },
     { name = "defusedxml" },
+    { name = "earthengine-api" },
+    { name = "gcsfs" },
+    { name = "h5netcdf" },
+    { name = "h5py" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "prophet" },
@@ -1608,24 +1613,10 @@ dependencies = [
     { name = "pyarrow" },
     { name = "python-dotenv" },
     { name = "requests" },
-    { name = "tqdm" },
-]
-
-[package.optional-dependencies]
-earth-engine = [
-    { name = "earthengine-api" },
-]
-gcs = [
-    { name = "dask" },
-    { name = "gcsfs" },
     { name = "thermofeel" },
+    { name = "tqdm" },
     { name = "xarray" },
     { name = "zarr" },
-]
-nldas = [
-    { name = "h5netcdf" },
-    { name = "h5py" },
-    { name = "xarray" },
 ]
 
 [package.dev-dependencies]
@@ -1638,12 +1629,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "dask", marker = "extra == 'gcs'" },
+    { name = "dask" },
     { name = "defusedxml", specifier = ">=0.7.1" },
-    { name = "earthengine-api", marker = "extra == 'earth-engine'" },
-    { name = "gcsfs", marker = "extra == 'gcs'" },
-    { name = "h5netcdf", marker = "extra == 'nldas'" },
-    { name = "h5py", marker = "extra == 'nldas'" },
+    { name = "earthengine-api" },
+    { name = "gcsfs" },
+    { name = "h5netcdf" },
+    { name = "h5py" },
     { name = "numpy", specifier = ">=2.3.2" },
     { name = "pandas" },
     { name = "prophet" },
@@ -1651,13 +1642,11 @@ requires-dist = [
     { name = "pyarrow" },
     { name = "python-dotenv" },
     { name = "requests" },
-    { name = "thermofeel", marker = "extra == 'gcs'" },
+    { name = "thermofeel" },
     { name = "tqdm" },
-    { name = "xarray", marker = "extra == 'gcs'" },
-    { name = "xarray", marker = "extra == 'nldas'" },
-    { name = "zarr", marker = "extra == 'gcs'" },
+    { name = "xarray" },
+    { name = "zarr" },
 ]
-provides-extras = ["gcs", "nldas", "earth-engine"]
 
 [package.metadata.requires-dev]
 dev = [

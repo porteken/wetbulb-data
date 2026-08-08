@@ -5,6 +5,11 @@ description = "Wet-bulb temperature data pipeline for NLDAS-2 ingestion, analyti
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+  "dask",
+  "earthengine-api",
+  "gcsfs",
+  "h5netcdf",
+  "h5py",
   "numpy>=2.3.2",
   "pandas",
   "pyarrow",
@@ -12,14 +17,12 @@ dependencies = [
   "python-dotenv",
   "prophet",
   "requests",
+  "thermofeel",
   "tqdm",
   "defusedxml>=0.7.1",
+  "xarray",
+  "zarr",
 ]
-
-[project.optional-dependencies]
-gcs = ["dask", "gcsfs", "thermofeel", "xarray", "zarr"]
-nldas = ["h5netcdf", "h5py", "xarray"]
-earth-engine = ["earthengine-api"]
 
 [dependency-groups]
 dev = [
