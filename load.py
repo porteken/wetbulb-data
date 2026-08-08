@@ -893,6 +893,34 @@ def _discover_forecast_interval_calibration_csv_paths(
     return [Path(args.forecast_interval_calibration_csv)]
 
 
+def _filter_paths_by_year(
+    csv_paths: list[Path],
+    root: str,
+    start_year: int | None,
+    end_year: int | None,
+) -> list[Path]:
+    filtered_paths: list[Path] = []
+    for csv_path in csv_paths:
+        marker = _extract_partition_marker(csv_path, Path(root), "year")
+        if marker is None:
+            msg = (
+                "Cannot apply a wetbulb year range to an unpartitioned input: "
+                f"{csv_path}"
+            )
+            raise ValueError(msg)
+        try:
+            year = int(marker)
+        except ValueError as exc:
+            msg = f"Invalid wetbulb year partition {marker!r}: {csv_path}"
+            raise ValueError(msg) from exc
+        if start_year is not None and year < start_year:
+            continue
+        if end_year is not None and year > end_year:
+            continue
+        filtered_paths.append(csv_path)
+    return filtered_paths
+
+
 def _discover_batch_parquet_paths(
     args: argparse.Namespace,
     *,
@@ -930,26 +958,7 @@ def _discover_batch_parquet_paths(
     start_year = args.wetbulb_start_year
     end_year = args.wetbulb_end_year
     if start_year is not None or end_year is not None:
-        filtered_paths: list[Path] = []
-        for csv_path in csv_paths:
-            marker = _extract_partition_marker(csv_path, Path(root), "year")
-            if marker is None:
-                msg = (
-                    "Cannot apply a wetbulb year range to an unpartitioned input: "
-                    f"{csv_path}"
-                )
-                raise ValueError(msg)
-            try:
-                year = int(marker)
-            except ValueError as exc:
-                msg = f"Invalid wetbulb year partition {marker!r}: {csv_path}"
-                raise ValueError(msg) from exc
-            if start_year is not None and year < start_year:
-                continue
-            if end_year is not None and year > end_year:
-                continue
-            filtered_paths.append(csv_path)
-        csv_paths = filtered_paths
+        csv_paths = _filter_paths_by_year(csv_paths, root, start_year, end_year)
 
     return _select_partition_shard_paths(
         csv_paths,
@@ -1149,6 +1158,47 @@ def _load_requested_tables(
         )
 
 
+def _resolve_truncate_tables(args: argparse.Namespace) -> set[str]:
+    if args.append_only:
+        return set()
+    if args.truncate_tables is None:
+        return set(TABLE_NAMES)
+    return set(args.truncate_tables)
+
+
+def _refresh_schema_before_load(
+    db_uri: str,
+    skip_tables: set[str],
+    *,
+    should_refresh_schema: bool,
+    ensure_schema: bool,
+) -> None:
+    if should_refresh_schema or ensure_schema:
+        execute_sql_files_with_retries(db_uri, ("create_tables.sql",))
+    if "wetbulb" not in skip_tables:
+        execute_sql_files_with_retries(
+            db_uri,
+            ("migrate_wetbulb_station_provenance.sql",),
+        )
+
+
+def _refresh_views(args: argparse.Namespace, db_uri: str) -> None:
+    if args.skip_drop_views and args.skip_create_views:
+        return
+    if args.skip_create_views:
+        execute_sql_files_with_retries(db_uri, ("drop_views.sql",))
+        return
+    view_sql_files = [] if args.skip_drop_views else ["drop_views.sql"]
+    view_sql_files.append("create_views.sql")
+    if not args.skip_drop_views:
+        view_sql_files.append("create_gmst_views.sql")
+    if args.include_forecast_scenarios:
+        view_sql_files.append("create_gmst_scenario_views.sql")
+    if not args.skip_drop_views:
+        view_sql_files.append("create_eu_views.sql")
+    execute_sql_files_with_retries(db_uri, tuple(view_sql_files))
+
+
 def main() -> None:
     """Load datasets and recreate views."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -1156,14 +1206,7 @@ def main() -> None:
     _validate_load_shard_args(args.load_shard_index, args.load_shard_count)
     db_uri = resolve_database_uri()
 
-    if args.append_only:
-        truncate_table_names: list[str] = []
-    elif args.truncate_tables is None:
-        truncate_table_names = TABLE_NAMES
-    else:
-        truncate_table_names = args.truncate_tables
-
-    truncate_tables: set[str] = set(truncate_table_names)
+    truncate_tables = _resolve_truncate_tables(args)
     skip_tables: set[str] = set(args.skip_tables or [])
 
     if not db_uri:
@@ -1179,13 +1222,12 @@ def main() -> None:
     should_refresh_schema = not args.skip_drop_views or not args.skip_create_views
 
     try:
-        if should_refresh_schema or args.ensure_schema:
-            execute_sql_files_with_retries(db_uri, ("create_tables.sql",))
-        if "wetbulb" not in skip_tables:
-            execute_sql_files_with_retries(
-                db_uri,
-                ("migrate_wetbulb_station_provenance.sql",),
-            )
+        _refresh_schema_before_load(
+            db_uri,
+            skip_tables,
+            should_refresh_schema=should_refresh_schema,
+            ensure_schema=args.ensure_schema,
+        )
 
         _load_requested_tables(
             conn,
@@ -1195,26 +1237,7 @@ def main() -> None:
             skip_tables=skip_tables,
         )
 
-        if not args.skip_drop_views and not args.skip_create_views:
-            view_sql_files = [
-                "drop_views.sql",
-                "create_views.sql",
-                "create_gmst_views.sql",
-            ]
-            if args.include_forecast_scenarios:
-                view_sql_files.append("create_gmst_scenario_views.sql")
-            view_sql_files.append("create_eu_views.sql")
-            execute_sql_files_with_retries(
-                db_uri,
-                tuple(view_sql_files),
-            )
-        elif not args.skip_drop_views:
-            execute_sql_files_with_retries(db_uri, ("drop_views.sql",))
-        elif not args.skip_create_views:
-            view_sql_files = ["create_views.sql"]
-            if args.include_forecast_scenarios:
-                view_sql_files.append("create_gmst_scenario_views.sql")
-            execute_sql_files_with_retries(db_uri, tuple(view_sql_files))
+        _refresh_views(args, db_uri)
 
         if should_refresh_schema:
             refresh_query_planner_statistics_with_retries(db_uri)

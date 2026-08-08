@@ -162,6 +162,94 @@ def test_discovery_rejects_reversed_wetbulb_year_range(tmp_path: Path) -> None:
         load._discover_wetbulb_csv_paths(args)
 
 
+@pytest.mark.parametrize(
+    ("extra_args", "expected"),
+    [
+        (["--append-only"], set()),
+        ([], set(load.TABLE_NAMES)),
+        (
+            ["--truncate-table", "wetbulb", "--truncate-table", "locations"],
+            {"wetbulb", "locations"},
+        ),
+    ],
+)
+def test_resolve_truncate_tables(extra_args: list[str], expected: set[str]) -> None:
+    args = load._parse_args(extra_args)
+
+    assert load._resolve_truncate_tables(args) == expected
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "expected"),
+    [
+        (
+            [],
+            (
+                "drop_views.sql",
+                "create_views.sql",
+                "create_gmst_views.sql",
+                "create_eu_views.sql",
+            ),
+        ),
+        (["--skip-create-views"], ("drop_views.sql",)),
+        (["--skip-drop-views"], ("create_views.sql",)),
+        (["--skip-drop-views", "--skip-create-views"], None),
+        (
+            ["--include-forecast-scenarios"],
+            (
+                "drop_views.sql",
+                "create_views.sql",
+                "create_gmst_views.sql",
+                "create_gmst_scenario_views.sql",
+                "create_eu_views.sql",
+            ),
+        ),
+    ],
+)
+def test_refresh_views(
+    monkeypatch: pytest.MonkeyPatch,
+    extra_args: list[str],
+    expected: tuple[str, ...] | None,
+) -> None:
+    execute = MagicMock()
+    monkeypatch.setattr(load, "execute_sql_files_with_retries", execute)
+
+    load._refresh_views(load._parse_args(extra_args), "postgresql://test")
+
+    if expected is None:
+        execute.assert_not_called()
+    else:
+        execute.assert_called_once_with("postgresql://test", expected)
+
+
+@pytest.mark.parametrize(
+    ("skip_tables", "refresh", "ensure", "expected"),
+    [
+        (set(), 1, 0, 2),
+        ({"wetbulb"}, 0, 1, 1),
+        ({"wetbulb"}, 0, 0, 0),
+    ],
+)
+def test_refresh_schema_before_load(
+    monkeypatch: pytest.MonkeyPatch,
+    skip_tables: set[str],
+    refresh: int,
+    ensure: int,
+    expected: int,
+) -> None:
+    execute = MagicMock()
+    monkeypatch.setattr(load, "execute_sql_files_with_retries", execute)
+
+    load._refresh_schema_before_load(
+        "postgresql://test",
+        skip_tables,
+        should_refresh_schema=bool(refresh),
+        ensure_schema=bool(ensure),
+    )
+
+    assert execute.call_count == expected
+
+
 def test_file_group_retries_each_file_with_a_fresh_connection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

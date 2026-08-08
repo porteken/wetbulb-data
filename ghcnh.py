@@ -488,15 +488,108 @@ def assign_reference_stations(station_map: DataFrame) -> DataFrame:
     return frame.merge(references, on="location_id", how="left")
 
 
-def homogenize_station_candidates(candidates: DataFrame) -> DataFrame:
-    """Put secondary-station daily values onto each city's reference baseline.
+def _homogenize_secondary(
+    secondary: DataFrame,
+    reference_values: DataFrame,
+    location_id: object,
+    station_id: object,
+    reference_id: object,
+) -> DataFrame | None:
+    paired = secondary.merge(reference_values, on="date", how="inner")
+    if paired.empty:
+        return None
+    paired["_month"] = paired["date"].dt.month
+    paired["_wetbulb_delta"] = paired["_reference_wetbulb"] - paired["wetbulb"]
+    paired["_wetbulb_avg_delta"] = (
+        paired["_reference_wetbulb_avg"] - paired["wetbulb_avg"]
+    )
+    global_count = len(paired)
+    monthly = paired.groupby("_month").agg(
+        overlap_days=("date", "size"),
+        wetbulb_adjustment=("_wetbulb_delta", "median"),
+        wetbulb_avg_adjustment=("_wetbulb_avg_delta", "median"),
+    )
+    secondary["_month"] = secondary["date"].dt.month
+    merged_secondary = secondary.merge(
+        monthly, left_on="_month", right_index=True, how="left"
+    )
+    monthly_ok = merged_secondary["overlap_days"] >= GHCNH_MIN_MONTHLY_OVERLAP_DAYS
+    global_ok = global_count >= GHCNH_MIN_GLOBAL_OVERLAP_DAYS
+    if global_ok:
+        merged_secondary.loc[~monthly_ok, "overlap_days"] = global_count
+        merged_secondary.loc[~monthly_ok, "wetbulb_adjustment"] = paired[
+            "_wetbulb_delta"
+        ].median()
+        merged_secondary.loc[~monthly_ok, "wetbulb_avg_adjustment"] = paired[
+            "_wetbulb_avg_delta"
+        ].median()
+    calibrated = monthly_ok | global_ok
+    if not calibrated.any():
+        LOGGER.warning(
+            "location_id=%s station %s has only %d overlap days with "
+            "reference %s; rejecting it as an uncalibrated fallback",
+            location_id,
+            station_id,
+            global_count,
+            reference_id,
+        )
+        return None
+    result = merged_secondary[calibrated].copy()
+    result["homogenization_method"] = "monthly_overlap"
+    result.loc[~monthly_ok[calibrated], "homogenization_method"] = "global_overlap"
+    result["homogenization_overlap_days"] = result["overlap_days"].astype(int)
+    result["wetbulb"] += result["wetbulb_adjustment"]
+    result["wetbulb_avg"] += result["wetbulb_avg_adjustment"]
+    return result.drop(columns=["_month", "overlap_days"])
 
-    Corrections are robust median reference-minus-secondary differences from
-    same-day observations.  Calendar-month estimates preserve seasonality;
-    an all-month estimate is used only when monthly overlap is insufficient.
-    Secondary rows without enough overlap are deliberately removed so an
-    uncalibrated station change cannot silently alter a long-term trend.
-    """
+
+def _homogenize_city(
+    city_group: DataFrame,
+    location_id: object,
+    reference_id: object,
+) -> list[DataFrame]:
+    if pd.isna(reference_id):
+        return []
+    city = city_group.copy()
+    city["date"] = pd.to_datetime(city["date"])
+    reference = city[city["station_id"] == reference_id].copy()
+    if reference.empty:
+        LOGGER.warning(
+            "location_id=%s reference station %s has no usable days; "
+            "rejecting uncalibrated secondary stations",
+            location_id,
+            reference_id,
+        )
+        return []
+    reference["homogenization_method"] = "reference"
+    reference["homogenization_overlap_days"] = 0
+    reference["wetbulb_adjustment"] = 0.0
+    reference["wetbulb_avg_adjustment"] = 0.0
+    output = [reference]
+    reference_values = reference[["date", "wetbulb", "wetbulb_avg"]].rename(
+        columns={
+            "wetbulb": "_reference_wetbulb",
+            "wetbulb_avg": "_reference_wetbulb_avg",
+        }
+    )
+    secondary_groups = city[city["station_id"] != reference_id].groupby(
+        "station_id", sort=False
+    )
+    for station_id, secondary_group in secondary_groups:
+        secondary = _homogenize_secondary(
+            secondary_group.copy(),
+            reference_values,
+            location_id,
+            station_id,
+            reference_id,
+        )
+        if secondary is not None:
+            output.append(secondary)
+    return output
+
+
+def homogenize_station_candidates(candidates: DataFrame) -> DataFrame:
+    """Put secondary-station daily values onto each city's reference baseline."""
     if candidates.empty:
         return candidates.copy()
     required = {"reference_station_id", "station_id", "date", "location_id"}
@@ -505,90 +598,11 @@ def homogenize_station_candidates(candidates: DataFrame) -> DataFrame:
         msg = f"station homogenization is missing columns: {missing}"
         raise ValueError(msg)
     output: list[DataFrame] = []
-    for (_location_id, reference_id), city_group in candidates.groupby(
+    city_groups = candidates.groupby(
         ["location_id", "reference_station_id"], sort=False, dropna=False
-    ):
-        if pd.isna(reference_id):
-            continue
-        city = city_group.copy()
-        city["date"] = pd.to_datetime(city["date"])
-        reference = city[city["station_id"] == reference_id].copy()
-        if reference.empty:
-            LOGGER.warning(
-                "location_id=%s reference station %s has no usable days; "
-                "rejecting uncalibrated secondary stations",
-                _location_id,
-                reference_id,
-            )
-            continue
-        reference["homogenization_method"] = "reference"
-        reference["homogenization_overlap_days"] = 0
-        reference["wetbulb_adjustment"] = 0.0
-        reference["wetbulb_avg_adjustment"] = 0.0
-        output.append(reference)
-        reference_values = reference[["date", "wetbulb", "wetbulb_avg"]].rename(
-            columns={
-                "wetbulb": "_reference_wetbulb",
-                "wetbulb_avg": "_reference_wetbulb_avg",
-            }
-        )
-        for station_id, secondary_group in city[
-            city["station_id"] != reference_id
-        ].groupby("station_id", sort=False):
-            secondary = secondary_group.copy()
-            paired = secondary.merge(reference_values, on="date", how="inner")
-            if paired.empty:
-                continue
-            paired["_month"] = paired["date"].dt.month
-            paired["_wetbulb_delta"] = paired["_reference_wetbulb"] - paired["wetbulb"]
-            paired["_wetbulb_avg_delta"] = (
-                paired["_reference_wetbulb_avg"] - paired["wetbulb_avg"]
-            )
-            global_count = len(paired)
-            global_wetbulb = paired["_wetbulb_delta"].median()
-            global_wetbulb_avg = paired["_wetbulb_avg_delta"].median()
-            monthly = paired.groupby("_month").agg(
-                overlap_days=("date", "size"),
-                wetbulb_adjustment=("_wetbulb_delta", "median"),
-                wetbulb_avg_adjustment=("_wetbulb_avg_delta", "median"),
-            )
-            secondary["_month"] = secondary["date"].dt.month
-            merged_secondary = secondary.merge(
-                monthly, left_on="_month", right_index=True, how="left"
-            )
-            monthly_ok = (
-                merged_secondary["overlap_days"] >= GHCNH_MIN_MONTHLY_OVERLAP_DAYS
-            )
-            global_ok = global_count >= GHCNH_MIN_GLOBAL_OVERLAP_DAYS
-            if global_ok:
-                merged_secondary.loc[~monthly_ok, "overlap_days"] = global_count
-                merged_secondary.loc[~monthly_ok, "wetbulb_adjustment"] = global_wetbulb
-                merged_secondary.loc[~monthly_ok, "wetbulb_avg_adjustment"] = (
-                    global_wetbulb_avg
-                )
-            calibrated = monthly_ok | global_ok
-            if not calibrated.any():
-                LOGGER.warning(
-                    "location_id=%s station %s has only %d overlap days with "
-                    "reference %s; rejecting it as an uncalibrated fallback",
-                    _location_id,
-                    station_id,
-                    global_count,
-                    reference_id,
-                )
-                continue
-            secondary = merged_secondary[calibrated].copy()
-            secondary["homogenization_method"] = "monthly_overlap"
-            secondary.loc[
-                ~monthly_ok[calibrated],
-                "homogenization_method",
-            ] = "global_overlap"
-            secondary["homogenization_overlap_days"] = secondary["overlap_days"].astype(
-                int
-            )
-            secondary["wetbulb"] += secondary["wetbulb_adjustment"]
-            secondary["wetbulb_avg"] += secondary["wetbulb_avg_adjustment"]
-            output.append(secondary.drop(columns=["_month", "overlap_days"]))
+    )
+    for (location_id, reference_id), city_group in city_groups:
+        output.extend(_homogenize_city(city_group, location_id, reference_id))
     if not output:
         return candidates.iloc[0:0].copy()
     return concat_frames(output)
