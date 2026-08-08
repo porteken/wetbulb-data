@@ -7,6 +7,7 @@ cd "${HERE}"
 CALLER_EU_START_YEAR="${EU_START_YEAR-}"
 CALLER_EU_END_YEAR="${EU_END_YEAR-}"
 CALLER_EU_CITY_SHARDS="${EU_CITY_SHARDS-}"
+CALLER_EU_SHARD_WORKERS="${EU_SHARD_WORKERS-}"
 if [[ -f .env ]]; then
   set -a
   # shellcheck disable=SC1091
@@ -16,7 +17,8 @@ fi
 [[ -z "${CALLER_EU_START_YEAR}" ]] || EU_START_YEAR="${CALLER_EU_START_YEAR}"
 [[ -z "${CALLER_EU_END_YEAR}" ]] || EU_END_YEAR="${CALLER_EU_END_YEAR}"
 [[ -z "${CALLER_EU_CITY_SHARDS}" ]] || EU_CITY_SHARDS="${CALLER_EU_CITY_SHARDS}"
-unset CALLER_EU_START_YEAR CALLER_EU_END_YEAR CALLER_EU_CITY_SHARDS
+[[ -z "${CALLER_EU_SHARD_WORKERS}" ]] || EU_SHARD_WORKERS="${CALLER_EU_SHARD_WORKERS}"
+unset CALLER_EU_START_YEAR CALLER_EU_END_YEAR CALLER_EU_CITY_SHARDS CALLER_EU_SHARD_WORKERS
 
 EU_OUT_DIR=${EU_OUT_DIR:-eu}
 EU_CITIES_CSV=${EU_CITIES_CSV:-cities_eu.csv}
@@ -30,6 +32,7 @@ EU_TRIAL_YEARS=${EU_TRIAL_YEARS:-1990 2012 2025}
 EU_ISD_CONCURRENCY=${EU_ISD_CONCURRENCY:-8}
 EU_EARTH_ENGINE_CONCURRENCY=${EU_EARTH_ENGINE_CONCURRENCY:-8}
 EU_CITY_SHARDS=${EU_CITY_SHARDS:-1}
+EU_SHARD_WORKERS=${EU_SHARD_WORKERS:-1}
 EU_MIN_MISSING_DAYS=${EU_MIN_MISSING_DAYS:-19}
 EU_CELL_MAP_CSV=${EU_CELL_MAP_CSV:-cities_eu_era5land_cells.csv}
 EU_FORCE_STATION_BACKFILL=${EU_FORCE_STATION_BACKFILL:-0}
@@ -51,6 +54,10 @@ read -ra TRIAL_YEARS <<<"${EU_TRIAL_YEARS}"
 }
 [[ ${EU_LOAD_WORKERS} =~ ^[1-9][0-9]*$ ]] || {
   printf 'EU_LOAD_WORKERS must be a positive integer\n' >&2
+  exit 2
+}
+[[ ${EU_SHARD_WORKERS} =~ ^[1-9][0-9]*$ ]] || {
+  printf 'EU_SHARD_WORKERS must be a positive integer\n' >&2
   exit 2
 }
 STATION_FORCE_ARGS=()
@@ -103,7 +110,7 @@ run_sharded() {
     return
   fi
 
-  local pids=() rc=0 index
+  local pids=() rc=0 index pid
   for ((index = 0; index < shards; index++)); do
     if ((DRY_RUN)); then
       printf '  [dry-run] %s %s --city-shard-index %s --city-shard-count %s %s\n' \
@@ -113,6 +120,12 @@ run_sharded() {
     "${PY[@]}" "${script}" \
       --city-shard-index "${index}" --city-shard-count "${shards}" "$@" &
     pids+=($!)
+    if ((${#pids[@]} >= EU_SHARD_WORKERS)); then
+      for pid in "${pids[@]}"; do
+        wait "${pid}" || rc=1
+      done
+      pids=()
+    fi
   done
   for pid in "${pids[@]:-}"; do
     [[ -n ${pid} ]] || continue

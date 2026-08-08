@@ -7,10 +7,11 @@ cd "${HERE}"
 DRY_RUN=0
 CONFIRM_DB=0
 SHARD_COUNT="${COMBINED_CITY_SHARDS:-${CITY_SHARD_COUNT:-5}}"
+SHARD_WORKERS="${COMBINED_SHARD_WORKERS:-1}"
 STEPS=()
 
 usage() {
-  echo "usage: $0 [--dry-run] [--confirm-db-write] [--city-shard-count N] [steps...]"
+  echo "usage: $0 [--dry-run] [--confirm-db-write] [--city-shard-count N] [--shard-workers N] [steps...]"
   echo "steps: cities crosswalk trial backfill gapfill validate bootstrap load cleanup views all"
 }
 
@@ -25,6 +26,10 @@ while (($#)); do
     --city-shard-count)
       shift
       SHARD_COUNT="${1:?missing shard count}"
+      ;;
+    --shard-workers)
+      shift
+      SHARD_WORKERS="${1:?missing shard worker count}"
       ;;
     -h|--help)
       usage
@@ -54,14 +59,19 @@ EU_FLAGS=()
   echo "city shard count must be a positive integer" >&2
   exit 2
 }
+[[ ${SHARD_WORKERS} =~ ^[1-9][0-9]*$ ]] || {
+  echo "shard worker count must be a positive integer" >&2
+  exit 2
+}
 NA_FLAGS+=(--city-shard-count "${SHARD_COUNT}")
 
 run_na() {
-  NA_PARALLEL_SHARDS=1 "${HERE}/pull_wetbulb.sh" "${NA_FLAGS[@]}" "$@"
+  NA_SHARD_WORKERS="${SHARD_WORKERS}" "${HERE}/pull_wetbulb.sh" "${NA_FLAGS[@]}" "$@"
 }
 
 run_eu() {
-  EU_CITY_SHARDS="${SHARD_COUNT}" "${HERE}/pull_wetbulb_eu.sh" "${EU_FLAGS[@]}" "$@"
+  EU_CITY_SHARDS="${SHARD_COUNT}" EU_SHARD_WORKERS="${SHARD_WORKERS}" \
+    "${HERE}/pull_wetbulb_eu.sh" "${EU_FLAGS[@]}" "$@"
 }
 
 run_both() {
@@ -81,8 +91,10 @@ for step in "${STEPS[@]}"; do
     all)
       run_both cities
       run_both crosswalk
-      run_both backfill
-      run_both gapfill
+      run_na backfill
+      run_eu backfill
+      run_na gapfill
+      run_eu gapfill
       run_na validate
       run_na bootstrap
       run_eu load
@@ -90,6 +102,10 @@ for step in "${STEPS[@]}"; do
       ;;
     validate|bootstrap|cleanup|views)
       run_na "${step}"
+      ;;
+    backfill|gapfill)
+      run_na "${step}"
+      run_eu "${step}"
       ;;
     *)
       run_both "${step}"

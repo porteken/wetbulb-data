@@ -27,7 +27,7 @@ START_YEAR="${START_YEAR:-1990}"
 END_YEAR="${END_YEAR:-$((10#$(date -u +%Y) - 1))}"
 FORCE_STATION_BACKFILL="${FORCE_STATION_BACKFILL:-0}"
 LOAD_WORKERS="${LOAD_WORKERS:-1}"
-NA_PARALLEL_SHARDS="${NA_PARALLEL_SHARDS:-0}"
+NA_SHARD_WORKERS="${NA_SHARD_WORKERS:-1}"
 PYTHON_RUN="${PYTHON_RUN:-uv run python}"
 
 read -ra PY <<<"${PYTHON_RUN}"
@@ -73,8 +73,8 @@ fi
   echo "LOAD_WORKERS must be a positive integer" >&2
   exit 2
 }
-[[ "${NA_PARALLEL_SHARDS}" =~ ^[01]$ ]] || {
-  echo "NA_PARALLEL_SHARDS must be 0 or 1" >&2
+[[ "${NA_SHARD_WORKERS}" =~ ^[1-9][0-9]*$ ]] || {
+  echo "NA_SHARD_WORKERS must be a positive integer" >&2
   exit 2
 }
 STATION_FORCE_ARGS=()
@@ -122,16 +122,16 @@ run_gapfill_shard() {
 
 run_city_shards() {
   local worker=$1
-  local pids=() rc=0 shard
-  if ((!NA_PARALLEL_SHARDS)); then
-    for ((shard=0; shard<SHARD_COUNT; shard++)); do
-      "${worker}" "${shard}"
-    done
-    return
-  fi
+  local pids=() rc=0 shard pid
   for ((shard=0; shard<SHARD_COUNT; shard++)); do
     "${worker}" "${shard}" &
     pids+=("$!")
+    if ((${#pids[@]} >= NA_SHARD_WORKERS)); then
+      for pid in "${pids[@]}"; do
+        wait "${pid}" || rc=1
+      done
+      pids=()
+    fi
   done
   for pid in "${pids[@]}"; do
     wait "${pid}" || rc=1
