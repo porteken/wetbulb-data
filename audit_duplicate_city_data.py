@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Kenneth Porter
+
 """Find cities whose final daily wet-bulb series are exactly identical."""
 
 from __future__ import annotations
