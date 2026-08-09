@@ -699,7 +699,7 @@ season,
 array_agg (year ORDER BY year) AS years,
 array_agg (wetbulb_from_max ORDER BY year) AS wetbulb_values
 FROM yearly_with_required
-WHERE days_present > = required_days
+WHERE NOT days_present < required_days
 GROUP BY
 location_id,
 season
@@ -711,7 +711,7 @@ array_agg (year ORDER BY year) AS years,
 array_agg (wetbulb_from_avg ORDER BY year) AS wetbulb_values
 FROM yearly_with_required
 WHERE wetbulb_from_avg IS NOT NULL
-AND days_present_avg > = required_days
+AND NOT days_present_avg < required_days
 GROUP BY
 location_id,
 season
@@ -850,7 +850,7 @@ season,
 array_agg (year ORDER BY year) AS years,
 array_agg (wetbulb_from_max ORDER BY year) AS wetbulb_values
 FROM yearly_with_required
-WHERE days_present > = required_days
+WHERE NOT days_present < required_days
 GROUP BY
 location_id,
 season
@@ -862,7 +862,7 @@ array_agg (year ORDER BY year) AS years,
 array_agg (wetbulb_from_avg ORDER BY year) AS wetbulb_values
 FROM yearly_with_required
 WHERE wetbulb_from_avg IS NOT NULL
-AND days_present_avg > = required_days
+AND NOT days_present_avg < required_days
 GROUP BY
 location_id,
 season
