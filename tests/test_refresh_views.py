@@ -144,6 +144,20 @@ class TestRefreshMaterializedViews:
             "REFRESH MATERIALIZED VIEW public.mv_indexed"
         ]
 
+    def test_skips_views_completed_before_reconnect(self) -> None:
+        conn = FakeConnection(
+            matviews=[("mv_a", True), ("mv_b", True)],
+            dependencies=[("mv_b", "mv_a")],
+        )
+
+        refresh_views.refresh_materialized_views(
+            cast("Any", conn),
+            allow_concurrent=False,
+            already_refreshed={"mv_a"},
+        )
+
+        assert _refresh_statements(conn) == ["REFRESH MATERIALIZED VIEW public.mv_b"]
+
     def test_no_matviews_warns_and_returns_empty(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
@@ -169,6 +183,22 @@ class TestRefreshMaterializedViews:
         assert order == ["wetbulb_stats"]
         assert _refresh_statements(conn) == [
             "REFRESH MATERIALIZED VIEW CONCURRENTLY public.wetbulb_stats"
+        ]
+
+    def test_can_filter_exact_matview_names(self) -> None:
+        conn = FakeConnection(
+            matviews=[("wetbulb_forecast_max", True), ("wetbulb_forecast", True)]
+        )
+
+        order = refresh_views.refresh_materialized_views(
+            cast("Any", conn),
+            allow_concurrent=False,
+            names={"wetbulb_forecast_max"},
+        )
+
+        assert order == ["wetbulb_forecast_max"]
+        assert _refresh_statements(conn) == [
+            "REFRESH MATERIALIZED VIEW public.wetbulb_forecast_max"
         ]
 
 
@@ -201,7 +231,9 @@ class TestMain:
         monkeypatch.setattr(
             refresh_views, "resolve_database_uri", lambda: "postgresql://x"
         )
-        monkeypatch.setattr(refresh_views.psycopg, "connect", lambda _uri: conn)
+        monkeypatch.setattr(
+            refresh_views.psycopg, "connect", lambda _uri, **_kwargs: conn
+        )
         refresh = MagicMock(return_value=["mv_a"])
         analyze = MagicMock()
         monkeypatch.setattr(refresh_views, "refresh_materialized_views", refresh)
@@ -219,7 +251,9 @@ class TestMain:
         monkeypatch.setattr(
             refresh_views, "resolve_database_uri", lambda: "postgresql://x"
         )
-        monkeypatch.setattr(refresh_views.psycopg, "connect", lambda _uri: conn)
+        monkeypatch.setattr(
+            refresh_views.psycopg, "connect", lambda _uri, **_kwargs: conn
+        )
         monkeypatch.setattr(
             refresh_views, "refresh_materialized_views", MagicMock(return_value=[])
         )

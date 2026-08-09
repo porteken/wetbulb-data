@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 REFRESH_MAX_ATTEMPTS = 4
 REFRESH_RETRY_DELAY_SECONDS = 30
+KEEPALIVES_IDLE_SECONDS = 30
+KEEPALIVES_INTERVAL_SECONDS = 10
+KEEPALIVES_COUNT = 6
 DEFAULT_MATVIEW_PREFIX = "wetbulb_"
 OPTIONAL_MATVIEWS = frozenset({"wetbulb_forecast_scenarios"})
 
@@ -103,6 +106,8 @@ def refresh_materialized_views(
     allow_concurrent: bool = True,
     name_prefix: str | None = None,
     include_optional: bool = False,
+    already_refreshed: set[str] | None = None,
+    names: set[str] | None = None,
 ) -> list[str]:
     """Refresh matching public matviews in dependency order; return the order."""
     matviews = _discover_matviews(conn, name_prefix=name_prefix)
@@ -112,12 +117,24 @@ def refresh_materialized_views(
             for name, is_populated in matviews.items()
             if name not in OPTIONAL_MATVIEWS
         }
+    if names is not None:
+        matviews = {
+            name: is_populated
+            for name, is_populated in matviews.items()
+            if name in names
+        }
     if not matviews:
         LOGGER.warning("No materialized views found in schema public.")
         return []
 
     refresh_order = _matview_refresh_order(conn, set(matviews))
+    completed = already_refreshed if already_refreshed is not None else set()
     for matview_name in refresh_order:
+        if matview_name in completed:
+            LOGGER.info(
+                "Skipping previously refreshed materialized view %s.", matview_name
+            )
+            continue
         concurrently = (
             allow_concurrent
             and matviews[matview_name]
@@ -130,6 +147,7 @@ def refresh_materialized_views(
         LOGGER.info("%s...", statement)
         with conn.cursor() as cur:
             cur.execute(cast("LiteralString", statement))
+        completed.add(matview_name)
     return refresh_order
 
 
@@ -170,6 +188,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Also refresh the optional wetbulb_forecast_scenarios view.",
     )
+    parser.add_argument(
+        "--matview-name",
+        action="append",
+        default=None,
+        help="Refresh only this exact materialized-view name; may be repeated.",
+    )
     return parser.parse_args(argv)
 
 
@@ -179,11 +203,21 @@ def _is_storage_refresh_error(exc: psycopg.InternalError) -> bool:
     return "no space left on device" in message or "unexpected end of tape" in message
 
 
-def _refresh_once(db_uri: str, args: argparse.Namespace) -> None:
+def _refresh_once(
+    db_uri: str,
+    args: argparse.Namespace,
+    already_refreshed: set[str] | None = None,
+) -> None:
     """Refresh views once using a single database connection."""
     conn: Connection[Any] | None = None
     try:
-        conn = psycopg.connect(db_uri)
+        conn = psycopg.connect(
+            db_uri,
+            keepalives=1,
+            keepalives_idle=KEEPALIVES_IDLE_SECONDS,
+            keepalives_interval=KEEPALIVES_INTERVAL_SECONDS,
+            keepalives_count=KEEPALIVES_COUNT,
+        )
         conn.autocommit = True
         configure_refresh_session(conn)
         refreshed = refresh_materialized_views(
@@ -191,6 +225,8 @@ def _refresh_once(db_uri: str, args: argparse.Namespace) -> None:
             allow_concurrent=not args.non_concurrent,
             name_prefix=args.matview_prefix,
             include_optional=args.include_forecast_scenarios,
+            already_refreshed=already_refreshed,
+            names=set(args.matview_name) if args.matview_name else None,
         )
         LOGGER.info("Refreshed %d materialized view(s).", len(refreshed))
         if not args.skip_analyze:
@@ -224,10 +260,11 @@ def main() -> None:
         )
         return
 
+    already_refreshed: set[str] = set()
     for attempt in range(1, REFRESH_MAX_ATTEMPTS + 1):
         LOGGER.info("Connecting to the database...")
         try:
-            _refresh_once(db_uri, args)
+            _refresh_once(db_uri, args, already_refreshed)
         except psycopg.OperationalError:
             if attempt == REFRESH_MAX_ATTEMPTS:
                 raise

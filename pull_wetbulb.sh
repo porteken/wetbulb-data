@@ -191,6 +191,8 @@ for step in "${STEPS[@]}"; do
         --skip-table wetbulb
       run "${PY[@]}" "${HERE}/load_wetbulb.py" \
         --wetbulb-root "${OUTPUT_ROOT}/wetbulb_data_csv" \
+        --wetbulb-start-year "${START_YEAR}" \
+        --wetbulb-end-year "${END_YEAR}" \
         --load-workers "${LOAD_WORKERS}"
       ;;
     cleanup)
