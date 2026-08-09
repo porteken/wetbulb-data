@@ -716,7 +716,10 @@ def select_best_station_days(candidates: DataFrame) -> DataFrame:
         ranked["station_distance_km"],
         errors="coerce",
     )
-    ranked["_is_reference"] = ranked["station_id"] == ranked["reference_station_id"]
+    if "reference_station_id" in ranked.columns:
+        ranked["_is_reference"] = ranked["station_id"] == ranked["reference_station_id"]
+    else:
+        ranked["_is_reference"] = False
     ranked = ranked.sort_values(
         [
             "location_id",

@@ -72,6 +72,7 @@ class Era5LandSources(NamedTuple):
 
     cache_dir: str | None = None
     cell_map_csv: str | None = None
+    client: CdsClient | None = None
 
 
 NO_EXTRA_SOURCES = Era5LandSources()
@@ -353,16 +354,17 @@ def _fetch_filled_rows(
     start_year: int,
     end_year: int,
     cache_dir: str | None,
+    client: CdsClient | None = None,
 ) -> DataFrame | None:
     """Fetch ERA5-Land data for every gapped city and merge it against `missing_cells`."""
-    client = cds_client()
+    source_client = client or cds_client()
     worker_count = max(1, min(concurrency, len(gapped_rows)))
     with download_cache(cache_dir) as download_dir:
         _log_cache_reuse(gapped_rows, gap_years_by_location, download_dir)
         city_results = _fetch_gaps_batch(
             gapped_rows,
             gap_years_by_location,
-            client,
+            source_client,
             download_dir,
             worker_count,
             city_shard_index,
@@ -525,6 +527,7 @@ def process_era5land_gapfill(
         start_year,
         end_year,
         sources.cache_dir,
+        sources.client,
     )
     if filled is None:
         return

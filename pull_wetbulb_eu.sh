@@ -31,6 +31,9 @@ EU_CROSSWALK_START_YEAR=${EU_CROSSWALK_START_YEAR:-1991}
 EU_TRIAL_YEARS=${EU_TRIAL_YEARS:-1990 2012 2025}
 EU_ISD_CONCURRENCY=${EU_ISD_CONCURRENCY:-8}
 EU_EARTH_ENGINE_CONCURRENCY=${EU_EARTH_ENGINE_CONCURRENCY:-8}
+EU_ERA5LAND_SOURCE=${EU_ERA5LAND_SOURCE:-destine}
+EU_DESTINE_CONCURRENCY=${EU_DESTINE_CONCURRENCY:-2}
+EU_ERA5LAND_DOWNLOAD_DIR=${EU_ERA5LAND_DOWNLOAD_DIR:-eu/era5land_downloads}
 EU_CITY_SHARDS=${EU_CITY_SHARDS:-1}
 EU_SHARD_WORKERS=${EU_SHARD_WORKERS:-1}
 EU_MIN_MISSING_DAYS=${EU_MIN_MISSING_DAYS:-19}
@@ -199,12 +202,6 @@ step_backfill() {
 
 step_gapfill() {
   require_file "${EU_STATION_MAP_CSV}" crosswalk
-  if ((DRY_RUN)); then
-    log "  [dry-run] would require earthengine-api and Google Earth Engine credentials"
-  else
-    "${PY[@]}" -c 'import importlib.util,sys; sys.exit(0 if importlib.util.find_spec("ee") else 1)' ||
-      die "earthengine-api is not installed -- run: uv sync --extra earth-engine"
-  fi
 
   local cell_map_args=()
   if [[ -n ${EU_CELL_MAP_CSV} && -f ${EU_CELL_MAP_CSV} ]]; then
@@ -212,17 +209,39 @@ step_gapfill() {
     log "[gapfill] applying ERA5-Land land-cell overrides from ${EU_CELL_MAP_CSV}"
   fi
 
+  local worker concurrency source_args=()
+  case ${EU_ERA5LAND_SOURCE} in
+  destine)
+    worker=destine_era5land.py
+    concurrency=${EU_DESTINE_CONCURRENCY}
+    source_args=(--download-dir "${EU_ERA5LAND_DOWNLOAD_DIR}")
+    if ((!DRY_RUN)) && [[ -z ${EDH_API_KEY:-} ]]; then
+      die "EDH_API_KEY is not set -- add an Earth Data Hub API key to .env"
+    fi
+    ;;
+  earth-engine)
+    worker=earth_engine_era5land.py
+    concurrency=${EU_EARTH_ENGINE_CONCURRENCY}
+    if ((!DRY_RUN)); then
+      "${PY[@]}" -c 'import importlib.util,sys; sys.exit(0 if importlib.util.find_spec("ee") else 1)' ||
+        die "earthengine-api is not installed"
+    fi
+    ;;
+  *) die "EU_ERA5LAND_SOURCE must be destine or earth-engine" ;;
+  esac
+
   log "[gapfill] ERA5-Land ${EU_START_YEAR}-${EU_END_YEAR}," \
-    "min-missing-days=${EU_MIN_MISSING_DAYS}, ${EU_EARTH_ENGINE_CONCURRENCY} concurrent Earth Engine request(s)"
-  run "${PY[@]}" earth_engine_era5land.py \
+    "source=${EU_ERA5LAND_SOURCE}, min-missing-days=${EU_MIN_MISSING_DAYS}, concurrency=${concurrency}"
+  run "${PY[@]}" "${worker}" \
     --cities-csv "${EU_CITIES_CSV}" \
     --station-map-csv "${EU_STATION_MAP_CSV}" \
     --start-year "${EU_START_YEAR}" --end-year "${EU_END_YEAR}" \
     --out-dir "${EU_OUT_DIR}" \
     --city-shard-index 0 --city-shard-count 1 \
-    --concurrency "${EU_EARTH_ENGINE_CONCURRENCY}" \
+    --concurrency "${concurrency}" \
     --min-missing-days "${EU_MIN_MISSING_DAYS}" \
     "${STATION_FORCE_ARGS[@]}" \
+    "${source_args[@]}" \
     "${cell_map_args[@]}"
   log "[gapfill] done"
 }

@@ -47,6 +47,7 @@ EE_DEFAULT_CONCURRENCY = 8
 EE_MAX_RETRIES = 4
 EE_RETRY_DELAY_SECONDS = 2
 EE_CREDENTIALS_ENV = "GOOGLE_EARTH_ENGINE_CREDENTIALS"
+GOOGLE_APPLICATION_CREDENTIALS_ENV = "GOOGLE_APPLICATION_CREDENTIALS"
 EE_PROJECT_ENV = "GOOGLE_CLOUD_PROJECT"
 
 
@@ -60,7 +61,11 @@ def initialize_earth_engine(
 ) -> None:
     """Initialize EE from JSON content, a JSON path, or ambient credentials."""
     ee = _ee()
-    credential_value = credentials_json or os.getenv(EE_CREDENTIALS_ENV)
+    credential_value = (
+        credentials_json
+        or os.getenv(EE_CREDENTIALS_ENV)
+        or os.getenv(GOOGLE_APPLICATION_CREDENTIALS_ENV)
+    )
     project_id = project or os.getenv(EE_PROJECT_ENV)
     if not credential_value:
         ee.Initialize(project=project_id)

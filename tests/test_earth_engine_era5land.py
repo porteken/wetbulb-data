@@ -57,6 +57,32 @@ def test_initialize_uses_ambient_credentials_and_validates_secret(
         gee.initialize_earth_engine('{"project_id": "only-project"}')
 
 
+def test_initialize_uses_google_application_credentials(
+    monkeypatch: Any, tmp_path: Any
+) -> None:
+    stub = _StubEe()
+    monkeypatch.setattr(gee, "_ee", lambda: stub)
+    monkeypatch.delenv(gee.EE_CREDENTIALS_ENV, raising=False)
+    credentials_path = tmp_path / "google.json"
+    credentials_path.write_text(
+        json.dumps(
+            {
+                "client_email": "weather@example.invalid",
+                "project_id": "weather-project",
+                "private_key": "secret",
+            }
+        )
+    )
+    monkeypatch.setenv(gee.GOOGLE_APPLICATION_CREDENTIALS_ENV, str(credentials_path))
+
+    gee.initialize_earth_engine()
+
+    assert stub.initialized is not None
+    credentials, project = stub.initialized
+    assert credentials[0] == "weather@example.invalid"
+    assert project == "weather-project"
+
+
 def test_collection_and_empty_frame_helpers(monkeypatch: Any) -> None:
     selected = SimpleNamespace(
         filterDate=lambda *_args: selected, select=lambda _bands: selected

@@ -440,6 +440,24 @@ def test_select_best_station_days_uses_fallback_without_mixing() -> None:
     assert list(result["wetbulb"]) == [10.0, 20.0]
 
 
+def test_select_best_station_days_without_reference_station() -> None:
+    candidates = pd.DataFrame(
+        {
+            "location_id": [1, 1],
+            "date": pd.to_datetime(["2025-01-01", "2025-01-01"]),
+            "observed_hours": [20, 24],
+            "station_id": ["10", "20"],
+            "station_distance_km": [2.0, 5.0],
+            "_candidate_rank": [1, 2],
+            "_variable_coverage": [100.0, 100.0],
+        },
+    )
+
+    result = ghcnh.select_best_station_days(candidates)
+
+    assert result["station_id"].tolist() == ["20"]
+
+
 def test_assign_reference_stations_uses_stable_recent_preference() -> None:
     rows = []
     for year in range(1990, 2026):

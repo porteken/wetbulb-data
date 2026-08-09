@@ -86,6 +86,11 @@ run_both() {
   ((rc == 0))
 }
 
+run_bootstrap() {
+  run_na bootstrap
+  run_eu load
+}
+
 for step in "${STEPS[@]}"; do
   case "${step}" in
     all)
@@ -96,11 +101,13 @@ for step in "${STEPS[@]}"; do
       run_na gapfill
       run_eu gapfill
       run_na validate
-      run_na bootstrap
-      run_eu load
+      run_bootstrap
       run_na views
       ;;
-    validate|bootstrap|cleanup|views)
+    bootstrap)
+      run_bootstrap
+      ;;
+    validate|cleanup|views)
       run_na "${step}"
       ;;
     backfill|gapfill)
