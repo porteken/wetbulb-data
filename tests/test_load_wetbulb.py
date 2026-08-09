@@ -21,6 +21,7 @@ class FakeCursor:
     def __init__(self, parent: FakeConnection) -> None:
         """Initialize the fake cursor."""
         self.parent = parent
+        self.rowcount = 0
 
     def execute(self, statement: object, params: object | None = None) -> None:
         self.parent.executed_statements.append((statement, params))
@@ -81,6 +82,20 @@ def _argv(tmp_path: Path, *extra: str) -> list[str]:
         str(tmp_path / "wetbulb.csv"),
         *extra,
     ]
+
+
+def test_delete_replaced_locations_uses_exact_ids_and_years() -> None:
+    conn = FakeConnection()
+
+    deleted = load_wetbulb._delete_replaced_locations(
+        cast("psycopg.Connection[Any]", conn),
+        [412, 494],
+        1990,
+        2026,
+    )
+
+    assert deleted == 0
+    assert conn.executed_statements[0][1] == ([412, 494], 1990, 2027)
 
 
 def test_discovery_includes_eccc_station_batches(tmp_path: Path) -> None:
@@ -144,6 +159,31 @@ def test_discovery_filters_wetbulb_year_partitions(tmp_path: Path) -> None:
     )
 
     assert load._discover_wetbulb_csv_paths(args) == paths[1:3]
+
+
+def test_year_filtered_discovery_does_not_fall_back_to_direct_csv(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "wetbulb_data_csv" / "year=2026"
+    root.mkdir(parents=True)
+    fill_path = root / "wetbulb_fill_batch_0000_00.parquet"
+    fill_path.touch()
+    direct_path = tmp_path / "wetbulb.csv"
+    direct_path.touch()
+    args = load._parse_args(
+        [
+            "--wetbulb-root",
+            str(tmp_path / "wetbulb_data_csv"),
+            "--wetbulb-csv",
+            str(direct_path),
+            "--wetbulb-start-year",
+            "2026",
+            "--wetbulb-end-year",
+            "2026",
+        ]
+    )
+
+    assert load._discover_wetbulb_csv_paths(args) == [fill_path]
 
 
 def test_discovery_rejects_reversed_wetbulb_year_range(tmp_path: Path) -> None:

@@ -9,6 +9,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 import psycopg
+from psycopg import sql
 
 from load import (
     DEFAULT_LOAD_WORKERS,
@@ -55,7 +56,26 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Do not refresh planner statistics after loading.",
     )
+    parser.add_argument("--replace-location-ids", type=int, nargs="+")
     return parser.parse_args(argv)
+
+
+def _delete_replaced_locations(
+    conn: Connection[Any],
+    location_ids: list[int],
+    start_year: int,
+    end_year: int,
+) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            sql.SQL(
+                "DELETE FROM public.wetbulb WHERE location_id = ANY(%s) "
+                "AND date >= make_date(%s, 1, 1) "
+                "AND date < make_date(%s, 1, 1)"
+            ),
+            (location_ids, start_year, end_year + 1),
+        )
+        return max(cur.rowcount, 0)
 
 
 def _wetbulb_table_exists(conn: Connection[Any]) -> bool:
@@ -70,6 +90,11 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = _parse_args()
     _validate_load_shard_args(args.load_shard_index, args.load_shard_count)
+    if args.replace_location_ids and (
+        args.wetbulb_start_year is None or args.wetbulb_end_year is None
+    ):
+        msg = "--replace-location-ids requires both wetbulb year bounds"
+        raise SystemExit(msg)
 
     db_uri = resolve_database_uri()
     if not db_uri:
@@ -102,6 +127,15 @@ def main() -> None:
             db_uri,
             ("migrate_wetbulb_station_provenance.sql",),
         )
+
+        if args.replace_location_ids:
+            deleted = _delete_replaced_locations(
+                conn,
+                sorted(set(args.replace_location_ids)),
+                args.wetbulb_start_year,
+                args.wetbulb_end_year,
+            )
+            LOGGER.info("Deleted %d replaced wetbulb row(s).", deleted)
 
         _load_table_files(
             conn,

@@ -344,6 +344,7 @@ def _load_pending_shard(
     resolve_fs: Callable[[str], tuple[Any, str]],
     compute_pending_years: Callable[..., list[int]],
     cities_csv: str = DEFAULT_CITIES_CSV,
+    location_ids: list[int] | None = None,
 ) -> tuple[DataFrame, list[int], Any, str, str] | None:
     """Load this shard's cities and pending years; `None` if there's nothing to fetch."""
     wetbulb_root = f"{out_dir}/wetbulb_data_csv"
@@ -351,6 +352,8 @@ def _load_pending_shard(
     shard_df = nldas.load_nldas_city_shard(
         city_shard_index, city_shard_count, cities_csv
     )
+    if location_ids is not None:
+        shard_df = shard_df[shard_df["location_id"].isin(location_ids)]
     if shard_df.empty:
         logger.info(
             "No cities found for shard %s/%s.",

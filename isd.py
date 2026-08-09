@@ -337,6 +337,7 @@ def process_isd(
     force: bool = False,
     cities_csv: str = "cities_na.csv",
     station_map_csv: str | None = None,
+    location_ids: list[int] | None = None,
 ) -> None:
     """Fetch NOAA ISD station data, compute daily wet-bulb, and save as parquet shards."""
     loaded = _load_pending_shard(
@@ -350,6 +351,7 @@ def process_isd(
         resolve_fs=resolve_filesystem,
         compute_pending_years=pending_years,
         cities_csv=cities_csv,
+        location_ids=location_ids,
     )
     if loaded is None:
         return
@@ -430,6 +432,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--concurrency", type=int, default=ISD_DEFAULT_CONCURRENCY)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--station-map-csv", type=str, default=STATION_MAP_PATH)
+    parser.add_argument("--location-ids", type=int, nargs="+")
     return parser.parse_args()
 
 
@@ -449,6 +452,7 @@ def main() -> None:
             force=args.force,
             cities_csv=args.cities_csv,
             station_map_csv=args.station_map_csv,
+            location_ids=getattr(args, "location_ids", None),
         )
     except KeyboardInterrupt:
         exit_code = 130

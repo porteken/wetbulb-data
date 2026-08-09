@@ -993,6 +993,9 @@ def _discover_wetbulb_csv_paths(args: argparse.Namespace) -> list[Path]:
         root=args.wetbulb_root,
         file_glob="wetbulb_batch_*.parquet",
         prefer_direct=args.prefer_wetbulb_csv,
+        allow_direct_fallback=(
+            args.wetbulb_start_year is None and args.wetbulb_end_year is None
+        ),
     )
     if args.prefer_wetbulb_csv and Path(args.wetbulb_csv).exists():
         return batch_paths

@@ -471,7 +471,7 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         nargs="+",
         default=None,
-        help="Restrict gap-filling to these location_id(s), for a targeted run.",
+        help="Restrict gap-filling to these location_id values.",
     )
     parser.add_argument(
         "--min-missing-days",

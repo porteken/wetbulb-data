@@ -52,6 +52,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--download-workers", type=int, default=12)
     parser.add_argument("--batch-hours", type=int, default=720)
+    parser.add_argument("--location-ids", type=int, nargs="+")
     parser.add_argument(
         "--force",
         action="store_true",
@@ -73,6 +74,14 @@ def _validated_positive_integer(value: int, option: str) -> int:
     value_as_string = str(value)
     if not re.fullmatch(r"[1-9]\d*", value_as_string):
         msg = f"{option} must be a positive integer"
+        raise argparse.ArgumentTypeError(msg)
+    return int(value_as_string)
+
+
+def _validated_location_id(value: int) -> int:
+    value_as_string = str(value)
+    if not re.fullmatch(r"0|[1-9]\d*", value_as_string):
+        msg = "--location-ids must contain nonnegative integers"
         raise argparse.ArgumentTypeError(msg)
     return int(value_as_string)
 
@@ -128,6 +137,7 @@ def _station_command(
     year: int,
     *,
     force: bool,
+    location_ids: list[int] | None = None,
 ) -> list[str]:
     """Build a command for a station-based observation source."""
     return _station_range_command(
@@ -140,6 +150,7 @@ def _station_command(
         year,
         year,
         force=force,
+        location_ids=location_ids,
     )
 
 
@@ -154,6 +165,7 @@ def _station_range_command(
     end_year: int,
     *,
     force: bool,
+    location_ids: list[int] | None = None,
 ) -> list[str]:
     """Build one station-worker command spanning a contiguous year range."""
     cities_csv, station_map = _station_map_for(selected_source, region)
@@ -174,6 +186,8 @@ def _station_range_command(
     if city_shard_count > 1:
         command[8:8] = ["--city-shard-index", str(city_shard_index)]
     command.extend(["--cities-csv", cities_csv, "--station-map-csv", station_map])
+    if location_ids:
+        command.extend(["--location-ids", *(str(value) for value in location_ids)])
     if force:
         command.append("--force")
     return command
@@ -212,6 +226,7 @@ def _command(
     year: int,
     *,
     force: bool = False,
+    location_ids: list[int] | None = None,
 ) -> list[str]:
     selected_source = _selected_source(wetbulb_source, year)
     if selected_source in {"eccc", "ghcnh", "isd", "lcd", "giovanni"}:
@@ -224,6 +239,7 @@ def _command(
             concurrency,
             year,
             force=force,
+            location_ids=location_ids,
         )
 
     command = [
@@ -292,6 +308,11 @@ def main(argv: list[str] | None = None) -> None:
     batch_hours = _validated_positive_integer(args.batch_hours, "--batch-hours")
     months = _positive_values(args.months, "--months")
     years = [_validated_positive_integer(year, "--years") for year in args.years]
+    location_ids = (
+        [_validated_location_id(value) for value in args.location_ids]
+        if args.location_ids is not None
+        else None
+    )
     for selected_source, start_year, end_year in _source_year_runs(
         wetbulb_source, years
     ):
@@ -307,6 +328,7 @@ def main(argv: list[str] | None = None) -> None:
                     start_year,
                     end_year,
                     force=args.force,
+                    location_ids=location_ids,
                 )
             else:
                 command = _command(
@@ -321,6 +343,7 @@ def main(argv: list[str] | None = None) -> None:
                     months,
                     start_year,
                     force=args.force,
+                    location_ids=location_ids,
                 )
             subprocess.run(
                 command,

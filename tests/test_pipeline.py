@@ -170,6 +170,31 @@ def test_force_is_forwarded_to_station_worker(
     assert calls[0][-1] == "--force"
 
 
+def test_location_ids_are_forwarded_to_station_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        pipeline.subprocess,
+        "run",
+        lambda command, **_kwargs: calls.append(command),
+    )
+
+    pipeline.main(
+        [
+            "--years",
+            "2026",
+            "--wetbulb-source",
+            "isd",
+            "--location-ids",
+            "412",
+            "494",
+        ]
+    )
+
+    assert calls[0][-3:] == ["--location-ids", "412", "494"]
+
+
 def test_eu_region_with_default_out_dir_warns(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
