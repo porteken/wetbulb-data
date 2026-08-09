@@ -75,7 +75,7 @@ def _column_or_missing(df: DataFrame, name: str) -> DataFrame:
 
 def _parse_isd_field(raw: DataFrame, *, missing: str) -> DataFrame:
     """Split a comma-packed `"value,quality_code"` ISD element into a scaled float."""
-    parts = raw.str.split(",")
+    parts = raw.astype("string").str.split(",")
     value_str = parts.str[0]
     qc = parts.str[1]
     value_raw = pd.to_numeric(value_str, errors="coerce")
@@ -143,7 +143,7 @@ def _parse_isd_response(
         _column_or_missing(hourly, "SLP"), missing=_ISD_MISSING_PRESSURE
     )
 
-    ma1 = _column_or_missing(hourly, "MA1").str.split(",")
+    ma1 = _column_or_missing(hourly, "MA1").astype("string").str.split(",")
     altimeter_value_str = ma1.str[0]
     altimeter_qc = ma1.str[1]
     station_pressure_str = ma1.str[2]

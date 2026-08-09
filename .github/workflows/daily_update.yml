@@ -81,7 +81,7 @@ jobs:
         with:
           enable-cache: true
       - name: Sync runtime dependencies
-        run: uv sync --locked --no-dev --no-build --extra earth-engine
+        run: uv sync --locked --no-dev --no-build
       - name: Fetch NOAA GHCNh and replace the current-year shard
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

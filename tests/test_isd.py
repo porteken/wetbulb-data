@@ -42,6 +42,10 @@ NO_MA1_COLUMN_CSV = (
     '"+0020,5","10175,5"\n'
 )
 
+EMPTY_MA1_COLUMN_CSV = f"""{_HEADER}
+"72503014732","2000-01-01T00:51:00","4","40.7789","-73.9692","39.6","NEW YORK CENTRAL PARK, NY US","FM-15","KNYC ","V020","+0050,5","+0020,5","10175,5",""
+"""
+
 REJECTED_QC_CSV = f"""{_HEADER}
 "72503014732","2024-01-01T00:53:00","4","40.7789","-73.9692","39.6","NEW YORK CENTRAL PARK, NY US","FM-15","KNYC ","V020","+0500,6","+0020,5","10175,5","10176,5,10160,5"
 """
@@ -221,6 +225,16 @@ class TestFetchStationYear:
 
     def test_missing_ma1_column_falls_back_to_sea_level_pressure(self) -> None:
         session = cast("Any", _FakeSession([_FakeResponse(200, NO_MA1_COLUMN_CSV)]))
+        frame, gap = isd.fetch_station_year(
+            ["72503014732"], 2000, lon=-73.9692, session=session
+        )
+        assert gap is False
+        assert len(frame) == 1
+        assert frame["pressure_hpa"].iloc[0] < 1017.5
+        assert frame["pressure_hpa"].iloc[0] > 1010.0
+
+    def test_empty_ma1_column_falls_back_to_sea_level_pressure(self) -> None:
+        session = cast("Any", _FakeSession([_FakeResponse(200, EMPTY_MA1_COLUMN_CSV)]))
         frame, gap = isd.fetch_station_year(
             ["72503014732"], 2000, lon=-73.9692, session=session
         )
