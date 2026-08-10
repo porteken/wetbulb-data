@@ -26,12 +26,17 @@ KEEPALIVES_INTERVAL_SECONDS = 10
 KEEPALIVES_COUNT = 6
 DEFAULT_MATVIEW_PREFIX = "wetbulb_"
 OPTIONAL_MATVIEWS = frozenset({"wetbulb_forecast_scenarios"})
+LOGICAL_MATVIEW_DEPENDENCIES = {
+    "wetbulb_forecast": frozenset({"wetbulb_year_stats"}),
+    "wetbulb_forecast_scenarios": frozenset({"wetbulb_forecast"}),
+    "wetbulb_forecast_max_scenarios": frozenset({"wetbulb_year_stats"}),
+}
 
 _REFRESH_SESSION_STATEMENTS: tuple[LiteralString, ...] = (
     "SET max_parallel_workers_per_gather = 0",
     "SET max_parallel_maintenance_workers = 0",
-    "SET work_mem = '64MB'",
-    "SET maintenance_work_mem = '128MB'",
+    "SET work_mem = '16MB'",
+    "SET maintenance_work_mem = '64MB'",
 )
 
 _MATVIEWS_QUERY: LiteralString = """
@@ -91,6 +96,10 @@ def _matview_refresh_order(conn: Connection[Any], matviews: set[str]) -> list[st
         for view_name, depends_on in cur.fetchall():
             if view_name in dependencies and depends_on in matviews:
                 dependencies[view_name].add(depends_on)
+    for view_name, required_views in LOGICAL_MATVIEW_DEPENDENCIES.items():
+        if view_name not in dependencies:
+            continue
+        dependencies[view_name].update(required_views & matviews)
     return list(TopologicalSorter(dependencies).static_order())
 
 

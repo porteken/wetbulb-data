@@ -115,6 +115,30 @@ class TestRefreshMaterializedViews:
             "REFRESH MATERIALIZED VIEW CONCURRENTLY public.mv_b",
         ]
 
+    def test_refreshes_logical_forecast_dependencies_first(self) -> None:
+        conn = FakeConnection(
+            matviews=[
+                ("wetbulb_forecast_max_scenarios", True),
+                ("wetbulb_forecast_max", True),
+                ("wetbulb_forecast", True),
+                ("wetbulb_year_stats", True),
+            ],
+            dependencies=[("wetbulb_forecast_max", "wetbulb_forecast_max_scenarios")],
+        )
+
+        order = refresh_views.refresh_materialized_views(
+            cast("Any", conn),
+            allow_concurrent=False,
+        )
+
+        assert order.index("wetbulb_year_stats") < order.index("wetbulb_forecast")
+        assert order.index("wetbulb_year_stats") < order.index(
+            "wetbulb_forecast_max_scenarios"
+        )
+        assert order.index("wetbulb_forecast_max_scenarios") < order.index(
+            "wetbulb_forecast_max"
+        )
+
     def test_unpopulated_or_unindexed_matviews_refresh_non_concurrently(
         self,
     ) -> None:
