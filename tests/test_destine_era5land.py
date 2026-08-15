@@ -40,6 +40,12 @@ def test_requires_api_key() -> None:
         destine.DestineEra5LandClient("")
 
 
+def test_uses_current_hourly_dataset() -> None:
+    assert destine.EDH_DATASET_URL.endswith(
+        "/era5/reanalysis-era5-land-no-antartica-v0.zarr"
+    )
+
+
 def test_retrieve_uses_basic_auth_and_western_longitude(
     monkeypatch: Any, tmp_path: Any
 ) -> None:
