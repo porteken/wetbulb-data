@@ -251,6 +251,8 @@ def process_eccc(
     cities_csv: str = "cities_na.csv",
     station_map_csv: str = ECCC_STATION_MAP_PATH,
     location_ids: list[int] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> None:
     """Write complete ECCC station-days as a primary supplement to GHCNh."""
     loaded = _load_pending_shard(
@@ -300,6 +302,14 @@ def process_eccc(
     if not usable:
         return
     selected = ghcnh.select_best_station_days(pd.concat(usable, ignore_index=True))
+    selected_dates = pd.to_datetime(selected["date"])
+    if start_date is not None:
+        selected = selected[selected_dates >= pd.Timestamp(start_date)]
+        selected_dates = selected_dates.loc[selected.index]
+    if end_date is not None:
+        selected = selected[selected_dates <= pd.Timestamp(end_date)]
+    if selected.empty:
+        return
     writable_years = [year for year in years if year not in gapped_years]
     if writable_years:
         write_pending_year_batches(
@@ -310,6 +320,7 @@ def process_eccc(
             filesystem,
             base_path,
             file_prefix=ECCC_FILE_PREFIX,
+            merge_existing=start_date is not None or end_date is not None,
         )
 
 
@@ -318,6 +329,8 @@ def _parse_args() -> argparse.Namespace:
     add_common_shard_args(parser)
     parser.add_argument("--concurrency", type=int, default=ECCC_DEFAULT_CONCURRENCY)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--start-date")
+    parser.add_argument("--end-date")
     parser.add_argument("--station-map-csv", default=ECCC_STATION_MAP_PATH)
     parser.add_argument("--location-ids", type=int, nargs="+")
     return parser.parse_args()
@@ -339,6 +352,8 @@ def main() -> None:
             cities_csv=args.cities_csv,
             station_map_csv=args.station_map_csv,
             location_ids=getattr(args, "location_ids", None),
+            start_date=args.start_date,
+            end_date=args.end_date,
         )
     except KeyboardInterrupt:
         sys.exit(130)

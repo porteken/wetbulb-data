@@ -120,20 +120,38 @@ def write_pending_year_batches(
     base_path: str | None,
     *,
     file_prefix: str,
+    merge_existing: bool = False,
 ) -> None:
     """Write each pending year's rows as its own shard partition."""
+    if filesystem is None or base_path is None:
+        filesystem, base_path = resolve_filesystem(root)
+    fs: Any = filesystem
+    resolved_base_path = cast("str", base_path)
     daily_df["year"] = pd.to_datetime(daily_df["date"]).dt.year
     pending_year_set = set(pending_year_list)
     for year, year_df in daily_df.groupby("year"):
         if year not in pending_year_set:
             continue
+        output_path = (
+            f"{resolved_base_path}/year={year}/"
+            f"{file_prefix}_batch_0000_{city_shard_index:02d}.parquet"
+        )
+        if merge_existing and fs.get_file_info(output_path).type != 0:
+            existing = pq.read_table(output_path, filesystem=fs).to_pandas()
+            output_df = pd.concat(
+                [existing, year_df.drop(columns="year")], ignore_index=True
+            )
+            output_df["date"] = pd.to_datetime(output_df["date"])
+            output_df = output_df.drop_duplicates(["location_id", "date"], keep="last")
+        else:
+            output_df = year_df.drop(columns="year")
         write_batch_partition(
             root,
             int(year),
             city_shard_index,
-            year_df.drop(columns="year"),
+            output_df,
             0,
             file_prefix=file_prefix,
-            filesystem=filesystem,
-            base_path=base_path,
+            filesystem=fs,
+            base_path=resolved_base_path,
         )

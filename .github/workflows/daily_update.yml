@@ -31,10 +31,14 @@ jobs:
     outputs:
       target_year: ${{ steps.target.outputs.year }}
       shard_matrix: ${{ steps.target.outputs.shards }}
+      start_date: ${{ steps.target.outputs.start_date }}
+      end_date: ${{ steps.target.outputs.end_date }}
+      has_updates: ${{ steps.target.outputs.has_updates }}
     steps:
       - name: Resolve target year and city shards
         id: target
         env:
+          POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
           SHARD_COUNT: ${{ env.CITY_SHARD_COUNT }}
           TARGET_YEAR_INPUT: ${{ inputs.target_year }}
         run: |
@@ -47,10 +51,29 @@ jobs:
             exit 2
           fi
           echo "year=$target_year" >> "$GITHUB_OUTPUT"
+          current_year="$(date -u +%Y)"
+          if [ "$target_year" -eq "$current_year" ]; then
+            end_date="$(date -u -d yesterday +%F)"
+          else
+            end_date="$target_year-12-31"
+          fi
+          max_date="$(psql "$POSTGRES_DB_URI" --tuples-only --no-align --command "SELECT max(date) FROM public.wetbulb WHERE date >= DATE '$target_year-01-01' AND date < DATE '$((target_year + 1))-01-01'")"
+          if [ -n "$max_date" ]; then
+            start_date="$(date -u -d "$max_date + 1 day" +%F)"
+          else
+            start_date="$target_year-01-01"
+          fi
+          echo "start_date=$start_date" >> "$GITHUB_OUTPUT"
+          echo "end_date=$end_date" >> "$GITHUB_OUTPUT"
+          if [[ "$start_date" > "$end_date" ]]; then
+            echo "has_updates=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_updates=true" >> "$GITHUB_OUTPUT"
+          fi
           python3 -c "import json,os; print('shards=' + json.dumps(list(range(int(os.environ['SHARD_COUNT'])))))" >> "$GITHUB_OUTPUT"
 
   fetch-current-year:
-    if: github.ref_name == 'prd' || github.event_name == 'workflow_dispatch'
+    if: needs.resolve-target.outputs.has_updates == 'true'
     needs: resolve-target
     strategy:
       fail-fast: false
@@ -88,10 +111,14 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
           TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
+          START_DATE: ${{ needs.resolve-target.outputs.start_date }}
+          END_DATE: ${{ needs.resolve-target.outputs.end_date }}
         run: |
           uv run --locked --no-build python ghcnh.py \
             --start-year "$TARGET_YEAR" \
             --end-year "$TARGET_YEAR" \
+            --start-date "$START_DATE" \
+            --end-date "$END_DATE" \
             --cities-csv "${{ matrix.region.cities }}" \
             --station-map-csv "${{ matrix.region.station_map }}" \
             --city-shard-index "${{ matrix.shard }}" \
@@ -106,10 +133,14 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
           TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
+          START_DATE: ${{ needs.resolve-target.outputs.start_date }}
+          END_DATE: ${{ needs.resolve-target.outputs.end_date }}
         run: |
           uv run --locked --no-build python eccc.py \
             --start-year "$TARGET_YEAR" \
             --end-year "$TARGET_YEAR" \
+            --start-date "$START_DATE" \
+            --end-date "$END_DATE" \
             --cities-csv cities_na.csv \
             --station-map-csv cities_na_eccc_stations.csv \
             --city-shard-index "${{ matrix.shard }}" \
@@ -124,6 +155,8 @@ jobs:
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
           GOOGLE_EARTH_ENGINE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
           TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
+          START_DATE: ${{ needs.resolve-target.outputs.start_date }}
+          END_DATE: ${{ needs.resolve-target.outputs.end_date }}
         run: |
           cell_map_args=()
           if [ -n "${{ matrix.region.cell_map }}" ]; then
@@ -132,6 +165,8 @@ jobs:
           uv run --locked --no-build python earth_engine_era5land.py \
             --start-year "$TARGET_YEAR" \
             --end-year "$TARGET_YEAR" \
+            --start-date "$START_DATE" \
+            --end-date "$END_DATE" \
             --cities-csv "${{ matrix.region.cities }}" \
             --station-map-csv "${{ matrix.region.station_map }}" \
             --city-shard-index "${{ matrix.shard }}" \
@@ -143,7 +178,7 @@ jobs:
             "${cell_map_args[@]}"
 
   load-current-year:
-    if: (github.ref_name == 'prd' || github.event_name == 'workflow_dispatch') && !inputs.skip_db_load
+    if: needs.resolve-target.outputs.has_updates == 'true' && !inputs.skip_db_load
     needs: [resolve-target, fetch-current-year]
     runs-on: ubuntu-latest
     steps:

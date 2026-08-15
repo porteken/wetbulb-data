@@ -164,3 +164,46 @@ class TestWritePendingYearBatches:
             filesystem=filesystem,
             base_path=base_path,
         )
+
+    def test_merges_incremental_dates_into_existing_batch(self, tmp_path: Any) -> None:
+        root = str(tmp_path)
+        filesystem, base_path = resolve_filesystem(root)
+        initial = pd.DataFrame(
+            {
+                "location_id": [1, 1],
+                "date": pd.to_datetime(["2026-01-01", "2026-01-02"]),
+                "wetbulb": [10.0, 11.0],
+            }
+        )
+        update = pd.DataFrame(
+            {
+                "location_id": [1, 1],
+                "date": pd.to_datetime(["2026-01-02", "2026-01-03"]),
+                "wetbulb": [12.0, 13.0],
+            }
+        )
+        partition_io.write_pending_year_batches(
+            initial, [2026], root, 0, filesystem, base_path, file_prefix="wetbulb"
+        )
+        partition_io.write_pending_year_batches(
+            update,
+            [2026],
+            root,
+            0,
+            filesystem,
+            base_path,
+            file_prefix="wetbulb",
+            merge_existing=True,
+        )
+
+        table = partition_io.pq.read_table(
+            f"{base_path}/year=2026/wetbulb_batch_0000_00.parquet",
+            filesystem=filesystem,
+        ).to_pandas()
+
+        assert table["date"].dt.strftime("%F").tolist() == [
+            "2026-01-01",
+            "2026-01-02",
+            "2026-01-03",
+        ]
+        assert table["wetbulb"].tolist() == [10.0, 12.0, 13.0]

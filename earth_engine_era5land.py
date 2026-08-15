@@ -12,6 +12,7 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -36,6 +37,13 @@ type DataFrame = Any
 type CityRow = Any
 type EarthEngine = Any
 type ImageCollection = Any
+
+
+@dataclass(frozen=True)
+class _IncrementalOptions:
+    cell_map_csv: str | None = None
+    date_range: tuple[str, str] | None = None
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -82,22 +90,49 @@ def initialize_earth_engine(
     ee.Initialize(credentials, project=project_id)
 
 
-def _collection(start_year: int, end_year: int) -> ImageCollection:
+def _collection(
+    start_year: int,
+    end_year: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> ImageCollection:
     """Include boundary UTC hours needed to form local-standard calendar days."""
     ee = _ee()
+    range_start = (
+        date.fromisoformat(start_date) - timedelta(days=2)
+        if start_date is not None
+        else date(start_year - 1, 12, 30)
+    )
+    range_stop = (
+        date.fromisoformat(end_date) + timedelta(days=3)
+        if end_date is not None
+        else date(end_year + 1, 1, 3)
+    )
     return (
         ee.ImageCollection(EE_COLLECTION)
-        .filterDate(f"{start_year - 1}-12-30", f"{end_year + 1}-01-03")
+        .filterDate(range_start.isoformat(), range_stop.isoformat())
         .select(list(EE_BANDS))
     )
 
 
 def _collection_chunks(
-    collection: ImageCollection, start_year: int, end_year: int
+    collection: ImageCollection,
+    start_year: int,
+    end_year: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> list[ImageCollection]:
     """Split a collection so each EE reduction has a bounded memory footprint."""
-    start = date(start_year - 1, 12, 30)
-    stop = date(end_year + 1, 1, 3)
+    start = (
+        date.fromisoformat(start_date) - timedelta(days=2)
+        if start_date is not None
+        else date(start_year - 1, 12, 30)
+    )
+    stop = (
+        date.fromisoformat(end_date) + timedelta(days=3)
+        if end_date is not None
+        else date(end_year + 1, 1, 3)
+    )
     chunks = []
     while start < stop:
         chunk_stop = min(start + timedelta(days=EE_CHUNK_DAYS), stop)
@@ -217,10 +252,12 @@ def _filled_rows(
     end_year: int,
     concurrency: int,
     city_shard_index: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> DataFrame | None:
-    collection = _collection(start_year, end_year)
+    collection = _collection(start_year, end_year, start_date, end_date)
     results = _fetch_batch(
-        _collection_chunks(collection, start_year, end_year),
+        _collection_chunks(collection, start_year, end_year, start_date, end_date),
         rows,
         concurrency,
         city_shard_index,
@@ -255,10 +292,14 @@ def process_earth_engine_gapfill(
     location_ids: list[int] | None = None,
     min_missing_days: int = MIN_MISSING_DAYS_DEFAULT,
     force: bool = False,
-    cell_map_csv: str | None = None,
+    incremental: _IncrementalOptions | None = None,
 ) -> None:
     """Fill station gaps while preserving station-source precedence at database load."""
     wetbulb_root = f"{out_dir}/wetbulb_data_csv"
+    incremental = incremental or _IncrementalOptions()
+    cell_map_csv = incremental.cell_map_csv
+    date_range = incremental.date_range
+    start_date, end_date = date_range if date_range is not None else (None, None)
     resolved = resolve_gapfill_targets(
         nldas.load_nldas_city_shard(city_shard_index, city_shard_count, cities_csv),
         wetbulb_root,
@@ -270,6 +311,8 @@ def process_earth_engine_gapfill(
         min_missing_days=min_missing_days,
         force=force,
         logger=LOGGER,
+        start_date=start_date,
+        end_date=end_date,
     )
     if resolved is None:
         return
@@ -293,6 +336,8 @@ def process_earth_engine_gapfill(
         end_year,
         concurrency,
         city_shard_index,
+        start_date,
+        end_date,
     )
     if filled is None:
         return
@@ -304,6 +349,7 @@ def process_earth_engine_gapfill(
         filesystem,
         base_path,
         file_prefix=GAPFILL_FILE_PREFIX,
+        merge_existing=start_date is not None or end_date is not None,
     )
 
 
@@ -317,6 +363,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--project", default=None)
     parser.add_argument("--concurrency", type=int, default=EE_DEFAULT_CONCURRENCY)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--start-date")
+    parser.add_argument("--end-date")
     parser.add_argument("--location-ids", type=int, nargs="+", default=None)
     parser.add_argument(
         "--min-missing-days", type=int, default=MIN_MISSING_DAYS_DEFAULT
@@ -341,7 +389,12 @@ def main() -> None:
         location_ids=args.location_ids,
         min_missing_days=args.min_missing_days,
         force=args.force,
-        cell_map_csv=args.cell_map_csv,
+        incremental=_IncrementalOptions(
+            cell_map_csv=args.cell_map_csv,
+            date_range=(args.start_date, args.end_date)
+            if args.start_date is not None and args.end_date is not None
+            else None,
+        ),
     )
 
 

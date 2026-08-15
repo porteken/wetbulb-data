@@ -752,6 +752,8 @@ def process_ghcnh(
     cities_csv: str = "cities_na.csv",
     station_map_csv: str = STATION_MAP_PATH,
     location_ids: list[int] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> None:
     """Fetch mapped stations, compute daily values, and write parquet shards."""
     loaded = _load_pending_shard(
@@ -812,6 +814,14 @@ def process_ghcnh(
     if homogenized.empty:
         return
     selected = select_best_station_days(homogenized)
+    selected_dates = pd.to_datetime(selected["date"])
+    if start_date is not None:
+        selected = selected[selected_dates >= pd.Timestamp(start_date)]
+        selected_dates = selected_dates.loc[selected.index]
+    if end_date is not None:
+        selected = selected[selected_dates <= pd.Timestamp(end_date)]
+    if selected.empty:
+        return
     writable_years = [year for year in years if year not in gapped_years]
     if gapped_years:
         LOGGER.warning(
@@ -830,6 +840,7 @@ def process_ghcnh(
             filesystem,
             base_path,
             file_prefix="wetbulb",
+            merge_existing=start_date is not None or end_date is not None,
         )
 
 
@@ -840,6 +851,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--station-map-csv", default=STATION_MAP_PATH)
     parser.add_argument("--location-ids", type=int, nargs="+")
+    parser.add_argument("--start-date")
+    parser.add_argument("--end-date")
     return parser.parse_args()
 
 
@@ -859,6 +872,8 @@ def main() -> None:
             cities_csv=args.cities_csv,
             station_map_csv=args.station_map_csv,
             location_ids=getattr(args, "location_ids", None),
+            start_date=args.start_date,
+            end_date=args.end_date,
         )
     except KeyboardInterrupt:
         sys.exit(130)

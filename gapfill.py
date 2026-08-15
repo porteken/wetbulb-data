@@ -315,6 +315,8 @@ def resolve_gapfill_targets(
     min_missing_days: int,
     force: bool,
     logger: logging.Logger,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> tuple[DataFrame, Any, str, list[int], DataFrame, DataFrame] | None:
     """Narrow a shard to its pending years and gap cells; `None` if there's no work."""
     if location_ids is not None:
@@ -348,6 +350,14 @@ def resolve_gapfill_targets(
     all_missing_cells = find_missing_cells(
         shard_df["location_id"].tolist(), pending_year_list, filesystem, base_path
     )
+    if start_date is not None:
+        all_missing_cells = all_missing_cells[
+            all_missing_cells["date"] >= pd.Timestamp(start_date)
+        ]
+    if end_date is not None:
+        all_missing_cells = all_missing_cells[
+            all_missing_cells["date"] <= pd.Timestamp(end_date)
+        ]
     return (
         shard_df,
         filesystem,

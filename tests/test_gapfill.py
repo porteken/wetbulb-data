@@ -270,6 +270,38 @@ class TestResolveGapfillTargets:
         assert resolved is None
         assert any("No cities found" in message for message in caplog.messages)
 
+    def test_limits_missing_cells_to_incremental_dates(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        monkeypatch.setattr(
+            gapfill,
+            "find_missing_cells",
+            lambda *_args, **_kwargs: pd.DataFrame(
+                {
+                    "location_id": [1, 1, 1],
+                    "date": pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"]),
+                }
+            ),
+        )
+
+        resolved = gapfill.resolve_gapfill_targets(
+            self._shard_df(),
+            f"{tmp_path}/wetbulb_data_csv",
+            2020,
+            2020,
+            0,
+            1,
+            location_ids=None,
+            min_missing_days=1,
+            force=False,
+            logger=gapfill.LOGGER,
+            start_date="2020-01-02",
+            end_date="2020-01-02",
+        )
+
+        assert resolved is not None
+        assert resolved[4]["date"].dt.strftime("%F").tolist() == ["2020-01-02"]
+
 
 class TestProcessGapfill:
     @staticmethod
