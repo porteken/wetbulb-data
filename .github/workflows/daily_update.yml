@@ -25,7 +25,7 @@ env:
   BUCKET_NAME: wetbulb-parquet-files
   CITY_SHARD_COUNT: "10"
   FETCH_CONCURRENCY: "8"
-  EARTH_ENGINE_CONCURRENCY: "8"
+  ERA5_LAND_CONCURRENCY: "8"
   ERA5_LAND_RELIABLE_LAG_DAYS: "8"
 
 jobs:
@@ -174,12 +174,12 @@ jobs:
             --concurrency "$FETCH_CONCURRENCY" \
             --force \
             --out-dir "s3://$BUCKET_NAME/${{ matrix.region.output_root }}"
-      - name: Fill every GHCNh gap with Earth Engine ERA5-Land
+      - name: Fill every GHCNh gap with DestinE ERA5-Land
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
-          GOOGLE_EARTH_ENGINE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
+          EDH_API_KEY: ${{ secrets.EDH_API_KEY }}
           TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
           START_DATE: ${{ needs.resolve-target.outputs.start_date }}
           END_DATE: ${{ needs.resolve-target.outputs.end_date }}
@@ -188,7 +188,7 @@ jobs:
           if [ -n "${{ matrix.region.cell_map }}" ]; then
             cell_map_args=(--cell-map-csv "${{ matrix.region.cell_map }}")
           fi
-          uv run --locked --no-build python earth_engine_era5land.py \
+          uv run --locked --no-build python destine_era5land.py \
             --start-year "$TARGET_YEAR" \
             --end-year "$TARGET_YEAR" \
             --start-date "$START_DATE" \
@@ -197,7 +197,7 @@ jobs:
             --station-map-csv "${{ matrix.region.station_map }}" \
             --city-shard-index "${{ matrix.shard }}" \
             --city-shard-count "$CITY_SHARD_COUNT" \
-            --concurrency "$EARTH_ENGINE_CONCURRENCY" \
+            --concurrency "$ERA5_LAND_CONCURRENCY" \
             --min-missing-days 1 \
             --force \
             --out-dir "s3://$BUCKET_NAME/${{ matrix.region.output_root }}" \

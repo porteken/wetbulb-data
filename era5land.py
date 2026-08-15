@@ -73,6 +73,8 @@ class Era5LandSources(NamedTuple):
     cache_dir: str | None = None
     cell_map_csv: str | None = None
     client: CdsClient | None = None
+    start_date: str | None = None
+    end_date: str | None = None
 
 
 NO_EXTRA_SOURCES = Era5LandSources()
@@ -482,6 +484,8 @@ def process_era5land_gapfill(
         min_missing_days=min_missing_days,
         force=force,
         logger=LOGGER,
+        start_date=sources.start_date,
+        end_date=sources.end_date,
     )
     if resolved is None:
         return
@@ -540,6 +544,7 @@ def process_era5land_gapfill(
         filesystem,
         base_path,
         file_prefix=GAPFILL_FILE_PREFIX,
+        merge_existing=sources.start_date is not None or sources.end_date is not None,
     )
 
 

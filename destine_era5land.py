@@ -38,8 +38,13 @@ class DestineEra5LandClient:
             message = f"Set {EDH_API_KEY_ENV} in .env to an Earth Data Hub API key"
             raise ValueError(message)
         token = base64.b64encode(f"{EDH_USERNAME}:{api_key}".encode()).decode()
-        filesystem = fsspec.filesystem(
+        remote_filesystem = fsspec.filesystem(
             "http", headers={"Authorization": f"Basic {token}"}
+        )
+        filesystem = fsspec.filesystem(
+            "simplecache",
+            fs=remote_filesystem,
+            cache_storage="TMP",
         )
         self.dataset = xr.open_dataset(
             filesystem.get_mapper(dataset_url),
@@ -47,11 +52,17 @@ class DestineEra5LandClient:
             engine="zarr",
             zarr_format=3,
         )
+        self.start_date: str | None = None
+        self.end_date: str | None = None
 
     def retrieve(self, _dataset: str, request: dict[str, Any], target: str) -> None:
         """Write one point and date span using the CDS-compatible cache schema."""
         location = request["location"]
         start_text, end_text = request["date"][0].split("/")
+        if self.start_date is not None:
+            start_text = max(start_text, self.start_date)
+        if self.end_date is not None:
+            end_text = min(end_text, self.end_date)
         start = pd.Timestamp(start_text) - timedelta(days=2)
         end = pd.Timestamp(end_text) + timedelta(days=2)
         longitude = float(location["longitude"])
@@ -76,6 +87,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--cell-map-csv", default=None)
     parser.add_argument("--download-dir", default=None)
     parser.add_argument("--api-key", default=None)
+    parser.add_argument("--start-date")
+    parser.add_argument("--end-date")
     parser.add_argument(
         "--concurrency", type=int, default=era5land.ERA5LAND_DEFAULT_CONCURRENCY
     )
@@ -92,6 +105,8 @@ def main() -> None:
     load_dotenv(override=False)
     args = _parse_args()
     client = DestineEra5LandClient(args.api_key or os.getenv(EDH_API_KEY_ENV, ""))
+    client.start_date = args.start_date
+    client.end_date = args.end_date
     era5land.process_era5land_gapfill(
         args.start_year,
         args.end_year,
@@ -108,6 +123,8 @@ def main() -> None:
             cache_dir=args.download_dir,
             cell_map_csv=args.cell_map_csv,
             client=client,
+            start_date=args.start_date,
+            end_date=args.end_date,
         ),
     )
 
