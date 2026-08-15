@@ -49,14 +49,8 @@ class DestineEra5LandClient:
                 }
             },
         )
-        filesystem = fsspec.filesystem(
-            "simplecache",
-            asynchronous=True,
-            fs=remote_filesystem,
-            cache_storage="TMP",
-        )
         self.dataset = xr.open_dataset(
-            filesystem.get_mapper(dataset_url),
+            remote_filesystem.get_mapper(dataset_url),
             chunks={},
             engine="zarr",
             zarr_format=3,
