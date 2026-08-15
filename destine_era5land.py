@@ -23,10 +23,7 @@ xr = cast("Any", importlib.import_module("xarray"))
 pd = cast("Any", importlib.import_module("pandas"))
 
 EDH_API_KEY_ENV = "EDH_API_KEY"
-EDH_DATASET_URL = (
-    "https://data.earthdatahub.destine.eu/era5/"
-    "reanalysis-era5-land-no-antartica-v0.zarr"
-)
+EDH_DATASET_URL = "https://data.earthdatahub.destine.eu/era5/era5-land-v0.zarr"
 EDH_USERNAME = "edh"
 WESTERN_LONGITUDE_LIMIT = 180
 

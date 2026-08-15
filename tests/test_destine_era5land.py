@@ -39,9 +39,7 @@ def test_requires_api_key() -> None:
 
 
 def test_uses_current_hourly_dataset() -> None:
-    assert destine.EDH_DATASET_URL.endswith(
-        "/era5/reanalysis-era5-land-no-antartica-v0.zarr"
-    )
+    assert destine.EDH_DATASET_URL.endswith("/era5/era5-land-v0.zarr")
 
 
 def test_retrieve_uses_basic_auth_and_western_longitude(
