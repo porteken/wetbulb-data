@@ -39,10 +39,13 @@ class DestineEra5LandClient:
             raise ValueError(message)
         token = base64.b64encode(f"{EDH_USERNAME}:{api_key}".encode()).decode()
         remote_filesystem = fsspec.filesystem(
-            "http", headers={"Authorization": f"Basic {token}"}
+            "http",
+            asynchronous=True,
+            headers={"Authorization": f"Basic {token}"},
         )
         filesystem = fsspec.filesystem(
             "simplecache",
+            asynchronous=True,
             fs=remote_filesystem,
             cache_storage="TMP",
         )
