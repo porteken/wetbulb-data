@@ -11,6 +11,7 @@ import os
 import sys
 from datetime import timedelta
 from typing import Any, cast
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 
@@ -19,9 +20,7 @@ import lcd
 from gapfill import MIN_MISSING_DAYS_DEFAULT
 
 xr = cast("Any", importlib.import_module("xarray"))
-fsspec = cast("Any", importlib.import_module("fsspec"))
 pd = cast("Any", importlib.import_module("pandas"))
-aiohttp = cast("Any", importlib.import_module("aiohttp"))
 
 EDH_API_KEY_ENV = "EDH_API_KEY"
 EDH_DATASET_URL = (
@@ -40,17 +39,11 @@ class DestineEra5LandClient:
         if not api_key:
             message = f"Set {EDH_API_KEY_ENV} in .env to an Earth Data Hub API key"
             raise ValueError(message)
-        remote_filesystem = fsspec.filesystem(
-            "http",
-            asynchronous=True,
-            client_kwargs={
-                "headers": {
-                    "Authorization": aiohttp.encode_basic_auth(EDH_USERNAME, api_key)
-                }
-            },
+        authenticated_url = dataset_url.replace(
+            "https://", f"https://{EDH_USERNAME}:{quote(api_key, safe='')}@", 1
         )
         self.dataset = xr.open_dataset(
-            remote_filesystem.get_mapper(dataset_url),
+            authenticated_url,
             chunks={},
             engine="zarr",
             zarr_format=3,

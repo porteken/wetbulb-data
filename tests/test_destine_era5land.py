@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -48,16 +47,13 @@ def test_uses_current_hourly_dataset() -> None:
 def test_retrieve_uses_basic_auth_and_western_longitude(
     monkeypatch: Any, tmp_path: Any
 ) -> None:
-    captured: dict[str, Any] = {}
+    captured: dict[str, str] = {}
 
-    def filesystem(_protocol: str, **kwargs: Any) -> Any:
-        captured.update(kwargs)
-        return SimpleNamespace(get_mapper=lambda url: url)
+    def open_dataset(url: str, **_kwargs: Any) -> xr.Dataset:
+        captured["url"] = url
+        return _dataset()
 
-    monkeypatch.setattr(destine.fsspec, "filesystem", filesystem)
-    monkeypatch.setattr(
-        destine.xr, "open_dataset", lambda *_args, **_kwargs: _dataset()
-    )
+    monkeypatch.setattr(destine.xr, "open_dataset", open_dataset)
     client = destine.DestineEra5LandClient("secret")
     target = tmp_path / "span.csv"
 
@@ -70,8 +66,7 @@ def test_retrieve_uses_basic_auth_and_western_longitude(
         str(target),
     )
 
-    authorization = captured["client_kwargs"]["headers"]["Authorization"]
-    assert authorization == destine.aiohttp.encode_basic_auth("edh", "secret")
+    assert captured["url"].startswith("https://edh:secret@data.earthdatahub")
     frame = pd.read_csv(target)
     assert list(frame.columns) == ["valid_time", "t2m", "d2m", "sp"]
     assert len(frame) > 8_760
@@ -80,11 +75,6 @@ def test_retrieve_uses_basic_auth_and_western_longitude(
 def test_retrieve_limits_data_to_incremental_date_range(
     monkeypatch: Any, tmp_path: Any
 ) -> None:
-    monkeypatch.setattr(
-        destine.fsspec,
-        "filesystem",
-        lambda *_args, **_kwargs: SimpleNamespace(get_mapper=lambda url: url),
-    )
     monkeypatch.setattr(
         destine.xr, "open_dataset", lambda *_args, **_kwargs: _dataset()
     )
