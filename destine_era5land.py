@@ -6,7 +6,6 @@ Fill EU station gaps from DestinE Earth Data Hub ERA5-Land Zarr.
 from __future__ import annotations
 
 import argparse
-import base64
 import importlib
 import os
 import sys
@@ -22,6 +21,7 @@ from gapfill import MIN_MISSING_DAYS_DEFAULT
 xr = cast("Any", importlib.import_module("xarray"))
 fsspec = cast("Any", importlib.import_module("fsspec"))
 pd = cast("Any", importlib.import_module("pandas"))
+aiohttp = cast("Any", importlib.import_module("aiohttp"))
 
 EDH_API_KEY_ENV = "EDH_API_KEY"
 EDH_DATASET_URL = (
@@ -40,11 +40,14 @@ class DestineEra5LandClient:
         if not api_key:
             message = f"Set {EDH_API_KEY_ENV} in .env to an Earth Data Hub API key"
             raise ValueError(message)
-        token = base64.b64encode(f"{EDH_USERNAME}:{api_key}".encode()).decode()
         remote_filesystem = fsspec.filesystem(
             "http",
             asynchronous=True,
-            headers={"Authorization": f"Basic {token}"},
+            client_kwargs={
+                "headers": {
+                    "Authorization": aiohttp.encode_basic_auth(EDH_USERNAME, api_key)
+                }
+            },
         )
         filesystem = fsspec.filesystem(
             "simplecache",

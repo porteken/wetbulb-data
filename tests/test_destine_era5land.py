@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 from types import SimpleNamespace
 from typing import Any
 
@@ -71,8 +70,8 @@ def test_retrieve_uses_basic_auth_and_western_longitude(
         str(target),
     )
 
-    expected = base64.b64encode(b"edh:secret").decode()
-    assert captured["headers"]["Authorization"] == f"Basic {expected}"
+    authorization = captured["client_kwargs"]["headers"]["Authorization"]
+    assert authorization == destine.aiohttp.encode_basic_auth("edh", "secret")
     frame = pd.read_csv(target)
     assert list(frame.columns) == ["valid_time", "t2m", "d2m", "sp"]
     assert len(frame) > 8_760
