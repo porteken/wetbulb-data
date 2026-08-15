@@ -10,6 +10,10 @@ on:
         description: "Fetch and upload only; skip Postgres"
         type: boolean
         default: false
+      rebuild_year:
+        description: "Clear and rebuild the selected S3 year before loading"
+        type: boolean
+        default: false
   schedule:
     - cron: "27 20 * * *"
 
@@ -39,6 +43,7 @@ jobs:
         id: target
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
+          REBUILD_YEAR: ${{ inputs.rebuild_year }}
           SHARD_COUNT: ${{ env.CITY_SHARD_COUNT }}
           TARGET_YEAR_INPUT: ${{ inputs.target_year }}
         run: |
@@ -58,7 +63,9 @@ jobs:
             end_date="$target_year-12-31"
           fi
           max_date="$(psql "$POSTGRES_DB_URI" --tuples-only --no-align --command "SELECT max(date) FROM public.wetbulb WHERE date >= DATE '$target_year-01-01' AND date < DATE '$((target_year + 1))-01-01'")"
-          if [ -n "$max_date" ]; then
+          if [ "$REBUILD_YEAR" = "true" ]; then
+            start_date="$target_year-01-01"
+          elif [ -n "$max_date" ]; then
             start_date="$(date -u -d "$max_date + 1 day" +%F)"
           else
             start_date="$target_year-01-01"
@@ -72,9 +79,28 @@ jobs:
           fi
           python3 -c "import json,os; print('shards=' + json.dumps(list(range(int(os.environ['SHARD_COUNT'])))))" >> "$GITHUB_OUTPUT"
 
+  prepare-current-year:
+    needs: resolve-target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clear selected year for a full rebuild
+        if: inputs.rebuild_year
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
+        run: |
+          aws s3 rm \
+            "s3://$BUCKET_NAME/na/na-msa-principal-cities-2023-ca-cma-ca-2021/wetbulb_data_csv/year=$TARGET_YEAR/" \
+            --recursive
+          aws s3 rm \
+            "s3://$BUCKET_NAME/eu/wetbulb_data_csv/year=$TARGET_YEAR/" \
+            --recursive
+
   fetch-current-year:
     if: needs.resolve-target.outputs.has_updates == 'true'
-    needs: resolve-target
+    needs: [resolve-target, prepare-current-year]
     strategy:
       fail-fast: false
       max-parallel: 4
