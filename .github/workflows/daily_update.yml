@@ -26,7 +26,7 @@ env:
   CITY_SHARD_COUNT: "4"
   FETCH_CONCURRENCY: "8"
   ERA5_LAND_CONCURRENCY: "8"
-  ERA5_LAND_PUBLICATION_DELAY_MONTHS: "2"
+  ERA5_LAND_RELIABLE_LAG_DAYS: "8"
 
 jobs:
   resolve-target:
@@ -43,7 +43,7 @@ jobs:
         id: target
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
-          PUBLICATION_DELAY_MONTHS: ${{ env.ERA5_LAND_PUBLICATION_DELAY_MONTHS }}
+          RELIABLE_LAG_DAYS: ${{ env.ERA5_LAND_RELIABLE_LAG_DAYS }}
           SHARD_COUNT: ${{ env.CITY_SHARD_COUNT }}
           TARGET_YEAR_INPUT: ${{ inputs.target_year }}
         run: |
@@ -58,7 +58,7 @@ jobs:
           echo "year=$target_year" >> "$GITHUB_OUTPUT"
           current_year="$(date -u +%Y)"
           if [ "$target_year" -eq "$current_year" ]; then
-            end_date="$(date -u -d "$(date -u +%Y-%m-01) - $((PUBLICATION_DELAY_MONTHS - 1)) months - 1 day" +%F)"
+            end_date="$(date -u -d "$RELIABLE_LAG_DAYS days ago" +%F)"
           else
             end_date="$target_year-12-31"
           fi
@@ -153,12 +153,13 @@ jobs:
             --concurrency "$FETCH_CONCURRENCY" \
             --force \
             --out-dir "s3://$BUCKET_NAME/${{ matrix.region.output_root }}"
-      - name: Fill every GHCNh gap with DestinE ERA5-Land
+      - name: Fill every GHCNh gap with CDS ERA5-Land
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
-          EDH_API_KEY: ${{ secrets.EDH_API_KEY }}
+          CDSAPI_URL: ${{ secrets.CDSAPI_URL }}
+          CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
           TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
           START_DATE: ${{ needs.resolve-target.outputs.start_date }}
           END_DATE: ${{ needs.resolve-target.outputs.end_date }}
@@ -167,7 +168,7 @@ jobs:
           if [ -n "${{ matrix.region.cell_map }}" ]; then
             cell_map_args=(--cell-map-csv "${{ matrix.region.cell_map }}")
           fi
-          uv run --locked --no-build python destine_era5land.py \
+          uv run --locked --no-build python era5land.py \
             --start-year "$TARGET_YEAR" \
             --end-year "$TARGET_YEAR" \
             --start-date "$START_DATE" \
@@ -233,14 +234,14 @@ jobs:
             --year "$TARGET_YEAR" \
             --start-date "$START_DATE" \
             --end-date "$END_DATE" \
-            --lag-days 0
+            --lag-days "$ERA5_LAND_RELIABLE_LAG_DAYS"
           uv run --locked --no-build python validate_daily_coverage.py \
             --cities-csv cities_eu.csv \
             --wetbulb-root eu_data \
             --year "$TARGET_YEAR" \
             --start-date "$START_DATE" \
             --end-date "$END_DATE" \
-            --lag-days 0
+            --lag-days "$ERA5_LAND_RELIABLE_LAG_DAYS"
           uv run --locked --no-build python load_wetbulb.py \
             --wetbulb-root na_data \
             --load-workers 4

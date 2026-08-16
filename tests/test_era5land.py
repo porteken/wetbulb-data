@@ -83,6 +83,20 @@ class _ZipCdsClient:
         _write_era5land_zip(target, ["2020-01-01T00:00:00"])
 
 
+def test_bounded_cds_client_limits_request_to_incremental_dates(
+    tmp_path: Path,
+) -> None:
+    raw_client = _StubCdsClient([_raw_era5land_frame(["2026-08-01T00:00:00"])])
+    client = era5land._BoundedCdsClient(raw_client, "2026-08-01", "2026-08-08")
+    target = tmp_path / "span.csv"
+    request = {"date": ["2026-01-01/2026-12-31"]}
+
+    client.retrieve("dataset", request, str(target))
+
+    assert request["date"] == ["2026-01-01/2026-12-31"]
+    assert raw_client.requests[0]["date"] == ["2026-07-30/2026-08-10"]
+
+
 class TestFetchCitySpan:
     def test_writes_request_and_returns_parsed_frame(self, tmp_path: Path) -> None:
         client = _StubCdsClient([_raw_era5land_frame(["2020-01-01T00:00:00"])])

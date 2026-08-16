@@ -102,7 +102,35 @@ def empty_hourly_frame() -> DataFrame:
 def cds_client() -> CdsClient:
     """Build a CDS API client from the ambient CDSAPI_URL/CDSAPI_KEY settings."""
     cdsapi = importlib.import_module("cdsapi")
-    return cdsapi.Client()
+    return cdsapi.Client(retry_max=3, sleep_max=60, timeout=60)
+
+
+class _BoundedCdsClient:
+    def __init__(
+        self,
+        client: CdsClient,
+        start_date: str | None,
+        end_date: str | None,
+    ) -> None:
+        self.client = client
+        self.start_date = start_date
+        self.end_date = end_date
+
+    def retrieve(self, dataset: str, request: dict[str, Any], target: str) -> None:
+        bounded_request = request.copy()
+        request_start, request_end = request["date"][0].split("/")
+        if self.start_date is not None:
+            request_start = max(request_start, self.start_date)
+        if self.end_date is not None:
+            request_end = min(request_end, self.end_date)
+        request_start = (pd.Timestamp(request_start) - pd.Timedelta(days=2)).strftime(
+            "%Y-%m-%d"
+        )
+        request_end = (pd.Timestamp(request_end) + pd.Timedelta(days=2)).strftime(
+            "%Y-%m-%d"
+        )
+        bounded_request["date"] = [f"{request_start}/{request_end}"]
+        self.client.retrieve(dataset, bounded_request, target)
 
 
 def read_era5land_download(target: str) -> DataFrame:
@@ -577,6 +605,8 @@ def _parse_args() -> argparse.Namespace:
     parser.set_defaults(cities_csv=EU_CITIES_CSV)
     parser.add_argument("--station-map-csv", type=str, default=EU_STATION_MAP_CSV)
     parser.add_argument("--concurrency", type=int, default=ERA5LAND_DEFAULT_CONCURRENCY)
+    parser.add_argument("--start-date")
+    parser.add_argument("--end-date")
     parser.add_argument("--force", action="store_true")
     parser.add_argument(
         "--cell-map-csv",
@@ -622,6 +652,11 @@ def main() -> None:
     exit_code = 0
     try:
         args = _parse_args()
+        client = _BoundedCdsClient(
+            cds_client(),
+            args.start_date,
+            args.end_date,
+        )
         process_era5land_gapfill(
             start_year=args.start_year,
             end_year=args.end_year,
@@ -637,6 +672,9 @@ def main() -> None:
             sources=Era5LandSources(
                 cache_dir=args.download_dir,
                 cell_map_csv=args.cell_map_csv,
+                client=client,
+                start_date=args.start_date,
+                end_date=args.end_date,
             ),
         )
     except KeyboardInterrupt:
