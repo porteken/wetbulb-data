@@ -103,6 +103,32 @@ def test_concurrent_retrievals_share_one_dataset_open(monkeypatch: Any) -> None:
     assert all(dataset is datasets[0] for dataset in datasets)
 
 
+def test_concurrent_retrievals_share_one_terminal_open_error(monkeypatch: Any) -> None:
+    attempts = 0
+
+    def open_dataset(*_args: Any, **_kwargs: Any) -> xr.Dataset:
+        nonlocal attempts
+        attempts += 1
+        raise destine.aiohttp.ClientResponseError(
+            request_info=None,
+            history=(),
+            status=403,
+        )
+
+    monkeypatch.setattr(destine.xr, "open_dataset", open_dataset)
+    monkeypatch.setattr(destine.time, "sleep", lambda _seconds: None)
+    client = destine.DestineEra5LandClient("secret")
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(client._open_dataset) for _index in range(8)]
+
+    assert attempts == destine.EDH_OPEN_ATTEMPTS
+    assert all(
+        isinstance(future.exception(), destine.aiohttp.ClientResponseError)
+        for future in futures
+    )
+
+
 def test_retrieve_uses_basic_auth_and_western_longitude(
     monkeypatch: Any, tmp_path: Any
 ) -> None:

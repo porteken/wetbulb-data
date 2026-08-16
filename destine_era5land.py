@@ -45,6 +45,7 @@ class DestineEra5LandClient:
             "https://", f"https://{EDH_USERNAME}:{quote(api_key, safe='')}@", 1
         )
         self.dataset: object | None = None
+        self.dataset_error: Exception | None = None
         self.dataset_lock = threading.Lock()
         self.start_date: str | None = None
         self.end_date: str | None = None
@@ -53,6 +54,8 @@ class DestineEra5LandClient:
         with self.dataset_lock:
             if self.dataset is not None:
                 return self.dataset
+            if self.dataset_error is not None:
+                raise self.dataset_error
             attempt = 0
             while True:
                 attempt += 1
@@ -63,8 +66,9 @@ class DestineEra5LandClient:
                         engine="zarr",
                         zarr_format=3,
                     )
-                except aiohttp.ClientResponseError:
+                except aiohttp.ClientResponseError as exc:
                     if attempt == EDH_OPEN_ATTEMPTS:
+                        self.dataset_error = exc
                         raise
                     time.sleep(EDH_OPEN_RETRY_SECONDS)
                 else:
