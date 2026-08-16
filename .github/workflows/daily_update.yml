@@ -23,9 +23,9 @@ concurrency:
 
 env:
   BUCKET_NAME: wetbulb-parquet-files
-  CITY_SHARD_COUNT: "4"
+  CITY_SHARD_COUNT: "1"
   FETCH_CONCURRENCY: "8"
-  ERA5_LAND_CONCURRENCY: "8"
+  ERA5_LAND_CONCURRENCY: "1"
   ERA5_LAND_RELIABLE_LAG_DAYS: "8"
 
 jobs:

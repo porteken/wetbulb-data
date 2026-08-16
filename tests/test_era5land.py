@@ -549,11 +549,10 @@ class TestProcessEra5landGapfill:
             ),
         )
 
-    def test_fetch_gap_skips_write(
+    def test_fetch_gap_fails_without_writing(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Any,
-        caplog: pytest.LogCaptureFixture,
     ) -> None:
         self._stub_fetch_setup(monkeypatch)
         hourly = pd.DataFrame(
@@ -586,10 +585,9 @@ class TestProcessEra5landGapfill:
             "write_pending_year_batches",
             lambda *_a, **_k: write_called.append(1),
         )
-        with caplog.at_level("WARNING"):
+        with pytest.raises(RuntimeError, match="CDS fetch gap"):
             era5land.process_era5land_gapfill(2020, 2020, str(tmp_path), 0, 1, 2)
         assert not write_called
-        assert any("fetch gap" in m for m in caplog.messages)
 
     def test_successful_run_writes_only_gapped_cells_with_era5land_source(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any

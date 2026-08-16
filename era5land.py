@@ -431,17 +431,12 @@ def _fetch_filled_rows(
         return None
 
     if shard_had_gap:
-        LOGGER.warning(
-            "city_shard=%d/%d: one or more cities had a CDS fetch gap while "
-            "gap-filling %d-%d; skipping the parquet write for these "
-            "pending year(s) so a future run retries them instead of "
-            "treating incomplete data as done.",
-            city_shard_index,
-            city_shard_count,
-            start_year,
-            end_year,
+        message = (
+            f"city_shard={city_shard_index}/{city_shard_count}: one or more cities "
+            f"had a CDS fetch gap while gap-filling {start_year}-{end_year}; "
+            "refusing to write an incomplete parquet shard."
         )
-        return None
+        raise RuntimeError(message)
 
     daily_df["date"] = pd.to_datetime(daily_df["date"])
     filled = daily_df.merge(missing_cells, on=["location_id", "date"], how="inner")
