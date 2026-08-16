@@ -26,7 +26,7 @@ env:
   CITY_SHARD_COUNT: "4"
   FETCH_CONCURRENCY: "8"
   ERA5_LAND_CONCURRENCY: "8"
-  ERA5_LAND_RELIABLE_LAG_DAYS: "8"
+  ERA5_LAND_PUBLICATION_DELAY_MONTHS: "2"
 
 jobs:
   resolve-target:
@@ -43,7 +43,7 @@ jobs:
         id: target
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
-          RELIABLE_LAG_DAYS: ${{ env.ERA5_LAND_RELIABLE_LAG_DAYS }}
+          PUBLICATION_DELAY_MONTHS: ${{ env.ERA5_LAND_PUBLICATION_DELAY_MONTHS }}
           SHARD_COUNT: ${{ env.CITY_SHARD_COUNT }}
           TARGET_YEAR_INPUT: ${{ inputs.target_year }}
         run: |
@@ -58,11 +58,11 @@ jobs:
           echo "year=$target_year" >> "$GITHUB_OUTPUT"
           current_year="$(date -u +%Y)"
           if [ "$target_year" -eq "$current_year" ]; then
-            end_date="$(date -u -d "$RELIABLE_LAG_DAYS days ago" +%F)"
+            end_date="$(date -u -d "$(date -u +%Y-%m-01) - $((PUBLICATION_DELAY_MONTHS - 1)) months - 1 day" +%F)"
           else
             end_date="$target_year-12-31"
           fi
-          complete_date="$(psql "$POSTGRES_DB_URI" --tuples-only --no-align --command "WITH daily AS (SELECT date, count(*) AS rows FROM public.wetbulb WHERE date >= DATE '$target_year-01-01' AND date < DATE '$((target_year + 1))-01-01' GROUP BY date) SELECT max(date) FROM daily WHERE rows >= 0.9 * (SELECT max(rows) FROM daily)")"
+          complete_date="$(psql "$POSTGRES_DB_URI" --tuples-only --no-align --command "WITH daily AS (SELECT date, count(*) AS rows FROM public.wetbulb WHERE date >= DATE '$target_year-01-01' AND date < DATE '$((target_year + 1))-01-01' GROUP BY date) SELECT max(date) FROM daily WHERE rows = (SELECT max(rows) FROM daily)")"
           if [ -n "$complete_date" ]; then
             start_date="$(date -u -d "$complete_date + 1 day" +%F)"
           else
@@ -233,14 +233,14 @@ jobs:
             --year "$TARGET_YEAR" \
             --start-date "$START_DATE" \
             --end-date "$END_DATE" \
-            --lag-days "$ERA5_LAND_RELIABLE_LAG_DAYS"
+            --lag-days 0
           uv run --locked --no-build python validate_daily_coverage.py \
             --cities-csv cities_eu.csv \
             --wetbulb-root eu_data \
             --year "$TARGET_YEAR" \
             --start-date "$START_DATE" \
             --end-date "$END_DATE" \
-            --lag-days "$ERA5_LAND_RELIABLE_LAG_DAYS"
+            --lag-days 0
           uv run --locked --no-build python load_wetbulb.py \
             --wetbulb-root na_data \
             --load-workers 4
