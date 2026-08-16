@@ -63,7 +63,7 @@ def test_retries_transient_dataset_access(monkeypatch: Any) -> None:
     destine.DestineEra5LandClient("secret")
 
     assert attempts == 3
-    assert delays == [60, 120]
+    assert delays == [300, 300]
 
 
 def test_retrieve_uses_basic_auth_and_western_longitude(
