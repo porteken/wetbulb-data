@@ -10,6 +10,7 @@ import importlib
 import logging
 import sys
 import tempfile
+import threading
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -65,6 +66,8 @@ EU_STATION_MAP_CSV = "cities_eu_isd_stations.csv"
 _HOURLY_FRAME_COLUMNS = ("location_id", "time", "Tair", "Qair", "PSurf")
 _REQUIRED_DOWNLOAD_COLUMNS = ("valid_time", "t2m", "d2m", "sp")
 _ARCHIVE_READ_ERRORS = (OSError, ValueError, KeyError, zipfile.BadZipFile)
+_SPAN_LOCKS: dict[str, threading.Lock] = {}
+_SPAN_LOCKS_GUARD = threading.Lock()
 
 
 class Era5LandSources(NamedTuple):
@@ -177,18 +180,36 @@ def fetch_city_span(
 ) -> DataFrame:
     """Retrieve one city's ERA5-Land hourly point time-series for a year span."""
     target = str(Path(download_dir) / span_filename(lat, lng, start_year, end_year))
-    cached = _cached_span(target)
-    if cached is not None:
-        return cached
+    with _SPAN_LOCKS_GUARD:
+        span_lock = _SPAN_LOCKS.setdefault(target, threading.Lock())
+    with span_lock:
+        cached = _cached_span(target)
+        if cached is not None:
+            return cached
 
-    request = {
-        "variable": list(ERA5LAND_VARIABLES),
-        "location": {"latitude": lat, "longitude": lng},
-        "date": [f"{start_year}-01-01/{end_year}-12-31"],
-        "data_format": "csv",
-    }
-    client.retrieve(ERA5LAND_DATASET, request, target)
-    return read_era5land_download(target)
+        request = {
+            "variable": list(ERA5LAND_VARIABLES),
+            "location": {"latitude": lat, "longitude": lng},
+            "date": [f"{start_year}-01-01/{end_year}-12-31"],
+            "data_format": "csv",
+        }
+        with tempfile.NamedTemporaryFile(
+            dir=download_dir,
+            prefix=f".{Path(target).name}.",
+            suffix=".csv",
+            delete=False,
+        ) as temporary:
+            temporary_target = temporary.name
+        try:
+            client.retrieve(ERA5LAND_DATASET, request, temporary_target)
+            frame = read_era5land_download(temporary_target)
+            if not set(_REQUIRED_DOWNLOAD_COLUMNS).issubset(frame.columns):
+                message = f"ERA5-Land download missing required columns: {target}"
+                raise ValueError(message)
+            Path(temporary_target).replace(target)
+            return frame
+        finally:
+            Path(temporary_target).unlink(missing_ok=True)
 
 
 def _hourly_frame_from_era5land(

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -146,6 +147,25 @@ class TestFetchCitySpan:
 
         assert client.calls == 1
         assert list(result["t2m"]) == [293.15]
+
+    def test_serializes_duplicate_concurrent_downloads(self, tmp_path: Path) -> None:
+        client = _StubCdsClient([_raw_era5land_frame(["2020-01-01T00:00:00"])])
+
+        def fetch() -> pd.DataFrame:
+            return era5land.fetch_city_span(
+                client,
+                lat=51.5,
+                lng=-0.1,
+                start_year=2020,
+                end_year=2020,
+                download_dir=str(tmp_path),
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _index: fetch(), range(2)))
+
+        assert len(client.requests) == 1
+        assert all(list(result["t2m"]) == [293.15] for result in results)
 
 
 class TestReadEra5landDownload:
