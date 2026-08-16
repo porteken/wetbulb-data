@@ -43,6 +43,7 @@ jobs:
         id: target
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
+          RELIABLE_LAG_DAYS: ${{ env.ERA5_LAND_RELIABLE_LAG_DAYS }}
           SHARD_COUNT: ${{ env.CITY_SHARD_COUNT }}
           TARGET_YEAR_INPUT: ${{ inputs.target_year }}
         run: |
@@ -57,7 +58,7 @@ jobs:
           echo "year=$target_year" >> "$GITHUB_OUTPUT"
           current_year="$(date -u +%Y)"
           if [ "$target_year" -eq "$current_year" ]; then
-            end_date="$(date -u -d yesterday +%F)"
+            end_date="$(date -u -d "$RELIABLE_LAG_DAYS days ago" +%F)"
           else
             end_date="$target_year-12-31"
           fi
