@@ -62,9 +62,9 @@ jobs:
           else
             end_date="$target_year-12-31"
           fi
-          max_date="$(psql "$POSTGRES_DB_URI" --tuples-only --no-align --command "SELECT max(date) FROM public.wetbulb WHERE date >= DATE '$target_year-01-01' AND date < DATE '$((target_year + 1))-01-01'")"
-          if [ -n "$max_date" ]; then
-            start_date="$(date -u -d "$max_date + 1 day" +%F)"
+          complete_date="$(psql "$POSTGRES_DB_URI" --tuples-only --no-align --command "WITH daily AS (SELECT date, count(*) AS rows FROM public.wetbulb WHERE date >= DATE '$target_year-01-01' AND date < DATE '$((target_year + 1))-01-01' GROUP BY date) SELECT max(date) FROM daily WHERE rows >= 0.9 * (SELECT max(rows) FROM daily)")"
+          if [ -n "$complete_date" ]; then
+            start_date="$(date -u -d "$complete_date + 1 day" +%F)"
           else
             start_date="$target_year-01-01"
           fi
