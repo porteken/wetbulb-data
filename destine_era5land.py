@@ -9,6 +9,7 @@ import argparse
 import importlib
 import os
 import sys
+import threading
 import time
 from datetime import timedelta
 from typing import Any, cast
@@ -44,29 +45,31 @@ class DestineEra5LandClient:
             "https://", f"https://{EDH_USERNAME}:{quote(api_key, safe='')}@", 1
         )
         self.dataset: object | None = None
+        self.dataset_lock = threading.Lock()
         self.start_date: str | None = None
         self.end_date: str | None = None
 
     def _open_dataset(self) -> object:
-        if self.dataset is not None:
-            return self.dataset
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                dataset = xr.open_dataset(
-                    self.authenticated_url,
-                    chunks={},
-                    engine="zarr",
-                    zarr_format=3,
-                )
-            except aiohttp.ClientResponseError:
-                if attempt == EDH_OPEN_ATTEMPTS:
-                    raise
-                time.sleep(EDH_OPEN_RETRY_SECONDS)
-            else:
-                self.dataset = dataset
-                return dataset
+        with self.dataset_lock:
+            if self.dataset is not None:
+                return self.dataset
+            attempt = 0
+            while True:
+                attempt += 1
+                try:
+                    dataset = xr.open_dataset(
+                        self.authenticated_url,
+                        chunks={},
+                        engine="zarr",
+                        zarr_format=3,
+                    )
+                except aiohttp.ClientResponseError:
+                    if attempt == EDH_OPEN_ATTEMPTS:
+                        raise
+                    time.sleep(EDH_OPEN_RETRY_SECONDS)
+                else:
+                    self.dataset = dataset
+                    return dataset
 
     def retrieve(self, _dataset: str, request: dict[str, Any], target: str) -> None:
         """Write one point and date span using the CDS-compatible cache schema."""

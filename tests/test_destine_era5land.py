@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import numpy as np
@@ -80,6 +82,25 @@ def test_does_not_open_dataset_until_retrieval(monkeypatch: Any) -> None:
     destine.DestineEra5LandClient("secret")
 
     assert attempts == 0
+
+
+def test_concurrent_retrievals_share_one_dataset_open(monkeypatch: Any) -> None:
+    attempts = 0
+
+    def open_dataset(*_args: Any, **_kwargs: Any) -> xr.Dataset:
+        nonlocal attempts
+        attempts += 1
+        time.sleep(0.05)
+        return _dataset()
+
+    monkeypatch.setattr(destine.xr, "open_dataset", open_dataset)
+    client = destine.DestineEra5LandClient("secret")
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        datasets = list(executor.map(lambda _index: client._open_dataset(), range(8)))
+
+    assert attempts == 1
+    assert all(dataset is datasets[0] for dataset in datasets)
 
 
 def test_retrieve_uses_basic_auth_and_western_longitude(
