@@ -10,6 +10,10 @@ on:
         description: "Fetch and upload only; skip Postgres"
         type: boolean
         default: false
+      load_only:
+        description: "Load existing S3 data without fetching"
+        type: boolean
+        default: false
   schedule:
     - cron: "27 20 * * *"
 
@@ -73,7 +77,7 @@ jobs:
           python3 -c "import json,os; print('shards=' + json.dumps(list(range(int(os.environ['SHARD_COUNT'])))))" >> "$GITHUB_OUTPUT"
 
   fetch-current-year:
-    if: needs.resolve-target.outputs.has_updates == 'true'
+    if: needs.resolve-target.outputs.has_updates == 'true' && !inputs.load_only
     needs: resolve-target
     strategy:
       fail-fast: false
@@ -178,7 +182,7 @@ jobs:
             "${cell_map_args[@]}"
 
   load-current-year:
-    if: needs.resolve-target.outputs.has_updates == 'true' && !inputs.skip_db_load
+    if: always() && needs.resolve-target.outputs.has_updates == 'true' && !inputs.skip_db_load && (inputs.load_only || needs.fetch-current-year.result == 'success')
     needs: [resolve-target, fetch-current-year]
     runs-on: ubuntu-latest
     steps:
