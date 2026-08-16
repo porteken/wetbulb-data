@@ -44,6 +44,7 @@ def test_uses_current_hourly_dataset() -> None:
 
 def test_retries_transient_dataset_access(monkeypatch: Any) -> None:
     attempts = 0
+    delays: list[int] = []
 
     def open_dataset(*_args: Any, **_kwargs: Any) -> xr.Dataset:
         nonlocal attempts
@@ -57,11 +58,12 @@ def test_retries_transient_dataset_access(monkeypatch: Any) -> None:
         return _dataset()
 
     monkeypatch.setattr(destine.xr, "open_dataset", open_dataset)
-    monkeypatch.setattr(destine.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(destine.time, "sleep", delays.append)
 
     destine.DestineEra5LandClient("secret")
 
     assert attempts == 3
+    assert delays == [60, 120]
 
 
 def test_retrieve_uses_basic_auth_and_western_longitude(

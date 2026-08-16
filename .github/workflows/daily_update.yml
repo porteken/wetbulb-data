@@ -11,7 +11,11 @@ on:
         type: boolean
         default: false
       rebuild_year:
-        description: "Clear and rebuild the selected S3 year before loading"
+        description: "Scan the full selected year instead of only new dates"
+        type: boolean
+        default: false
+      clear_year:
+        description: "Delete the selected S3 year before rebuilding"
         type: boolean
         default: false
   schedule:
@@ -84,7 +88,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clear selected year for a full rebuild
-        if: inputs.rebuild_year
+        if: inputs.clear_year
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -184,6 +188,9 @@ jobs:
           START_DATE: ${{ needs.resolve-target.outputs.start_date }}
           END_DATE: ${{ needs.resolve-target.outputs.end_date }}
         run: |
+          if [ "${{ matrix.region.name }}" != "na" ] || [ "${{ matrix.shard }}" != "0" ]; then
+            sleep 300
+          fi
           cell_map_args=()
           if [ -n "${{ matrix.region.cell_map }}" ]; then
             cell_map_args=(--cell-map-csv "${{ matrix.region.cell_map }}")

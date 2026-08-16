@@ -29,7 +29,7 @@ EDH_DATASET_URL = "https://data.earthdatahub.destine.eu/era5/era5-land-v0.zarr"
 EDH_USERNAME = "edh"
 WESTERN_LONGITUDE_LIMIT = 180
 EDH_OPEN_ATTEMPTS = 4
-EDH_OPEN_RETRY_SECONDS = 15
+EDH_OPEN_RETRY_SECONDS = 60
 
 
 class DestineEra5LandClient:
