@@ -103,7 +103,7 @@ jobs:
     needs: [resolve-target, prepare-current-year]
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         region:
           - name: na

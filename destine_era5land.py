@@ -9,6 +9,7 @@ import argparse
 import importlib
 import os
 import sys
+import time
 from datetime import timedelta
 from typing import Any, cast
 from urllib.parse import quote
@@ -21,11 +22,14 @@ from gapfill import MIN_MISSING_DAYS_DEFAULT
 
 xr = cast("Any", importlib.import_module("xarray"))
 pd = cast("Any", importlib.import_module("pandas"))
+aiohttp = cast("Any", importlib.import_module("aiohttp"))
 
 EDH_API_KEY_ENV = "EDH_API_KEY"
 EDH_DATASET_URL = "https://data.earthdatahub.destine.eu/era5/era5-land-v0.zarr"
 EDH_USERNAME = "edh"
 WESTERN_LONGITUDE_LIMIT = 180
+EDH_OPEN_ATTEMPTS = 4
+EDH_OPEN_RETRY_SECONDS = 15
 
 
 class DestineEra5LandClient:
@@ -39,12 +43,19 @@ class DestineEra5LandClient:
         authenticated_url = dataset_url.replace(
             "https://", f"https://{EDH_USERNAME}:{quote(api_key, safe='')}@", 1
         )
-        self.dataset = xr.open_dataset(
-            authenticated_url,
-            chunks={},
-            engine="zarr",
-            zarr_format=3,
-        )
+        for attempt in range(1, EDH_OPEN_ATTEMPTS + 1):
+            try:
+                self.dataset = xr.open_dataset(
+                    authenticated_url,
+                    chunks={},
+                    engine="zarr",
+                    zarr_format=3,
+                )
+                break
+            except aiohttp.ClientResponseError:
+                if attempt == EDH_OPEN_ATTEMPTS:
+                    raise
+                time.sleep(EDH_OPEN_RETRY_SECONDS * attempt)
         self.start_date: str | None = None
         self.end_date: str | None = None
 

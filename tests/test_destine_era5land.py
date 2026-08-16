@@ -42,6 +42,28 @@ def test_uses_current_hourly_dataset() -> None:
     assert destine.EDH_DATASET_URL.endswith("/era5/era5-land-v0.zarr")
 
 
+def test_retries_transient_dataset_access(monkeypatch: Any) -> None:
+    attempts = 0
+
+    def open_dataset(*_args: Any, **_kwargs: Any) -> xr.Dataset:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise destine.aiohttp.ClientResponseError(
+                request_info=None,
+                history=(),
+                status=403,
+            )
+        return _dataset()
+
+    monkeypatch.setattr(destine.xr, "open_dataset", open_dataset)
+    monkeypatch.setattr(destine.time, "sleep", lambda _seconds: None)
+
+    destine.DestineEra5LandClient("secret")
+
+    assert attempts == 3
+
+
 def test_retrieve_uses_basic_auth_and_western_longitude(
     monkeypatch: Any, tmp_path: Any
 ) -> None:
