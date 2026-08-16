@@ -158,9 +158,6 @@ jobs:
           START_DATE: ${{ needs.resolve-target.outputs.start_date }}
           END_DATE: ${{ needs.resolve-target.outputs.end_date }}
         run: |
-          if [ "${{ matrix.region.name }}" != "na" ] || [ "${{ matrix.shard }}" != "0" ]; then
-            sleep 300
-          fi
           cell_map_args=()
           if [ -n "${{ matrix.region.cell_map }}" ]; then
             cell_map_args=(--cell-map-csv "${{ matrix.region.cell_map }}")
