@@ -36,31 +36,41 @@ class DestineEra5LandClient:
     """Expose the existing ERA5-Land downloader interface over DestinE Zarr."""
 
     def __init__(self, api_key: str, dataset_url: str = EDH_DATASET_URL) -> None:
-        """Open the authenticated remote Zarr dataset lazily."""
+        """Prepare access to the authenticated remote Zarr dataset."""
         if not api_key:
             message = f"Set {EDH_API_KEY_ENV} in .env to an Earth Data Hub API key"
             raise ValueError(message)
-        authenticated_url = dataset_url.replace(
+        self.authenticated_url = dataset_url.replace(
             "https://", f"https://{EDH_USERNAME}:{quote(api_key, safe='')}@", 1
         )
-        for attempt in range(1, EDH_OPEN_ATTEMPTS + 1):
+        self.dataset: object | None = None
+        self.start_date: str | None = None
+        self.end_date: str | None = None
+
+    def _open_dataset(self) -> object:
+        if self.dataset is not None:
+            return self.dataset
+        attempt = 0
+        while True:
+            attempt += 1
             try:
-                self.dataset = xr.open_dataset(
-                    authenticated_url,
+                dataset = xr.open_dataset(
+                    self.authenticated_url,
                     chunks={},
                     engine="zarr",
                     zarr_format=3,
                 )
-                break
             except aiohttp.ClientResponseError:
                 if attempt == EDH_OPEN_ATTEMPTS:
                     raise
                 time.sleep(EDH_OPEN_RETRY_SECONDS)
-        self.start_date: str | None = None
-        self.end_date: str | None = None
+            else:
+                self.dataset = dataset
+                return dataset
 
     def retrieve(self, _dataset: str, request: dict[str, Any], target: str) -> None:
         """Write one point and date span using the CDS-compatible cache schema."""
+        dataset = cast("Any", self._open_dataset())
         location = request["location"]
         start_text, end_text = request["date"][0].split("/")
         if self.start_date is not None:
@@ -70,10 +80,10 @@ class DestineEra5LandClient:
         start = pd.Timestamp(start_text) - timedelta(days=2)
         end = pd.Timestamp(end_text) + timedelta(days=2)
         longitude = float(location["longitude"])
-        longitude_values = self.dataset["longitude"]
+        longitude_values = dataset["longitude"]
         if float(longitude_values.max()) > WESTERN_LONGITUDE_LIMIT and longitude < 0:
             longitude %= 360
-        selected = self.dataset[["t2m", "d2m", "sp"]].sel(
+        selected = dataset[["t2m", "d2m", "sp"]].sel(
             latitude=float(location["latitude"]),
             longitude=longitude,
             method="nearest",

@@ -60,10 +60,26 @@ def test_retries_transient_dataset_access(monkeypatch: Any) -> None:
     monkeypatch.setattr(destine.xr, "open_dataset", open_dataset)
     monkeypatch.setattr(destine.time, "sleep", delays.append)
 
-    destine.DestineEra5LandClient("secret")
+    client = destine.DestineEra5LandClient("secret")
+    client._open_dataset()
 
     assert attempts == 3
     assert delays == [300, 300]
+
+
+def test_does_not_open_dataset_until_retrieval(monkeypatch: Any) -> None:
+    attempts = 0
+
+    def open_dataset(*_args: Any, **_kwargs: Any) -> xr.Dataset:
+        nonlocal attempts
+        attempts += 1
+        return _dataset()
+
+    monkeypatch.setattr(destine.xr, "open_dataset", open_dataset)
+
+    destine.DestineEra5LandClient("secret")
+
+    assert attempts == 0
 
 
 def test_retrieve_uses_basic_auth_and_western_longitude(
