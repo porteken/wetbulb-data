@@ -213,6 +213,8 @@ jobs:
         env:
           POSTGRES_DB_URI: ${{ secrets.POSTGRES_DB_URI }}
           TARGET_YEAR: ${{ needs.resolve-target.outputs.target_year }}
+          START_DATE: ${{ needs.resolve-target.outputs.start_date }}
+          END_DATE: ${{ needs.resolve-target.outputs.end_date }}
         run: |
           uv run --locked --no-build python audit_station_coverage.py \
             --root na=na_data \
@@ -224,11 +226,15 @@ jobs:
             --cities-csv cities_na.csv \
             --wetbulb-root na_data \
             --year "$TARGET_YEAR" \
+            --start-date "$START_DATE" \
+            --end-date "$END_DATE" \
             --lag-days "$ERA5_LAND_RELIABLE_LAG_DAYS"
           uv run --locked --no-build python validate_daily_coverage.py \
             --cities-csv cities_eu.csv \
             --wetbulb-root eu_data \
             --year "$TARGET_YEAR" \
+            --start-date "$START_DATE" \
+            --end-date "$END_DATE" \
             --lag-days "$ERA5_LAND_RELIABLE_LAG_DAYS"
           uv run --locked --no-build python load_wetbulb.py \
             --wetbulb-root na_data \

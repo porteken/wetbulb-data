@@ -52,3 +52,19 @@ def test_missing_city_day_fails(monkeypatch: Any, tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="2 missing city-days"):
         coverage.validate_coverage(str(cities), str(root), 2020, 8)
+
+
+def test_incremental_range_ignores_earlier_gaps(tmp_path: Path) -> None:
+    cities = tmp_path / "cities.csv"
+    root = tmp_path / "data"
+    _write_cities(cities)
+    _write_days(root, pd.date_range("2020-06-10", "2020-06-12"))
+
+    coverage.validate_coverage(
+        str(cities),
+        str(root),
+        2020,
+        8,
+        "2020-06-10",
+        "2020-06-12",
+    )

@@ -28,11 +28,15 @@ def validate_coverage(
     wetbulb_root: str,
     year: int,
     lag_days: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> None:
     """Raise when any configured location/date cell is absent or null."""
     cities = pd.read_csv(cities_csv, usecols=["location_id"])
     location_ids = sorted(cities["location_id"].astype("int64").unique())
-    calendar = pd.date_range(f"{year}-01-01", expected_end(year, lag_days), freq="D")
+    calendar_start = pd.Timestamp(start_date or f"{year}-01-01")
+    calendar_end = pd.Timestamp(end_date) if end_date else expected_end(year, lag_days)
+    calendar = pd.date_range(calendar_start, calendar_end, freq="D")
     expected = pd.MultiIndex.from_product(
         [location_ids, calendar], names=["location_id", "date"]
     ).to_frame(index=False)
@@ -82,9 +86,18 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--wetbulb-root", required=True)
     parser.add_argument("--year", required=True, type=int)
     parser.add_argument("--lag-days", default=8, type=int)
+    parser.add_argument("--start-date")
+    parser.add_argument("--end-date")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = _parse_args()
-    validate_coverage(args.cities_csv, args.wetbulb_root, args.year, args.lag_days)
+    validate_coverage(
+        args.cities_csv,
+        args.wetbulb_root,
+        args.year,
+        args.lag_days,
+        args.start_date,
+        args.end_date,
+    )
