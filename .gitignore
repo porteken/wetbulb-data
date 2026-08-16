@@ -5,6 +5,7 @@
 !cities_eu.csv
 !cities_eu_ghcnh_stations.csv
 !cities_eu_era5land_cells.csv
+!cities_na_era5land_cells.csv
 na/
 backup/
 *.parquet

@@ -1,0 +1,5 @@
+location_id,city,orig_lat,orig_lng,lat,lng,moved_km
+79,Jersey City,40.7114,-74.0648,40.7,-74.0,5.61
+398,Portland,43.6332,-70.1853,43.7,-70.3,11.84
+427,South San Francisco,37.6551,-122.3762,37.6,-122.4,6.48
+494,Galveston,29.1863,-94.9658,29.2,-95.1,13.12

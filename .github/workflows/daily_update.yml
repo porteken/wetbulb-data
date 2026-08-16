@@ -89,7 +89,7 @@ jobs:
             cities: cities_na.csv
             station_map: cities_na_ghcnh_stations.csv
             output_root: na/na-msa-principal-cities-2023-ca-cma-ca-2021
-            cell_map: ""
+            cell_map: cities_na_era5land_cells.csv
           - name: eu
             cities: cities_eu.csv
             station_map: cities_eu_ghcnh_stations.csv
