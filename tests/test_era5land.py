@@ -442,10 +442,10 @@ class TestLoadUtcOffsets:
 
     def test_loads_existing_file(self, tmp_path: Path) -> None:
         path = tmp_path / "cities_eu_isd_stations.csv"
-        path.write_text("location_id,utc_offset_hours\n1000,1\n")
+        path.write_text("location_id,utc_offset_hours\n1000,1\n1000,1\n1001,2\n")
         result = era5land.load_utc_offsets(str(path))
-        assert list(result["location_id"]) == [1000]
-        assert list(result["utc_offset_hours"]) == [1]
+        assert list(result["location_id"]) == [1000, 1001]
+        assert list(result["utc_offset_hours"]) == [1, 2]
 
 
 class TestProcessEra5landGapfill:

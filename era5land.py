@@ -473,7 +473,9 @@ def load_utc_offsets(station_map_csv: str) -> DataFrame:
                 "utc_offset_hours": pd.Series(dtype="float64"),
             },
         )
-    return pd.read_csv(path, usecols=["location_id", "utc_offset_hours"])
+    return pd.read_csv(
+        path, usecols=["location_id", "utc_offset_hours"]
+    ).drop_duplicates(subset="location_id")
 
 
 def process_era5land_gapfill(
