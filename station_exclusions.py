@@ -2,4 +2,4 @@
 
 """Known observation stations excluded from wet-bulb candidate selection."""
 
-DISALLOWED_GHCNH_STATION_IDS = frozenset({"USW00023012"})
+DISALLOWED_GHCNH_STATION_IDS = frozenset({"USW00013724", "USW00023012"})

@@ -117,6 +117,34 @@ def test_build_station_map_excludes_known_humidity_outlier() -> None:
     assert result["ghcn_id"].tolist() == ["USW00023036"]
 
 
+def test_build_station_map_excludes_atlantic_city_marina() -> None:
+    cities = pd.DataFrame(
+        {
+            "location_id": [572],
+            "lat": [39.3773],
+            "lng": [-74.4511],
+            "dem_m": [6.0],
+            "utc_offset_hours": [-5.0],
+        },
+    )
+    stations = pd.DataFrame(
+        {
+            "GHCN_ID": ["USW00013724", "USW00093730"],
+            "LATITUDE": [39.38, 39.45],
+            "LONGITUDE": [-74.4236, -74.5669],
+            "ELEVATION": [3.0, 17.7],
+        },
+    )
+
+    result = station_map.build_station_map(
+        cities,
+        stations,
+        {"USW00013724", "USW00093730"},
+    )
+
+    assert result["ghcn_id"].tolist() == ["USW00093730"]
+
+
 def test_build_station_map_returns_multiple_candidates_ranked_by_coverage() -> None:
     cities = pd.DataFrame(
         {

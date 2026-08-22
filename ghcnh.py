@@ -67,6 +67,7 @@ GHCNH_RELIABLE_DAILY_HOURS = 20
 GHCNH_REFERENCE_LOOKBACK_YEARS = 10
 GHCNH_MIN_MONTHLY_OVERLAP_DAYS = 20
 GHCNH_MIN_GLOBAL_OVERLAP_DAYS = 60
+GHCNH_MAX_HOMOGENIZATION_ADJUSTMENT_C = 5.0
 STATION_MAP_PATH = "cities_na_ghcnh_stations.csv"
 
 _HOURLY_FRAME_COLUMNS = ("time", "tair_c", "dewpoint_c", "pressure_hpa")
@@ -535,11 +536,44 @@ def _homogenize_secondary(
         )
         return None
     result = merged_secondary[calibrated].copy()
+    adjustment_too_large = (
+        result["wetbulb_adjustment"].abs() > GHCNH_MAX_HOMOGENIZATION_ADJUSTMENT_C
+    ) | (result["wetbulb_avg_adjustment"].abs() > GHCNH_MAX_HOMOGENIZATION_ADJUSTMENT_C)
+    if adjustment_too_large.any():
+        LOGGER.warning(
+            "location_id=%s station %s adjustment vs reference %s exceeds "
+            "%.1f C; rejecting it as a corrupt-reference fallback",
+            location_id,
+            station_id,
+            reference_id,
+            GHCNH_MAX_HOMOGENIZATION_ADJUSTMENT_C,
+        )
+        return None
     result["homogenization_method"] = "monthly_overlap"
     result.loc[~monthly_ok[calibrated], "homogenization_method"] = "global_overlap"
     result["homogenization_overlap_days"] = result["overlap_days"].astype(int)
     result["wetbulb"] += result["wetbulb_adjustment"]
     result["wetbulb_avg"] += result["wetbulb_avg_adjustment"]
+    in_range = result["wetbulb"].between(
+        nldas.MIN_REASONABLE_WETBULB_C,
+        nldas.MAX_REASONABLE_WETBULB_C,
+    ) & result["wetbulb_avg"].between(
+        nldas.MIN_REASONABLE_WETBULB_C,
+        nldas.MAX_REASONABLE_WETBULB_C,
+    )
+    if not bool(in_range.all()):
+        LOGGER.warning(
+            "location_id=%s station %s dropped %d post-adjustment "
+            "wetbulb value(s) outside sanity range [%s, %s] C.",
+            location_id,
+            station_id,
+            int((~in_range).sum()),
+            nldas.MIN_REASONABLE_WETBULB_C,
+            nldas.MAX_REASONABLE_WETBULB_C,
+        )
+        result = result[in_range]
+    if result.empty:
+        return None
     return result.drop(columns=["_month", "overlap_days"])
 
 

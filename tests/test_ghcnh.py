@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import ghcnh
+import nldas
 
 
 def _parquet_payload(rows: list[dict[str, Any]]) -> bytes:
@@ -520,6 +521,87 @@ def test_homogenize_station_candidates_corrects_monthly_fallback() -> None:
     assert corrected["homogenization_overlap_days"].unique().tolist() == [30]
 
 
+def test_homogenize_station_candidates_rejects_large_adjustment() -> None:
+    dates = pd.date_range("2020-09-01", periods=30)
+    reference = pd.DataFrame(
+        {
+            "location_id": 1,
+            "date": dates,
+            "wetbulb": 20.0,
+            "wetbulb_avg": 15.0,
+            "station_id": "REFERENCE",
+            "reference_station_id": "REFERENCE",
+        }
+    )
+    secondary = reference.copy()
+    secondary["station_id"] = "SECONDARY"
+    secondary["wetbulb"] = 3.6
+    secondary["wetbulb_avg"] = 2.0
+
+    result = ghcnh.homogenize_station_candidates(
+        pd.concat([reference, secondary], ignore_index=True)
+    )
+
+    assert result["station_id"].tolist() == ["REFERENCE"] * 30
+
+
+def test_homogenize_station_candidates_applies_small_adjustment() -> None:
+    dates = pd.date_range("2020-09-01", periods=30)
+    reference = pd.DataFrame(
+        {
+            "location_id": 1,
+            "date": dates,
+            "wetbulb": 20.0,
+            "wetbulb_avg": 15.0,
+            "station_id": "REFERENCE",
+            "reference_station_id": "REFERENCE",
+        }
+    )
+    secondary = reference.copy()
+    secondary["station_id"] = "SECONDARY"
+    secondary["wetbulb"] = 18.5
+    secondary["wetbulb_avg"] = 14.0
+
+    result = ghcnh.homogenize_station_candidates(
+        pd.concat([reference, secondary], ignore_index=True)
+    )
+    corrected = result[result["station_id"] == "SECONDARY"]
+
+    assert len(corrected) == 30
+    assert corrected["wetbulb"].tolist() == [20.0] * 30
+    assert corrected["wetbulb_avg"].tolist() == [15.0] * 30
+    assert corrected["wetbulb_adjustment"].tolist() == [1.5] * 30
+    assert corrected["wetbulb_avg_adjustment"].tolist() == [1.0] * 30
+
+
+def test_homogenize_station_candidates_drops_post_adjust_above_reasonable_max() -> None:
+    dates = pd.date_range("2020-09-01", periods=30)
+    reference = pd.DataFrame(
+        {
+            "location_id": 1,
+            "date": dates,
+            "wetbulb": 22.0,
+            "wetbulb_avg": 17.0,
+            "station_id": "REFERENCE",
+            "reference_station_id": "REFERENCE",
+        }
+    )
+    secondary = reference.copy()
+    secondary["station_id"] = "SECONDARY"
+    secondary["wetbulb"] = [20.0] * 29 + [34.0]
+    secondary["wetbulb_avg"] = 16.0
+
+    result = ghcnh.homogenize_station_candidates(
+        pd.concat([reference, secondary], ignore_index=True)
+    )
+    corrected = result[result["station_id"] == "SECONDARY"]
+
+    assert len(corrected) == 29
+    assert corrected["wetbulb"].tolist() == [22.0] * 29
+    assert (corrected["wetbulb"] <= nldas.MAX_REASONABLE_WETBULB_C).all()
+    assert (result["wetbulb"] <= nldas.MAX_REASONABLE_WETBULB_C).all()
+
+
 def test_homogenize_station_candidates_rejects_unpaired_secondary() -> None:
     reference = pd.DataFrame(
         {
@@ -560,12 +642,12 @@ def test_load_station_map_excludes_known_humidity_outlier(tmp_path: Path) -> Non
     station_map_path = tmp_path / "stations.csv"
     pd.DataFrame(
         {
-            "location_id": [1, 1],
-            "ghcn_id": ["USW00023012", "USW00023036"],
-            "lon": [-104.90, -104.75],
-            "dist_km": [2.0, 10.0],
-            "elev_m": [1645.0, 1726.1],
-            "utc_offset_hours": [-7.0, -7.0],
+            "location_id": [1, 1, 572],
+            "ghcn_id": ["USW00023012", "USW00023036", "USW00013724"],
+            "lon": [-104.90, -104.75, -74.4236],
+            "dist_km": [2.0, 10.0, 2.36],
+            "elev_m": [1645.0, 1726.1, 3.0],
+            "utc_offset_hours": [-7.0, -7.0, -5.0],
         },
     ).to_csv(station_map_path, index=False)
 
