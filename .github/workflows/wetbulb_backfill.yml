@@ -110,6 +110,8 @@ jobs:
           enable-cache: true
       - name: Sync runtime dependencies
         run: uv sync --locked --no-dev --no-build
+      - name: Validate catalog and GHCNh station map
+        run: uv run --locked --no-build python validate_na_catalog.py --root .
       - name: Fetch NOAA GHCNh wet-bulb (writes straight to S3)
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

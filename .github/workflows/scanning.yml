@@ -48,6 +48,9 @@ jobs:
           --cov=.
           --cov-report=xml:coverage.xml
 
+      - name: Validate North America catalog
+        run: uv run --locked --no-build python validate_na_catalog.py --root .
+
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e
         env:
