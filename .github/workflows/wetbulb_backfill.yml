@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       end_year: ${{ steps.resolve.outputs.end_year }}
       year_matrix: ${{ steps.resolve.outputs.year_matrix }}
@@ -70,7 +70,7 @@ jobs:
   clear-wetbulb-output:
     if: ${{ inputs.clear_prefix }}
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - name: Set up Python
@@ -96,7 +96,7 @@ jobs:
       matrix:
         year: ${{ fromJson(needs.prepare.outputs.year_matrix) }}
         shard: ${{ fromJson(needs.prepare.outputs.shard_matrix) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Fetch ${{ matrix.year }} city shard ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -133,7 +133,7 @@ jobs:
   load-to-db:
     if: ${{ !inputs.skip_db_load }}
     needs: [prepare, fetch]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - name: Set up Python
@@ -166,7 +166,7 @@ jobs:
   notify-on-failure:
     if: failure()
     needs: [prepare, clear-wetbulb-output, fetch, load-to-db]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       issues: write
     steps:
