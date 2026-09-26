@@ -11,7 +11,7 @@ on:
 jobs:
   test-and-scan:
     name: Pytest & SonarQube Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
