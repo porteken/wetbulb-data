@@ -27,6 +27,30 @@ class _StubTokenManager:
 
 
 class TestFindMissingCells:
+    def test_null_temperatures_remain_gaps(self, tmp_path: Any) -> None:
+        root = str(tmp_path / "wetbulb_data_csv")
+        filesystem, base_path = resolve_filesystem(root)
+        dates = pd.date_range("2020-01-01", "2020-12-31")
+        frame = pd.DataFrame(
+            {
+                "location_id": 1,
+                "date": dates,
+                "wetbulb": 20.0,
+                "wetbulb_avg": 18.0,
+                "source": "isd",
+            }
+        )
+        frame.loc[0, "wetbulb"] = float("nan")
+        frame.loc[1, "wetbulb_avg"] = float("nan")
+        frame.loc[2, ["wetbulb", "wetbulb_avg"]] = float("nan")
+        write_batch_partition(root, 2020, 0, frame, 0, file_prefix="wetbulb")
+        supplement = frame.iloc[[0]].assign(wetbulb=19.0, source="eccc")
+        write_batch_partition(root, 2020, 0, supplement, 0, file_prefix="wetbulb_eccc")
+
+        missing = gapfill.find_missing_cells([1], [2020], filesystem, base_path)
+
+        assert missing["date"].tolist() == list(dates[1:3])
+
     def test_thin_year_yields_calendar_minus_present(self, tmp_path: Any) -> None:
         root = str(tmp_path / "wetbulb_data_csv")
         filesystem, base_path = resolve_filesystem(root)

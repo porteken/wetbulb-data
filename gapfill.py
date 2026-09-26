@@ -83,13 +83,18 @@ def _existing_cells(
 
     frames = [
         pq.read_table(
-            path, columns=["location_id", "date"], filesystem=filesystem
+            path,
+            columns=["location_id", "date", "wetbulb", "wetbulb_avg"],
+            filesystem=filesystem,
         ).to_pandas()
         for path in paths
     ]
     existing = pd.concat(frames, ignore_index=True)
+    existing = existing.dropna(subset=["wetbulb", "wetbulb_avg"])
     existing["date"] = pd.to_datetime(existing["date"])
-    return existing[existing["location_id"].isin(location_ids)]
+    return existing.loc[
+        existing["location_id"].isin(location_ids), ["location_id", "date"]
+    ]
 
 
 def find_missing_cells(
