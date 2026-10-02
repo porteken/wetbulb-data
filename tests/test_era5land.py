@@ -98,6 +98,27 @@ def test_bounded_cds_client_limits_request_to_incremental_dates(
 
 
 class TestFetchCitySpan:
+    def test_distinct_date_windows_have_distinct_cache_entries(
+        self, tmp_path: Path
+    ) -> None:
+        raw_client = _StubCdsClient(
+            [
+                _raw_era5land_frame(["2026-03-26T00:00:00"]),
+                _raw_era5land_frame(["2026-09-24T00:00:00"]),
+            ]
+        )
+        for date in ("2026-03-26", "2026-09-24"):
+            result = era5land.fetch_city_span(
+                era5land._BoundedCdsClient(raw_client, date, date),
+                lat=51.5,
+                lng=-0.1,
+                start_year=2026,
+                end_year=2026,
+                download_dir=str(tmp_path),
+            )
+            assert result["valid_time"].iloc[0] == f"{date}T00:00:00"
+        assert len(raw_client.requests) == 2
+
     def test_writes_request_and_returns_parsed_frame(self, tmp_path: Path) -> None:
         client = _StubCdsClient([_raw_era5land_frame(["2020-01-01T00:00:00"])])
         result = era5land.fetch_city_span(
@@ -357,6 +378,26 @@ class TestFetchCityGaps:
         assert had_gap
         assert frame.empty
 
+    def test_failed_download_retry_bypasses_the_server_cache(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(era5land, "ERA5LAND_RETRY_DELAY_SECONDS", 0)
+        client = _StubCdsClient(
+            [
+                OSError("Download failed: downloaded 0 byte(s)"),
+                _raw_era5land_frame(["2020-01-01T00:00:00"]),
+            ]
+        )
+
+        frame, had_gap = era5land._fetch_city_gaps(
+            client, self._row(), [2020], str(tmp_path)
+        )
+
+        assert not had_gap
+        assert len(frame) == 1
+        assert "nocache" not in client.requests[0]
+        assert client.requests[1]["nocache"].isdigit()
+
     def test_truncated_download_assertion_is_retried_not_fatal(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
@@ -442,6 +483,32 @@ class TestSpanFrame:
 
 
 class TestFetchGapsBatch:
+    def test_requests_only_each_citys_missing_dates(self, tmp_path: Path) -> None:
+        raw_client = _StubCdsClient(
+            [
+                _raw_era5land_frame(["2026-03-26T00:00:00"]),
+                _raw_era5land_frame(["2026-09-24T00:00:00"]),
+            ]
+        )
+        rows = [TestFetchCityGaps._row(1000), TestFetchCityGaps._row(1001)]
+        missing = pd.DataFrame(
+            {
+                "location_id": [1000, 1001],
+                "date": pd.to_datetime(["2026-03-26", "2026-09-24"]),
+            }
+        )
+        client = era5land._BoundedCdsClient(raw_client, "2026-01-31", "2026-09-24")
+
+        results = era5land._fetch_gaps_batch(
+            rows, {1000: [2026], 1001: [2026]}, client, str(tmp_path), 1, 0, missing
+        )
+
+        assert set(results) == {1000, 1001}
+        assert [request["date"] for request in raw_client.requests] == [
+            ["2026-03-24/2026-03-28"],
+            ["2026-09-22/2026-09-26"],
+        ]
+
     def test_fetches_each_row_once(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

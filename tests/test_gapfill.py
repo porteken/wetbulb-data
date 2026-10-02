@@ -197,6 +197,39 @@ class TestFindMissingCells:
         ).date()
         assert missing["date"].max().date() == expected_end
 
+    def test_incremental_run_reuses_valid_fill_rows_and_retries_nulls(
+        self, tmp_path: Any
+    ) -> None:
+        root = str(tmp_path / "wetbulb_data_csv")
+        frame = pd.DataFrame(
+            {
+                "location_id": [1, 1],
+                "date": pd.to_datetime(["2020-03-26", "2020-03-27"]),
+                "wetbulb": [20.0, 20.0],
+                "wetbulb_avg": [18.0, float("nan")],
+                "source": "era5land",
+            }
+        )
+        write_batch_partition(root, 2020, 0, frame, 0, file_prefix="wetbulb_fill")
+
+        resolved = gapfill.resolve_gapfill_targets(
+            pd.DataFrame({"location_id": [1], "lat": [40.0], "lng": [-74.0]}),
+            root,
+            2020,
+            2020,
+            0,
+            1,
+            location_ids=None,
+            min_missing_days=1,
+            force=True,
+            logger=gapfill.LOGGER,
+            start_date="2020-03-26",
+            end_date="2020-03-27",
+        )
+
+        assert resolved is not None
+        assert resolved[5]["date"].tolist() == [pd.Timestamp("2020-03-27")]
+
 
 class TestGapYearsByLocation:
     def test_groups_and_sorts_years_per_location(self) -> None:
