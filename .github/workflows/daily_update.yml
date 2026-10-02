@@ -82,7 +82,7 @@ jobs:
     needs: resolve_target
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 3
       matrix:
         region:
           - name: na

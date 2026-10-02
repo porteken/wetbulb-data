@@ -64,6 +64,8 @@ def _existing_cells(
     base_path: str,
     year: int,
     location_ids: set[int],
+    *,
+    include_gapfill: bool = False,
 ) -> DataFrame:
     """Return cells already written by any primary station pipeline."""
     partition_dir = f"{base_path}/year={year}"
@@ -72,11 +74,16 @@ def _existing_cells(
     except _PARQUET_LIST_ERRORS:
         return _empty_cells_frame()
 
+    prefixes = (
+        (*PRIMARY_FILE_PREFIXES, f"{GAPFILL_FILE_PREFIX}_batch_")
+        if include_gapfill
+        else PRIMARY_FILE_PREFIXES
+    )
     paths = [
         file_info.path
         for file_info in file_infos
         if file_info.type == fs_module.FileType.File
-        and Path(file_info.path).name.startswith(PRIMARY_FILE_PREFIXES)
+        and Path(file_info.path).name.startswith(prefixes)
     ]
     if not paths:
         return _empty_cells_frame()
@@ -102,6 +109,8 @@ def find_missing_cells(
     years: list[int],
     filesystem: Filesystem,
     base_path: str,
+    *,
+    include_gapfill: bool = False,
 ) -> DataFrame:
     """Return every (location_id, date) cell in `years` the ISD pipeline hasn't written."""
     if not location_ids or not years:
@@ -122,7 +131,13 @@ def find_missing_cells(
             [location_ids, calendar],
             names=["location_id", "date"],
         ).to_frame(index=False)
-        existing = _existing_cells(filesystem, base_path, year, location_id_set)
+        existing = _existing_cells(
+            filesystem,
+            base_path,
+            year,
+            location_id_set,
+            include_gapfill=include_gapfill,
+        )
         if existing.empty:
             missing_frames.append(expected)
             continue
@@ -353,7 +368,11 @@ def resolve_gapfill_targets(
         return None
 
     all_missing_cells = find_missing_cells(
-        shard_df["location_id"].tolist(), pending_year_list, filesystem, base_path
+        shard_df["location_id"].tolist(),
+        pending_year_list,
+        filesystem,
+        base_path,
+        include_gapfill=start_date is not None or end_date is not None,
     )
     if start_date is not None:
         all_missing_cells = all_missing_cells[

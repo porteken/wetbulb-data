@@ -115,6 +115,12 @@ class _BoundedCdsClient:
         self.client = client
         self.start_date = start_date
         self.end_date = end_date
+        if isinstance(client, _BoundedCdsClient):
+            self.client = client.client
+            starts = [date for date in (start_date, client.start_date) if date]
+            ends = [date for date in (end_date, client.end_date) if date]
+            self.start_date = max(starts, default=None)
+            self.end_date = min(ends, default=None)
 
     def retrieve(self, dataset: str, request: dict[str, Any], target: str) -> None:
         bounded_request = request.copy()
@@ -205,13 +211,16 @@ def fetch_city_span(
     start_year: int,
     end_year: int,
     download_dir: str,
+    refresh_cache: bool = False,
 ) -> DataFrame:
     """Retrieve one city's ERA5-Land hourly point time-series for a year span."""
-    target = str(Path(download_dir) / span_filename(lat, lng, start_year, end_year))
+    target = str(
+        Path(download_dir) / _span_cache_name(client, lat, lng, start_year, end_year)
+    )
     with _SPAN_LOCKS_GUARD:
         span_lock = _SPAN_LOCKS.setdefault(target, threading.Lock())
     with span_lock:
-        cached = _cached_span(target)
+        cached = None if refresh_cache else _cached_span(target)
         if cached is not None:
             return cached
 
@@ -221,6 +230,8 @@ def fetch_city_span(
             "date": [f"{start_year}-01-01/{end_year}-12-31"],
             "data_format": "csv",
         }
+        if refresh_cache:
+            request["nocache"] = str(time.time_ns())
         with tempfile.NamedTemporaryFile(
             dir=download_dir,
             prefix=f".{Path(target).name}.",
@@ -279,6 +290,7 @@ def _fetch_span_with_retries(
     last_error: Exception | None = None
     for attempt in range(1, ERA5LAND_MAX_RETRIES + 1):
         try:
+            retry_args = {"refresh_cache": True} if attempt > 1 else {}
             return fetch_city_span(
                 client,
                 lat=row.lat,
@@ -286,6 +298,7 @@ def _fetch_span_with_retries(
                 start_year=start_year,
                 end_year=end_year,
                 download_dir=download_dir,
+                **retry_args,
             )
         except RETRYABLE_FETCH_ERRORS as exc:
             last_error = exc
@@ -352,6 +365,7 @@ def _fetch_gaps_batch(
     download_dir: str,
     worker_count: int,
     city_shard_index: int,
+    missing_cells: DataFrame | None = None,
 ) -> dict[int, tuple[DataFrame, bool]]:
     """Fetch each gapped city's ERA5-Land data concurrently, `worker_count` at a time."""
     results: dict[int, tuple[DataFrame, bool]] = {}
@@ -359,7 +373,7 @@ def _fetch_gaps_batch(
         futures = {
             executor.submit(
                 _fetch_city_gaps,
-                client,
+                _city_gap_client(client, row.location_id, missing_cells),
                 row,
                 gap_years_by_location[row.location_id],
                 download_dir,
@@ -375,19 +389,44 @@ def _fetch_gaps_batch(
     return results
 
 
+def _city_gap_client(
+    client: CdsClient, location_id: int, missing_cells: DataFrame | None
+) -> CdsClient:
+    """Limit retrievals to the dates still missing for one city."""
+    if missing_cells is None:
+        return client
+    dates = missing_cells.loc[missing_cells["location_id"] == location_id, "date"]
+    return _BoundedCdsClient(
+        client, dates.min().strftime("%Y-%m-%d"), dates.max().strftime("%Y-%m-%d")
+    )
+
+
+def _span_cache_name(
+    client: CdsClient, lat: float, lng: float, start_year: int, end_year: int
+) -> str:
+    """Identify cached downloads by both coordinates and requested date bounds."""
+    name = span_filename(lat, lng, start_year, end_year)
+    if isinstance(client, _BoundedCdsClient):
+        return f"{Path(name).stem}_{client.start_date}_{client.end_date}.csv"
+    return name
+
+
 def _log_cache_reuse(
     gapped_rows: list[CityRow],
     gap_years_by_location: dict[int, list[int]],
     download_dir: str,
+    client: CdsClient,
+    missing_cells: DataFrame,
 ) -> None:
     """Report how much of this run's fetch is already sitting in the cache."""
     total = cached = 0
     for row in gapped_rows:
+        city_client = _city_gap_client(client, row.location_id, missing_cells)
         for start_year, end_year in giovanni.contiguous_year_ranges(
             gap_years_by_location[row.location_id]
         ):
             total += 1
-            name = span_filename(row.lat, row.lng, start_year, end_year)
+            name = _span_cache_name(city_client, row.lat, row.lng, start_year, end_year)
             cached += (Path(download_dir) / name).exists()
     LOGGER.info(
         "Download cache holds %d/%d span(s); %d still to fetch from CDS.",
@@ -413,7 +452,13 @@ def _fetch_filled_rows(
     source_client = client or cds_client()
     worker_count = max(1, min(concurrency, len(gapped_rows)))
     with download_cache(cache_dir) as download_dir:
-        _log_cache_reuse(gapped_rows, gap_years_by_location, download_dir)
+        _log_cache_reuse(
+            gapped_rows,
+            gap_years_by_location,
+            download_dir,
+            source_client,
+            missing_cells,
+        )
         city_results = _fetch_gaps_batch(
             gapped_rows,
             gap_years_by_location,
@@ -421,6 +466,7 @@ def _fetch_filled_rows(
             download_dir,
             worker_count,
             city_shard_index,
+            missing_cells,
         )
 
     hourly_frames = [df for df, _ in city_results.values()]
