@@ -343,6 +343,20 @@ class TestFetchCityGaps:
         assert had_gap
         assert frame.empty
 
+    def test_all_null_download_marks_gap(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        raw = _raw_era5land_frame(["2000-01-01T00:00:00"])
+        raw["t2m"] = None
+        monkeypatch.setattr(era5land, "fetch_city_span", lambda *_a, **_k: raw)
+
+        frame, had_gap = era5land._fetch_city_gaps(
+            None, self._row(), [2000], str(tmp_path)
+        )
+
+        assert had_gap
+        assert frame.empty
+
     def test_truncated_download_assertion_is_retried_not_fatal(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
@@ -647,6 +661,19 @@ class TestProcessEra5landGapfill:
         )
         era5land.process_era5land_gapfill(2020, 2020, str(tmp_path), 0, 1, 2)
         assert not write_called
+
+    def test_empty_failed_fetch_raises_before_aggregation(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        self._stub_fetch_setup(monkeypatch)
+        monkeypatch.setattr(
+            era5land,
+            "_fetch_gaps_batch",
+            lambda *_a, **_k: {1000: (era5land.empty_hourly_frame(), True)},
+        )
+
+        with pytest.raises(RuntimeError, match="refusing to write an incomplete"):
+            era5land.process_era5land_gapfill(2020, 2020, str(tmp_path), 0, 1, 2)
 
     def test_empty_daily_aggregate_skips_the_write(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any

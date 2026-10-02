@@ -335,8 +335,10 @@ def _fetch_city_gaps(
             had_gap = True
             continue
         frame = _span_frame(row, raw, start_year, end_year)
-        if not frame.empty:
-            year_frames.append(frame)
+        if frame.empty:
+            had_gap = True
+            continue
+        year_frames.append(frame)
 
     if not year_frames:
         return empty_hourly_frame(), had_gap
@@ -423,13 +425,6 @@ def _fetch_filled_rows(
 
     hourly_frames = [df for df, _ in city_results.values()]
     shard_had_gap = any(gap for _, gap in city_results.values())
-    if not hourly_frames:
-        return None
-    hourly_df = lcd.concat_frames(hourly_frames)
-    daily_df = nldas.compute_daily_wetbulb(hourly_df)
-    if daily_df.empty:
-        return None
-
     if shard_had_gap:
         message = (
             f"city_shard={city_shard_index}/{city_shard_count}: one or more cities "
@@ -437,6 +432,13 @@ def _fetch_filled_rows(
             "refusing to write an incomplete parquet shard."
         )
         raise RuntimeError(message)
+
+    if not hourly_frames:
+        return None
+    hourly_df = lcd.concat_frames(hourly_frames)
+    daily_df = nldas.compute_daily_wetbulb(hourly_df)
+    if daily_df.empty:
+        return None
 
     daily_df["date"] = pd.to_datetime(daily_df["date"])
     filled = daily_df.merge(missing_cells, on=["location_id", "date"], how="inner")
